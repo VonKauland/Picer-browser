@@ -12,7 +12,15 @@ if TYPE_CHECKING:
     from picer.plugins.manager import PluginManager
 
 API_VERSION = 1
-PERMISSIONS = {"ui.commands", "image.read", "image.modify", "events.subscribe", "settings", "tasks"}
+PERMISSIONS = {
+    "ui.commands",
+    "image.read",
+    "image.modify",
+    "events.subscribe",
+    "settings",
+    "tasks",
+    "cache",
+}
 
 
 class PluginError(Exception):
@@ -89,6 +97,18 @@ class PluginContext:
     def set_setting(self, key: str, value: Any) -> None:
         self._check("settings")
         self._manager.set_setting(self.plugin_id, key, value)
+
+    def thumbnail(self) -> QImage:
+        """Return the cached original-image thumbnail, before plugin edits."""
+        self._check("image.read")
+        return self._manager.host.current_thumbnail.copy()
+
+    def cache_directory(self) -> Path:
+        """Private writable cache namespace, separate from persistent settings."""
+        self._check("cache")
+        directory = self._manager.paths.cache / "plugins" / self.plugin_id
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     def run_task(self, work: Callable, on_result: Callable, *, image_bound: bool = True):
         """Return a cancellation token; stale image results are discarded by default."""

@@ -46,41 +46,21 @@ jobs:
           python -m ruff format --check .
       - name: Run GUI tests on Windows
         run: python -m pytest --junitxml=test-results.xml
-      - name: Package example plugin
+      - name: Build complete Windows application folder
+        run: python -m scripts.build_windows
+      - name: Verify packaged folder and relocation on Windows
+        run: python -m scripts.verify_distribution
+      - name: Record distribution size
         run: |
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Compress-Archive -Path examples/negative_plugin/* -DestinationPath dist/negative-plugin.zip -Force
-      - name: Build Picer.exe
-        run: >-
-          python -m PyInstaller --noconfirm --clean --onefile --windowed
-          --name Picer --exclude-module PySide6.QtQml
-          --exclude-module PySide6.QtQuick --exclude-module PySide6.QtNetwork
-          --paths src scripts/entrypoint.py
-      - name: Smoke test packaged EXE on Windows
-        run: |
-          $exe = Join-Path $PWD 'dist/Picer.exe'
-          if (-not (Test-Path $exe)) { throw 'Picer.exe was not produced' }
-          $archive = Join-Path $PWD 'dist/negative-plugin.zip'
-          $arguments = @('--smoke-test', '--plugin-archive', "`"$archive`"")
-          $process = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru
-          if (-not $process.WaitForExit(60000)) {
-            taskkill /PID $process.Id /T /F
-            throw 'Packaged GUI smoke test timed out'
-          }
-          if ($process.ExitCode -ne 0) {
-            throw "Packaged GUI smoke test failed: $($process.ExitCode)"
-          }
-      - name: Record EXE size
-        run: |
-          $bytes = (Get-Item 'dist/Picer.exe').Length
-          "Picer.exe: $bytes bytes ($([math]::Round($bytes / 1MB, 2)) MiB)" >> $env:GITHUB_STEP_SUMMARY
-      - name: Upload Windows x64 EXE
+          $files = Get-ChildItem 'dist/Picer' -Recurse -File
+          $bytes = ($files | Measure-Object -Property Length -Sum).Sum
+          "Picer folder: $($files.Count) files, $([math]::Round($bytes / 1MB, 2)) MiB" >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload complete Windows application folder
         uses: actions/upload-artifact@v4
         with:
           name: Picer-windows-x64
-          path: |
-            dist/Picer.exe
-            dist/negative-plugin.zip
+          path: dist/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
       - name: Upload test report

@@ -35,17 +35,23 @@ flowchart LR
 3. 插件命令出现在 **插件** 菜单；插件也可贡献到 **编辑**、**视图** 菜单。
 4. 可停用、重载或卸载；更新前先停用，卸载同时删除该插件配置。
 
-**打开插件目录** 可查看实际存储位置。正常 Windows 启动默认使用 Qt 的 `AppLocalDataLocation`，通常为 `%LOCALAPPDATA%\Picer`：
+**打开插件目录** 可查看实际存储位置。文件夹版本默认使用 EXE 所在目录保存数据；源码开发或软件目录不可写时使用用户目录。也可通过 `--data-dir` 指定位置。
 
 ```text
 Picer/
-  plugins.json                  启用状态与插件独立设置
-  plugins.log                   异常日志（256 KiB 轮转，保留两份旧日志）
+  Picer.exe
+  config/plugins.json           启用状态与插件独立设置
+  logs/plugins.log              异常日志（256 KiB 轮转，保留两份旧日志）
+  cache/
+    thumbnails/                 宿主缩略图缓存
+    plugins/<plugin-id>/        插件独立缓存
   plugins/
     example.negative/
       manifest.json
       main.py
 ```
+
+资源、迁移与备份规则详见 [文件夹分发指南](distribution.md)。
 
 配置使用临时文件与原子替换保存。无法读写配置时仍允许查看图片，诊断显示在插件管理中。直接复制目录的插件在下次启动发现；改动运行中插件的源码后点击 **重载**。
 
@@ -121,6 +127,8 @@ class Plugin:
 | ui.commands | `add_command(id, label, callback, shortcut="", requires_image=True, menu="插件")` | 在支持的菜单注册动作，停用时自动删除 |
 | image.read | `current_path()` | 返回当前 `Path`，未打开图片时为 `None` |
 | image.read | `image()` | 返回当前预览的独立 `QImage` 拷贝，包含当前显示变换 |
+| image.read | `thumbnail()` | 返回当前原图的独立缩略图拷贝，不含插件预览变换 |
+| cache | `cache_directory()` | 返回 `cache/plugins/<plugin-id>` 独立目录，插件自行控制容量 |
 | image.modify | `replace_image(image)` | 更新显示并适应窗口，发出图片变更事件；不写原文件 |
 | events.subscribe | `subscribe(name, callback)` | 订阅图片事件，停用时自动撤销 |
 | settings | `get_setting(key, default=None)` / `set_setting(key, value)` | 插件命名空间下的 JSON 设置；读取返回副本，单值最多 64 KiB 序列化 JSON |
@@ -159,7 +167,7 @@ token = context.run_task(work, context.replace_image)
 
 ## 随附示例与构建验证
 
-`examples/negative_plugin` 展示菜单、图片读写、事件、设置和后台任务。Windows Actions 会将其打包为 `negative-plugin.zip`，与 `Picer.exe` 一起上传。
+`examples/negative_plugin` 展示菜单、图片读写、事件、设置和后台任务。Windows Actions 会将其打包为 `Picer/examples/negative-plugin.zip`，随完整软件文件夹上传。
 
 手动打包：
 

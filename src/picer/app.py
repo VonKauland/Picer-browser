@@ -7,7 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QImage
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from picer.window import MainWindow
 
@@ -16,6 +16,7 @@ def main() -> int:
     """Launch the image browser or exercise the packaged GUI in CI."""
     parser = argparse.ArgumentParser(description="揽映 Picer 图片浏览器")
     parser.add_argument("image", nargs="?")
+    parser.add_argument("--data-dir", type=Path, help="指定插件、缓存、配置与日志目录")
     parser.add_argument("--safe-mode", action="store_true", help="本次启动不加载第三方插件")
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--plugin-archive", help=argparse.SUPPRESS)
@@ -25,11 +26,22 @@ def main() -> int:
     app.setApplicationName("Picer")
     app.setApplicationDisplayName("揽映")
     app.setStyle("Fusion")
-    temporary_plugins = tempfile.TemporaryDirectory() if smoke_test else None
-    window = MainWindow(
-        plugin_root=Path(temporary_plugins.name) if temporary_plugins else None,
-        load_external=not args.safe_mode,
+    temporary_plugins = (
+        tempfile.TemporaryDirectory()
+        if smoke_test and not getattr(sys, "frozen", False) and args.data_dir is None
+        else None
     )
+    try:
+        window = MainWindow(
+            plugin_root=Path(temporary_plugins.name) if temporary_plugins else args.data_dir,
+            load_external=not args.safe_mode,
+        )
+    except OSError as error:
+        if not smoke_test:
+            QMessageBox.critical(None, "无法创建应用数据目录", str(error))
+        if temporary_plugins:
+            temporary_plugins.cleanup()
+        return 1
     window.show()
 
     if smoke_test:
@@ -40,9 +52,15 @@ def main() -> int:
                     image = QImage(80, 60, QImage.Format.Format_RGB32)
                     image.fill(0x3399CC)
                     first, second = Path(folder) / "1.png", Path(folder) / "2.jpg"
+                    count_before = 0
                     if args.plugin_archive:
-                        plugin_id = window.plugins.install(Path(args.plugin_archive))
+                        plugin_id = "example.negative"
+                        if plugin_id not in window.plugins.records:
+                            window.plugins.install(Path(args.plugin_archive))
                         window.plugins.enable(plugin_id)
+                        count_before = window.plugins.records[plugin_id].context.get_setting(
+                            "opened_count", 0
+                        )
                     passed = image.save(str(first)) and image.save(str(second))
                     passed = passed and window.open_image(first)
                     window.next_action.trigger()
@@ -53,9 +71,13 @@ def main() -> int:
                     window.rotate_action.trigger()
                     passed = passed and window.view.image_item.pixmap().width() == 60
                     passed = passed and window.title_bar.caption.text() == second.name
+                    passed = passed and not window.windowIcon().isNull()
+                    passed = passed and window.plugins.state_file.is_file()
+                    passed = passed and window.plugins.log_file.is_file()
+                    passed = passed and any(window.thumbnail_cache.directory.glob("*.png"))
                     if args.plugin_archive:
                         context = window.plugins.records[plugin_id].context
-                        passed = passed and context.get_setting("opened_count") == 2
+                        passed = passed and context.get_setting("opened_count") == count_before + 2
                         before = window.view.image_item.pixmap().toImage().pixelColor(0, 0)
                         window.plugins.commands[f"{plugin_id}:negative"].trigger()
 

@@ -4,7 +4,7 @@ Python 3.12 / PySide6 Windows x64 图片浏览器，以可扩展插件系统为�
 
 ## 使用
 
-从 GitHub Actions 成功运行的 **Picer-windows-x64** 产物下载 ZIP，解压后运行 **Picer.exe**，无需安装 Python。EXE 未签名；首次启动需解压依赖，可能稍慢。产物保留 30 天。
+从 GitHub Actions 成功运行的 **Picer-windows-x64** 产物下载 ZIP，完整解压后进入 **Picer/** 并运行 **Picer.exe**，无需安装 Python。必须保留同目录的 `_internal` 和资源文件；EXE 未签名。产物保留 30 天。
 
 - **文件**：打开图片、打开文件夹、退出。支持将图片拖入窗口，也可传入命令行文件路径。
 - **编辑**：顺时针旋转、复制文件路径。旋转仅改变当前显示，不写入原图片。
@@ -33,11 +33,32 @@ Python 3.12 / PySide6 Windows x64 图片浏览器，以可扩展插件系统为�
 - 旋转、水平翻转与灰度预览由可启停的内置插件提供。
 - 第三方插件通过版本化 SDK 扩展菜单命令、图片处理、事件、独立设置与后台任务。
 - 插件管理入口：**插件 → 插件管理**，快捷键 `Ctrl+Shift+P`。
-- 从构建 ZIP 中取出 `negative-plugin.zip`，安装并启用后可体验异步负片预览及图片打开计数。
+- 从软件文件夹的 `examples/` 中选择 `negative-plugin.zip`，安装并启用后可体验异步负片预览及图片打开计数。
 - 新插件默认停用；第三方 Python 插件需来自可信来源。错误记录在插件管理及日志中。
 - 启动排障：`Picer.exe --safe-mode`，跳过本次第三方插件加载。
 
 完整架构、清单格式、API、生命周期与扩展边界见 [插件开发文档](docs/plugins.md)，完整示例见 [negative_plugin](examples/negative_plugin)。
+
+## 完整软件文件夹
+
+```text
+Picer/
+  Picer.exe             启动程序
+  _internal/            Python / Qt 运行库
+  assets/icons/         应用 SVG、PNG、ICO 图标
+  plugins/              已安装插件
+  cache/                缩略图与插件缓存
+  config/               插件配置
+  logs/                 轮转日志
+  examples/             插件示例 ZIP
+  docs/                 使用与插件开发指南
+  README.txt            快速说明
+  distribution.json     分发版本与架构信息
+```
+
+默认数据与软件保存在同一文件夹，移动整个目录后仍可使用。目录不可写时退回用户数据目录；通过 **帮助 → 打开应用数据目录** 查看实际位置。`--data-dir` 可指定其他数据目录，**帮助 → 清理图片缓存** 可释放宿主缩略图缓存。
+
+更新时请解压到新目录，再迁移原 `plugins` 与 `config`；旧单文件版的迁移步骤见 [文件夹分发指南](docs/distribution.md)。
 
 ## 开发与检查
 
@@ -75,12 +96,13 @@ AGENTS.md              仓库协作约定
 ## Windows 构建
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name Picer --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick --exclude-module PySide6.QtNetwork --paths src scripts/entrypoint.py
+python -m scripts.build_windows
+python -m scripts.verify_distribution
 ```
 
-仅依赖 `PySide6-Essentials`，不安装 Addons；排除未使用的 QML、QtQuick 和网络模块。实际 EXE 大小记录在 Actions 运行摘要中。
+构建脚本采用 PyInstaller `--onedir --windowed --contents-directory _internal`，输出完整 `dist/Picer/`。构建时生成应用图标与 EXE 版本信息，复制文档、示例插件和数据目录。仅依赖 `PySide6-Essentials`，排除未使用的 QML、QtQuick 和网络模块。
 
-每次推送 `main` 或向 `main` 提交 PR，工作流在 `windows-latest` 安装 Python 3.12 x64，检查代码、运行 GUI 测试、打包，并实际启动生成的 EXE，通过 `--smoke-test` 验证 PNG/JPEG 解码、切换、缩放、内置插件旋转、外部 ZIP 插件加载与异步处理、设置和停用清理。通过后才上传 EXE；测试报告单独上传。还可手动运行工作流。
+每次推送 `main` 或向 `main` 提交 PR，工作流在 `windows-latest` 安装 Python 3.12 x64，检查代码、运行 GUI 测试、构建，并在临时目录复制完整软件后启动实际 EXE。它验证图片与外部插件、缓存/配置/日志位置，并将整个文件夹迁移后再次启动，确认设置保留。验证成功后上传完整目录，测试数据不进入最终分发包；测试报告单独上传。还可手动运行工作流。
 
 自动化测试不替代真实 Windows 桌面上的人工视觉检查、拖动和窗口边缘操作验证。
 

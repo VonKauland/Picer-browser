@@ -139,7 +139,7 @@ def test_command_error_disables_plugin_and_preserves_viewer(window, tmp_path):
     assert not manager.preferences["enabled"]["test.sample"]
     assert "command failed" in manager.records["test.sample"].error
     assert window.isVisible()
-    assert "command failed" in (manager.root / "plugins.log").read_text()
+    assert "command failed" in manager.log_file.read_text()
 
 
 def test_incompatible_api_never_imports(window, tmp_path):
@@ -478,3 +478,17 @@ def test_invalid_manifest_is_rejected_before_install(window, tmp_path, metadata)
     with pytest.raises(PluginError):
         window.plugins.install(package(tmp_path, **metadata))
     assert "test.sample" not in window.plugins.records
+
+
+def test_plugin_cache_and_thumbnail_sdk(window, tmp_path):
+    manager = window.plugins
+    manager.install(package(tmp_path, permissions=["ui.commands", "image.read", "cache"]))
+    manager.enable("test.sample")
+    context = manager.records["test.sample"].context
+    open_image(window, tmp_path)
+    assert context.thumbnail().width() == 80
+    directory = context.cache_directory()
+    assert directory == window.paths_layout.cache / "plugins" / "test.sample"
+    assert directory.is_dir()
+    assert manager.state_file == window.paths_layout.config / "plugins.json"
+    assert manager.log_file == window.paths_layout.logs / "plugins.log"

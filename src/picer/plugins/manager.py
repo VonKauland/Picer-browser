@@ -46,12 +46,14 @@ class PluginManager(QObject):
         super().__init__(host)
         self.host = host
         self.root = root.resolve()
-        self.directory = self.root / "plugins"
-        self.state_file = self.root / "plugins.json"
+        self.paths = host.paths_layout
+        self.directory = self.paths.plugins
+        self.state_file = self.paths.config / "plugins.json"
+        self.log_file = self.paths.logs / "plugins.log"
         self.records: dict[str, PluginRecord] = {}
         self.commands: dict[str, QAction] = {}
         self.subscribers: dict[str, list[tuple[str, Callable]]] = {}
-        self.diagnostics: list[str] = []
+        self.diagnostics: list[str] = [self.paths.notice] if self.paths.notice else []
         self._dispatching = False
         self._closed = False
         self.jobs: dict[int, Worker] = {}
@@ -73,7 +75,7 @@ class PluginManager(QObject):
             self.diagnostics.append(f"配置读取失败：{error}")
         try:
             self.log_handler = RotatingFileHandler(
-                self.root / "plugins.log", maxBytes=256 * 1024, backupCount=2, encoding="utf-8"
+                self.log_file, maxBytes=256 * 1024, backupCount=2, encoding="utf-8"
             )
             self.logger.addHandler(self.log_handler)
         except OSError as error:
@@ -133,7 +135,11 @@ class PluginManager(QObject):
         try:
             self.root.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=self.root, prefix=".plugins-", delete=False
+                mode="w",
+                encoding="utf-8",
+                dir=self.state_file.parent,
+                prefix=".plugins-",
+                delete=False,
             ) as file:
                 temporary = Path(file.name)
                 json.dump(self.preferences, file, ensure_ascii=False, indent=2, allow_nan=False)

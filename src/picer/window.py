@@ -2,8 +2,17 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, Qt
-from PySide6.QtGui import QAction, QColor, QImageReader, QKeySequence, QPixmap
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QDesktopServices,
+    QIcon,
+    QImage,
+    QImageReader,
+    QKeySequence,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -17,7 +26,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
+from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
 
@@ -69,6 +80,10 @@ class MainWindow(QMainWindow):
 
     def __init__(self, *, plugin_root: Path | None = None, load_external: bool = True) -> None:
         super().__init__()
+        self.paths_layout = AppPaths.resolve(plugin_root)
+        self.thumbnail_cache = ThumbnailCache(self.paths_layout.cache)
+        self.current_thumbnail = QImage()
+        self.setWindowIcon(QIcon(str(self.paths_layout.icon)))
         self.setWindowTitle("揽映")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setMinimumSize(680, 420)
@@ -127,14 +142,10 @@ class MainWindow(QMainWindow):
         self.add_action(help_menu, "关于揽映", "", self.show_about)
         self.add_action(plugin_menu, "插件管理…", "Ctrl+Shift+P", self.show_plugins)
         plugin_menu.addSeparator()
-        if plugin_root is None:
-            plugin_root = Path(
-                QStandardPaths.writableLocation(
-                    QStandardPaths.StandardLocation.AppLocalDataLocation
-                )
-            )
+        self.add_action(help_menu, "打开应用数据目录", "", self.open_data_directory)
+        self.add_action(help_menu, "清理图片缓存", "", self.clear_thumbnail_cache)
         self.image_revision = 0
-        self.plugins = PluginManager(self, plugin_root, load_external=load_external)
+        self.plugins = PluginManager(self, self.paths_layout.root, load_external=load_external)
         self.update_actions()
         self.title_bar.arrange()
 
@@ -202,11 +213,20 @@ class MainWindow(QMainWindow):
             else:
                 self.showNormal()
 
+    def open_data_directory(self) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths_layout.root)))
+
+    def clear_thumbnail_cache(self) -> None:
+        try:
+            self.thumbnail_cache.clear()
+        except OSError as error:
+            QMessageBox.warning(self, "清理缓存失败", str(error))
+
     def show_about(self) -> None:
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 0.3.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 0.4.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -278,6 +298,7 @@ class MainWindow(QMainWindow):
             paths.append(path)
         self.paths = paths
         self.current_path = path
+        self.current_thumbnail = self.thumbnail_cache.thumbnail(path, image)
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
         self.view.scene.setSceneRect(self.view.image_item.boundingRect())
         self.view.fit_image()
