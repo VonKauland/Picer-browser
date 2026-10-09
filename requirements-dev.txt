@@ -1,0 +1,5 @@
+-r requirements.txt
+PyInstaller==6.16.0
+pytest==8.4.2
+pytest-qt==4.5.0
+ruff==0.13.3
