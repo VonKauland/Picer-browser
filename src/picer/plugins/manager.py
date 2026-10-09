@@ -426,7 +426,10 @@ class PluginManager(QObject):
                         raise PluginError("插件包最多包含 500 个文件，解压后不超过 20 MiB")
                     seen = set()
                     for info in entries:
-                        path = PurePosixPath(info.filename)
+                        # ZipInfo normalizes separators on Windows when reading too.
+                        # Inspect the original archive name before that normalization.
+                        raw_name = info.orig_filename
+                        path = PurePosixPath(raw_name)
                         reserved = {"CON", "PRN", "AUX", "NUL"}
                         reserved.update(
                             f"{prefix}{number}"
@@ -436,8 +439,9 @@ class PluginManager(QObject):
                         if (
                             path.is_absolute()
                             or ".." in path.parts
-                            or "\\" in info.filename
-                            or ":" in info.filename
+                            or "\\" in raw_name
+                            or ":" in raw_name
+                            or any(ord(char) < 32 or char in '<>"|?*' for char in raw_name)
                             or (info.external_attr >> 16) & 0o170000 == 0o120000
                             or any(
                                 part.rstrip(" .") != part or part.split(".")[0].upper() in reserved
