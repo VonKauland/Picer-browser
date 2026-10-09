@@ -4,7 +4,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage
 
-from windows_tool.window import MainWindow
+from picer.window import MainWindow
 
 
 @pytest.fixture
@@ -79,7 +79,7 @@ def test_zoom_and_fit(window, images):
 
 def test_file_dialog(window, images, monkeypatch):
     monkeypatch.setattr(
-        "windows_tool.window.QFileDialog.getOpenFileName", lambda *args: (str(images[0]), "")
+        "picer.window.QFileDialog.getOpenFileName", lambda *args: (str(images[0]), "")
     )
     window.open_action.trigger()
     assert window.current_path == images[0]

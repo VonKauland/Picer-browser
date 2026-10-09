@@ -219,6 +219,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# WindowsTool artifacts and local test reports
+# Picer artifacts and local test reports
 *.exe
 test-results.xml

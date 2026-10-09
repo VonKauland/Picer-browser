@@ -6,7 +6,7 @@ import sys
 
 def test_application_smoke_test():
     result = subprocess.run(
-        [sys.executable, "-m", "windows_tool", "--smoke-test"],
+        [sys.executable, "-m", "picer", "--smoke-test"],
         capture_output=True,
         text=True,
         timeout=30,

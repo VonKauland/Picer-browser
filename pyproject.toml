@@ -3,15 +3,15 @@ requires = ["setuptools>=75,<81"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "windows-tool"
+name = "picer"
 version = "0.2.0"
-description = "A PySide6 Windows image browser"
+description = "Picer - a minimal Windows image browser"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dynamic = ["dependencies"]
 
 [project.gui-scripts]
-windows-tool = "windows_tool.app:main"
+picer = "picer.app:main"
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}

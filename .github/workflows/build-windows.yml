@@ -46,16 +46,16 @@ jobs:
           python -m ruff format --check .
       - name: Run GUI tests on Windows
         run: python -m pytest --junitxml=test-results.xml
-      - name: Build Yinglan.exe
+      - name: Build Picer.exe
         run: >-
           python -m PyInstaller --noconfirm --clean --onefile --windowed
-          --name Yinglan --exclude-module PySide6.QtQml
+          --name Picer --exclude-module PySide6.QtQml
           --exclude-module PySide6.QtQuick --exclude-module PySide6.QtNetwork
           --paths src scripts/entrypoint.py
       - name: Smoke test packaged EXE on Windows
         run: |
-          $exe = Join-Path $PWD 'dist/Yinglan.exe'
-          if (-not (Test-Path $exe)) { throw 'Yinglan.exe was not produced' }
+          $exe = Join-Path $PWD 'dist/Picer.exe'
+          if (-not (Test-Path $exe)) { throw 'Picer.exe was not produced' }
           $process = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru
           if (-not $process.WaitForExit(60000)) {
             taskkill /PID $process.Id /T /F
@@ -66,13 +66,13 @@ jobs:
           }
       - name: Record EXE size
         run: |
-          $bytes = (Get-Item 'dist/Yinglan.exe').Length
-          "Yinglan.exe: $bytes bytes ($([math]::Round($bytes / 1MB, 2)) MiB)" >> $env:GITHUB_STEP_SUMMARY
+          $bytes = (Get-Item 'dist/Picer.exe').Length
+          "Picer.exe: $bytes bytes ($([math]::Round($bytes / 1MB, 2)) MiB)" >> $env:GITHUB_STEP_SUMMARY
       - name: Upload Windows x64 EXE
         uses: actions/upload-artifact@v4
         with:
-          name: Yinglan-windows-x64
-          path: dist/Yinglan.exe
+          name: Picer-windows-x64
+          path: dist/Picer.exe
           if-no-files-found: error
           retention-days: 30
       - name: Upload test report

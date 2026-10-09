@@ -1,10 +1,10 @@
-# 映览 · Yinglan
+# 揽映 · Picer
 
 Python 3.12 / PySide6 Windows x64 图片浏览器。暗黑极简界面：单行顶栏左侧显示名称和「文件、编辑、视图、帮助」菜单，文件名居中，右侧为窗口控制按钮。没有底栏、图片状态信息或独立工具按钮组。
 
 ## 使用
 
-从 GitHub Actions 成功运行的 **Yinglan-windows-x64** 产物下载 ZIP，解压后运行 **Yinglan.exe**，无需安装 Python。EXE 未签名；首次启动需解压依赖，可能稍慢。产物保留 30 天。
+从 GitHub Actions 成功运行的 **Picer-windows-x64** 产物下载 ZIP，解压后运行 **Picer.exe**，无需安装 Python。EXE 未签名；首次启动需解压依赖，可能稍慢。产物保留 30 天。
 
 - **文件**：打开图片、打开文件夹、退出。支持将图片拖入窗口，也可传入命令行文件路径。
 - **编辑**：顺时针旋转、复制文件路径。旋转仅改变当前显示，不写入原图片。
@@ -35,20 +35,20 @@ Python 3.12 / PySide6 Windows x64 图片浏览器。暗黑极简界面：单行�
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.txt -e .
-python -m windows_tool
+python -m picer
 python -m ruff check .
 python -m ruff format --check .
 python -m pytest
 ```
 
-也可以直接执行 `.\.venv\Scripts\python.exe`，无需激活虚拟环境。命令行打开图片：`python -m windows_tool "C:\Pictures\photo.jpg"`。
+也可以直接执行 `.\.venv\Scripts\python.exe`，无需激活虚拟环境。命令行打开图片：`python -m picer "C:\Pictures\photo.jpg"`。
 
 Linux 无显示环境使用 `QT_QPA_PLATFORM=offscreen python -m pytest`。Linux 检查不验证 Windows EXE；请查看对应提交的 Windows Actions 实际结果。
 
 ## 项目结构
 
 ```text
-src/windows_tool/       应用启动、图片视图、自定义顶栏
+src/picer/       应用启动、图片视图、自定义顶栏
 scripts/entrypoint.py   PyInstaller 入口
 tests/                 pytest / pytest-qt 测试
 .github/workflows/     Windows CI 构建流程
@@ -60,7 +60,7 @@ AGENTS.md              仓库协作约定
 ## Windows 构建
 
 ```powershell
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name Yinglan --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick --exclude-module PySide6.QtNetwork --paths src scripts/entrypoint.py
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name Picer --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick --exclude-module PySide6.QtNetwork --paths src scripts/entrypoint.py
 ```
 
 仅依赖 `PySide6-Essentials`，不安装 Addons；排除未使用的 QML、QtQuick 和网络模块。实际 EXE 大小记录在 Actions 运行摘要中。

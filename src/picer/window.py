@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from windows_tool.chrome import STYLE, TitleBar
+from picer.chrome import STYLE, TitleBar
 
 
 class ImageView(QGraphicsView):
@@ -67,7 +67,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("映览")
+        self.setWindowTitle("揽映")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setMinimumSize(680, 420)
         self.resize(1200, 800)
@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         self.fullscreen_action = self.add_action(view_menu, "全屏", "F11", self.toggle_fullscreen)
         self.add_action(view_menu, "退出全屏", "Esc", self.exit_fullscreen)
-        self.add_action(help_menu, "关于映览", "", self.show_about)
+        self.add_action(help_menu, "关于揽映", "", self.show_about)
         self.update_actions()
         self.title_bar.arrange()
 
@@ -146,7 +146,7 @@ class MainWindow(QMainWindow):
                         return
         except OSError as error:
             self.last_error = str(error)
-        QMessageBox.information(self, "映览", "该文件夹中没有可读取的图片。")
+        QMessageBox.information(self, "揽映", "该文件夹中没有可读取的图片。")
 
     def copy_path(self) -> None:
         if self.current_path:
@@ -178,8 +178,8 @@ class MainWindow(QMainWindow):
     def show_about(self) -> None:
         QMessageBox.about(
             self,
-            "关于映览",
-            "映览 0.2.0\n简洁的本地图片浏览器。\n"
+            "关于揽映",
+            "揽映 0.2.0\n简洁的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -256,7 +256,7 @@ class MainWindow(QMainWindow):
         self.view.fit_image()
         self.last_error = ""
         self.empty_label.hide()
-        self.setWindowTitle(f"{path.name} — 映览")
+        self.setWindowTitle(f"{path.name} — 揽映")
         self.title_bar.set_filename(path.name)
         self.update_actions()
         return True

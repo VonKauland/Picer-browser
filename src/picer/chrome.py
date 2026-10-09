@@ -18,7 +18,7 @@ class TitleBar(QWidget):
         layout = QHBoxLayout(self.left)
         layout.setContentsMargins(12, 0, 0, 0)
         layout.setSpacing(16)
-        self.brand = QLabel("▧  映览")
+        self.brand = QLabel("▧  揽映")
         self.brand.setObjectName("brand")
         layout.addWidget(self.brand)
         self.menu = QMenuBar()

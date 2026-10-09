@@ -8,14 +8,15 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication
 
-from windows_tool.window import MainWindow
+from picer.window import MainWindow
 
 
 def main() -> int:
     """Launch the image browser or exercise the packaged GUI in CI."""
     smoke_test = "--smoke-test" in sys.argv[1:]
     app = QApplication([sys.argv[0]] if smoke_test else sys.argv)
-    app.setApplicationName("映览")
+    app.setApplicationName("Picer")
+    app.setApplicationDisplayName("揽映")
     app.setStyle("Fusion")
     window = MainWindow()
     window.show()
