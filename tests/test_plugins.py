@@ -226,7 +226,13 @@ def test_shortcut_conflict_and_duplicate_commands(window, tmp_path):
 def test_zip_traversal_rejected(window, tmp_path, filename):
     archive = tmp_path / "bad.zip"
     with zipfile.ZipFile(archive, "w") as file:
-        file.writestr(filename, "bad")
+        file.writestr(filename.replace("\\", "/"), "bad")
+    # ZipInfo normalizes backslashes on Windows. Patch both same-length filename headers
+    # to model an actual malformed archive consistently on all operating systems.
+    if "\\" in filename:
+        archive.write_bytes(
+            archive.read_bytes().replace(filename.replace("\\", "/").encode(), filename.encode())
+        )
     with pytest.raises(PluginError, match="非法路径"):
         window.plugins.install(archive)
     assert not (tmp_path / "escape.py").exists()
