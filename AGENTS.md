@@ -19,3 +19,6 @@
 
 - New components must declare type skin/function/panel. Skin packages are declarative resources in skins; functions register exactly one command; panels register exactly one widget and dock only left/right/bottom. Preserve explicit legacy API v1 migration support.
 - Revoke quick-slot bindings and docks on cleanup. Keep exactly five top-bar slots and no bottom status bar. Test fullscreen/normal panel visibility transitions and persisted user choices.
+
+- Scope skins to host widgets only; preserve external plugin QIcon and content styles. All panel shells use shared glass backdrops; hover reveals must preserve hidden preferences and restore widget ownership on cleanup.
+- Keep four primary example ZIPs (file browser, image info, progress, macOS skin) plus the SDK negative regression ZIP. EXE checks must read actual JPEG EXIF and exercise hover animation and persistent example settings.

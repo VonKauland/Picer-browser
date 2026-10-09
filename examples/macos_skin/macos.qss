@@ -1,0 +1,22 @@
+QWidget { font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; font-size: 13px; }
+QMainWindow { border: 1px solid #ceced6; border-radius: 12px; }
+QMenuBar::item { padding: 8px 9px; border-radius: 6px; }
+QMenuBar::item:selected { background: #d9d9e2; }
+QMenu { background: #f6f6f8; border: 1px solid #d4d4dc; border-radius: 10px; padding: 6px; }
+QMenu::item { border-radius: 5px; padding: 7px 28px 7px 12px; }
+QMenu::item:selected { background: #3478f6; color: white; }
+QMenu::item:disabled { color: #9a9aa5; }
+QPushButton { background: #ffffff; border: 1px solid #d4d4dc; border-radius: 6px; font-size: 13px; }
+QPushButton:hover { background: #eeeeF2; }
+QPushButton#close, QPushButton#minimize, QPushButton#maximize { border-radius: 7px; font-size: 10px; color: transparent; padding: 0; }
+QPushButton#close { background: #ff5f57; border: 1px solid #e34840; }
+QPushButton#minimize { background: #febc2e; border: 1px solid #e5a51b; }
+QPushButton#maximize { background: #28c840; border: 1px solid #1aaf2f; }
+QPushButton#close:hover { color: #6e1c17; background: #ff5f57; }
+QPushButton#minimize:hover { color: #7a5513; background: #febc2e; }
+QPushButton#maximize:hover { color: #145e24; background: #28c840; }
+QToolButton#quickSlot { border-radius: 7px; padding: 3px; }
+QToolButton#quickSlot:hover { background: #d9d9e2; }
+QLineEdit, QSpinBox, QComboBox, QListWidget, QTextEdit { background: #ffffff; color: #26262b; border: 1px solid #d4d4dc; border-radius: 6px; padding: 5px; }
+QScrollBar { background: transparent; }
+QScrollBar::handle { background: #b6b6c2; }

@@ -18,12 +18,15 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from PySide6.QtCore import QObject, Qt, QThreadPool, Signal
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import QDockWidget, QWidget
 
+from picer.host_style import PLUGIN_STYLE
+from picer.panels import dock_surface, dock_title
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
 from picer.plugins.builtin.transforms import Plugin as Transforms
 from picer.plugins.manifest import Manifest
+from picer.plugins.settings import SettingField, SettingsDialog
 from picer.plugins.skins import COLORS, load_skin
 from picer.plugins.tasks import TaskCancelled, Worker
 
@@ -55,6 +58,7 @@ class PluginManager(QObject):
         self.records: dict[str, PluginRecord] = {}
         self.commands: dict[str, QAction] = {}
         self.panels: dict[str, QDockWidget] = {}
+        self.settings_forms = {}
         self._panel_transition = False
         self._fullscreen = host.isFullScreen()
         self.subscribers: dict[str, list[tuple[str, Callable]]] = {}
@@ -222,14 +226,14 @@ class PluginManager(QObject):
         record.context = PluginContext(self, plugin_id)
         try:
             if record.manifest.type == "skin":
-                style, colors = load_skin(record.directory, record.manifest.theme)
+                skin = load_skin(record.directory, record.manifest.theme)
                 for old in list(self.records.values()):
                     if old is not record and old.manifest.type == "skin" and old.state == "enabled":
                         if self._dependents(old.manifest.id):
                             raise PluginError("当前皮肤被其他组件依赖，不能切换")
                         self._cleanup(old)
                         self.preferences["enabled"][old.manifest.id] = False
-                self.host.apply_skin(style, colors)
+                self.host.apply_skin(skin.style, skin.colors, chrome=skin.chrome)
                 record.state = "enabled"
                 self.preferences["enabled"][plugin_id] = True
                 activated.append(plugin_id)
@@ -312,8 +316,10 @@ class PluginManager(QObject):
         plugin_id = record.manifest.id
         was_enabled = record.state == "enabled"
         record.state = "disabled"
+        self.settings_forms.pop(plugin_id, None)
         if record.manifest.type == "skin" and was_enabled:
             self.host.apply_skin(None, COLORS)
+        self.host.panel_hovers.unregister(plugin_id)
         dock = self.panels.pop(plugin_id, None)
         if dock is not None:
             self.host.removeDockWidget(dock)
@@ -377,7 +383,9 @@ class PluginManager(QObject):
         except Exception as error:
             self._fail(plugin_id, error)
 
-    def add_command(self, plugin_id, command_id, label, callback, shortcut, requires_image, menu):
+    def add_command(
+        self, plugin_id, command_id, label, callback, shortcut, requires_image, menu, icon=None
+    ):
         manifest = self.records[plugin_id].manifest
         if manifest.type != "function":
             raise PluginError("只有功能组件可以注册功能按钮")
@@ -398,7 +406,11 @@ class PluginManager(QObject):
             or any(sequence == existing.shortcut() for existing in self.host.actions())
         ):
             raise PluginError(f"快捷键无效或冲突：{shortcut}")
+        if icon is not None and not isinstance(icon, QIcon):
+            raise PluginError("功能图标必须为 QIcon")
         action = QAction(label, self.host)
+        if icon is not None:
+            action.setIcon(icon)
         action.setShortcut(sequence)
         action.setProperty("plugin_id", plugin_id)
         action.setProperty("requires_image", requires_image)
@@ -440,7 +452,10 @@ class PluginManager(QObject):
             QDockWidget.DockWidgetFeature.DockWidgetClosable
             | QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
-        dock.setWidget(widget)
+        dock.setProperty("pluginSurface", True)
+        dock.setStyleSheet(PLUGIN_STYLE)
+        dock.setWidget(dock_surface(self.host, widget))
+        dock.setTitleBarWidget(dock_title(self.host, dock))
         dock.toggleViewAction().setText("显示：" + dock.windowTitle())
         self.panels[plugin_id] = dock
         self.host.addDockWidget(areas[area], dock)
@@ -448,6 +463,8 @@ class PluginManager(QObject):
         visible = visibility.get(plugin_id, True) if isinstance(visibility, dict) else True
         dock.setVisible(not self._fullscreen and visible is not False)
         dock.visibilityChanged.connect(lambda _: self._remember_panel(plugin_id))
+        self.host.panel_hovers.register(dock, plugin_id, self)
+        return dock
 
     def _remember_panel(self, plugin_id: str) -> None:
         if self._panel_transition or self._fullscreen or plugin_id not in self.panels:
@@ -461,6 +478,7 @@ class PluginManager(QObject):
     def fullscreen_changed(self, fullscreen: bool) -> None:
         if fullscreen == self._fullscreen:
             return
+        self.host.panel_hovers.close_all()
         if fullscreen:
             for plugin_id in self.panels:
                 self._remember_panel(plugin_id)
@@ -473,6 +491,7 @@ class PluginManager(QObject):
                 dock.setVisible(not fullscreen and visible is not False)
         finally:
             self._panel_transition = False
+            self.host.panel_hovers.layout_strips()
 
     def update_commands(self) -> None:
         for action in self.commands.values():
@@ -538,6 +557,69 @@ class PluginManager(QObject):
     def get_setting(self, plugin_id: str, key: str, default: Any) -> Any:
         values = self.preferences["settings"].get(plugin_id, {})
         return copy.deepcopy(values.get(key, default)) if isinstance(values, dict) else default
+
+    def add_settings(self, plugin_id, fields, callback):
+        if plugin_id in self.settings_forms or not callable(callback):
+            raise PluginError("设置只能注册一次，且须提供应用回调")
+        fields = tuple(fields)
+        if (
+            not fields
+            or len(fields) > 32
+            or any(not isinstance(field, SettingField) for field in fields)
+        ):
+            raise PluginError("设置须包含 1 至 32 个 SettingField")
+        keys = set()
+        for field in fields:
+            if not re.fullmatch(r"[a-z][a-z0-9_]*", field.key) or field.key in keys:
+                raise PluginError("设置键无效或重复")
+            keys.add(field.key)
+            if field.kind not in {"bool", "int", "choice", "path", "text"}:
+                raise PluginError("未知设置控件类型")
+            if not isinstance(field.label, str) or not field.label:
+                raise PluginError("设置标签必须为非空字符串")
+            if field.kind == "bool" and type(field.default) is not bool:
+                raise PluginError("布尔设置默认值必须为 bool")
+            if field.kind == "int" and (
+                any(type(v) is not int for v in (field.minimum, field.maximum, field.default))
+                or not -(2**31) <= field.minimum <= field.default <= field.maximum < 2**31
+            ):
+                raise PluginError("整数设置默认值或范围无效")
+            if field.kind in {"path", "text"} and not isinstance(field.default, str):
+                raise PluginError("文本设置默认值必须为字符串")
+            if field.kind == "choice":
+                if (
+                    not field.choices
+                    or any(
+                        not isinstance(pair, tuple)
+                        or len(pair) != 2
+                        or any(not isinstance(value, str) for value in pair)
+                        for pair in field.choices
+                    )
+                    or len({key for key, _ in field.choices}) != len(field.choices)
+                    or field.default not in tuple(key for key, _ in field.choices)
+                ):
+                    raise PluginError("选择设置默认值或选项无效")
+        self.settings_forms[plugin_id] = (fields, callback)
+
+    def show_settings(self, plugin_id):
+        if plugin_id not in self.settings_forms:
+            raise PluginError("请先启用提供设置的组件")
+        dialog = SettingsDialog(self, plugin_id, self.host)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def set_settings(self, plugin_id, values):
+        try:
+            encoded = json.dumps(values, allow_nan=False)
+            if len(encoded) > 64 * 1024:
+                raise ValueError("设置不能超过 64 KiB")
+        except (ValueError, TypeError) as error:
+            raise PluginError(f"设置必须为有限的 JSON 值：{error}") from error
+        settings = self.preferences["settings"]
+        if not isinstance(settings.get(plugin_id), dict):
+            settings[plugin_id] = {}
+        settings[plugin_id].update(json.loads(encoded))
+        self._save()
 
     def set_setting(self, plugin_id: str, key: str, value: Any) -> None:
         if not isinstance(key, str) or not key:

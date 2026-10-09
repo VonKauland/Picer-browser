@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.components import TYPES
+from picer.host_style import mark_host
 from picer.plugins.api import PluginError
 
 STATES = {"enabled": "已启用", "disabled": "未启用", "error": "已出错", "incompatible": "不兼容"}
@@ -55,6 +56,7 @@ class PluginDialog(QDialog):
         for label, callback, name in (
             ("安装/更新 ZIP…", self.install, "install_button"),
             ("启用", self.toggle, "toggle_button"),
+            ("设置…", self.settings, "settings_button"),
             ("重载", self.reload, "reload_button"),
             ("卸载", self.uninstall, "uninstall_button"),
             ("打开插件目录", self.open_directory, "directory_button"),
@@ -68,6 +70,7 @@ class PluginDialog(QDialog):
         self.list.currentItemChanged.connect(self.selection_changed)
         manager.changed.connect(self.refresh)
         self.refresh()
+        mark_host(self)
 
     def selected_id(self) -> str | None:
         item = self.list.currentItem()
@@ -96,6 +99,7 @@ class PluginDialog(QDialog):
         record = self.manager.records.get(plugin_id)
         for button in (self.toggle_button, self.reload_button, self.uninstall_button):
             button.setEnabled(record is not None)
+        self.settings_button.setEnabled(plugin_id in self.manager.settings_forms)
         if record is None:
             self.details.clear()
             return
@@ -140,6 +144,11 @@ class PluginDialog(QDialog):
                 self.operation(lambda: self.manager.disable(plugin_id))
             else:
                 self.operation(lambda: self.manager.enable(plugin_id))
+
+    def settings(self):
+        plugin_id = self.selected_id()
+        if plugin_id:
+            self.operation(lambda: self.manager.show_settings(plugin_id))
 
     def reload(self) -> None:
         plugin_id = self.selected_id()

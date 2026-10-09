@@ -6,9 +6,9 @@ import tempfile
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from picer.smoke import run as run_smoke
 from picer.window import MainWindow
 
 
@@ -22,6 +22,9 @@ def main() -> int:
     parser.add_argument("--plugin-archive", help=argparse.SUPPRESS)
     parser.add_argument("--skin-archive", help=argparse.SUPPRESS)
     parser.add_argument("--panel-archive", help=argparse.SUPPRESS)
+    parser.add_argument("--file-panel-archive", help=argparse.SUPPRESS)
+    parser.add_argument("--progress-panel-archive", help=argparse.SUPPRESS)
+    parser.add_argument("--smoke-images", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     smoke_test = args.smoke_test
     app = QApplication([sys.argv[0]])
@@ -46,95 +49,13 @@ def main() -> int:
         return 1
     window.show()
 
+    temporary_images = (
+        tempfile.TemporaryDirectory() if smoke_test and args.smoke_images is None else None
+    )
     if smoke_test:
-
-        def verify() -> None:
-            try:
-                with tempfile.TemporaryDirectory() as folder:
-                    image = QImage(80, 60, QImage.Format.Format_RGB32)
-                    image.fill(0x3399CC)
-                    first, second = Path(folder) / "1.png", Path(folder) / "2.jpg"
-                    count_before = 0
-                    if args.plugin_archive:
-                        plugin_id = "example.negative"
-                        if plugin_id not in window.plugins.records:
-                            window.plugins.install(Path(args.plugin_archive))
-                        window.plugins.enable(plugin_id)
-                        count_before = window.plugins.records[plugin_id].context.get_setting(
-                            "opened_count", 0
-                        )
-                    components_ok = len(window.title_bar.quick_slots) == 5
-                    for archive_path, component_id in (
-                        (args.skin_archive, "example.midnight"),
-                        (args.panel_archive, "example.info"),
-                    ):
-                        if archive_path:
-                            if component_id not in window.plugins.records:
-                                window.plugins.install(Path(archive_path))
-                            window.plugins.enable(component_id)
-                    if args.skin_archive:
-                        components_ok = (
-                            components_ok and window.skin_colors["background"] == "#131820"
-                        )
-                    if args.panel_archive:
-                        dock = window.plugins.panels["example.info"]
-                        components_ok = components_ok and not dock.isHidden()
-                        window.toggle_fullscreen()
-                        components_ok = components_ok and dock.isHidden()
-                        window.exit_fullscreen()
-                        components_ok = components_ok and not dock.isHidden()
-                    passed = components_ok and image.save(str(first)) and image.save(str(second))
-                    passed = passed and window.open_image(first)
-                    window.next_action.trigger()
-                    passed = passed and window.current_path == second.resolve()
-                    window.actual_action.trigger()
-                    window.zoom_in_action.trigger()
-                    passed = passed and window.view.transform().m11() > 1
-                    window.rotate_action.trigger()
-                    passed = passed and window.view.image_item.pixmap().width() == 60
-                    passed = passed and window.title_bar.caption.text() == second.name
-                    passed = passed and not window.windowIcon().isNull()
-                    passed = passed and window.plugins.state_file.is_file()
-                    passed = passed and window.plugins.log_file.is_file()
-                    passed = passed and any(window.thumbnail_cache.directory.glob("*.png"))
-                    if args.plugin_archive:
-                        context = window.plugins.records[plugin_id].context
-                        passed = passed and context.get_setting("opened_count") == count_before + 2
-                        before = window.view.image_item.pixmap().toImage().pixelColor(0, 0)
-                        if count_before:
-                            passed = (
-                                passed
-                                and window.components.assignments()[4] == f"{plugin_id}:negative"
-                            )
-                        window.components.assign(4, f"{plugin_id}:negative")
-                        window.title_bar.quick_slots[4].click()
-
-                        def verify_worker() -> None:
-                            if window.plugins.jobs:
-                                QTimer.singleShot(25, verify_worker)
-                                return
-                            after = window.view.image_item.pixmap().toImage().pixelColor(0, 0)
-                            colors_ok = all(
-                                a == 255 - b
-                                for a, b in zip(
-                                    (after.red(), after.green(), after.blue()),
-                                    (before.red(), before.green(), before.blue()),
-                                    strict=True,
-                                )
-                            )
-                            active = window.plugins.records[plugin_id].state == "enabled"
-                            window.plugins.disable(plugin_id)
-                            cleaned = f"{plugin_id}:negative" not in window.plugins.commands
-                            app.exit(0 if passed and colors_ok and active and cleaned else 1)
-
-                        QTimer.singleShot(25, verify_worker)
-                    else:
-                        app.exit(0 if passed and window.isVisible() else 1)
-            except Exception:
-                app.exit(1)
-
-        QTimer.singleShot(0, verify)
-        QTimer.singleShot(10_000, lambda: app.exit(2))
+        folder = Path(temporary_images.name) if temporary_images else args.smoke_images
+        QTimer.singleShot(0, lambda: run_smoke(window, args, folder, app.exit))
+        QTimer.singleShot(20_000, lambda: app.exit(2))
     elif args.image:
         window.open_image(Path(args.image))
 
@@ -142,4 +63,6 @@ def main() -> int:
     window.plugins.shutdown()
     if temporary_plugins:
         temporary_plugins.cleanup()
+    if temporary_images:
+        temporary_images.cleanup()
     return result

@@ -1,11 +1,6 @@
 {
-  "id": "example.info",
-  "name": "图片信息",
-  "version": "1.0.0",
-  "api_version": 1,
-  "type": "panel",
-  "entrypoint": "main:Plugin",
-  "description": "可停靠于左、右或底部的图片信息面板，可随时隐藏。",
-  "author": "Picer SDK example",
-  "permissions": ["ui.panels", "image.read", "events.subscribe"]
+  "id": "example.info", "name": "图片信息", "version": "2.0.0", "api_version": 1,
+  "type": "panel", "entrypoint": "main:Plugin",
+  "description": "可配置的信息分类、RGB 直方图与星级；EXIF 固定于底部，存在时才显示。",
+  "permissions": ["ui.panels", "image.read", "events.subscribe", "settings", "tasks"]
 }

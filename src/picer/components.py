@@ -3,6 +3,7 @@
 from PySide6.QtGui import QActionGroup, QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QMenu, QMessageBox
 
+from picer.host_style import mark_host
 from picer.plugins.api import PluginError
 
 TYPES = {"skin": "皮肤", "function": "功能", "panel": "面板"}
@@ -52,6 +53,8 @@ class ComponentUI:
         self.manager = window.plugins
         self.menus = {key: menu.addMenu(value) for key, value in TYPES.items()}
         self.slots_menu = menu.addMenu("快捷栏位")
+        for child in (*self.menus.values(), self.slots_menu):
+            mark_host(child)
         self.slot_submenus = []
         for index, button in enumerate(window.title_bar.quick_slots):
             button.customContextMenuRequested.connect(
@@ -149,6 +152,7 @@ class ComponentUI:
             action.setCheckable(True)
             action.setChecked(key == current)
             action.triggered.connect(lambda _, value=key: self.assign(index, value))
+        mark_host(menu)
         return menu
 
     def refresh_slots(self) -> None:
@@ -166,7 +170,10 @@ class ComponentUI:
             self.slots_menu.addMenu(menu)
             action = self.manager.commands.get(key)
             if action is not None:
-                action.setIcon(function_icon(action.text(), color))
+                if key.startswith("picer."):
+                    action.setIcon(function_icon(action.text(), color))
+                elif action.icon().isNull():
+                    action.setIcon(function_icon(action.text(), "#e6e9ef"))
                 button.setDefaultAction(action)
                 button.setToolTip(f"{action.text()} · 右键配置栏位 {index + 1}")
             else:

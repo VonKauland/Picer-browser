@@ -19,7 +19,8 @@ class TitleBar(QWidget):
         layout = QHBoxLayout(self.left)
         layout.setContentsMargins(12, 0, 0, 0)
         layout.setSpacing(16)
-        icon_label = QLabel()
+        self.icon_label = icon_label = QLabel()
+        self.base_icon = window.windowIcon()
         icon_label.setPixmap(window.windowIcon().pixmap(20, 20))
         layout.addWidget(icon_label)
         self.brand = QLabel("揽映")
@@ -48,6 +49,11 @@ class TitleBar(QWidget):
             buttons.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
             self.quick_slots.append(button)
         buttons.addSpacing(8)
+        self.controls = QWidget(self.right)
+        control_layout = QHBoxLayout(self.controls)
+        control_layout.setContentsMargins(0, 0, 0, 0)
+        control_layout.setSpacing(0)
+        self.control_buttons = {}
         for text, name, callback in (
             ("—", "minimize", window.showMinimized),
             ("□", "maximize", self.toggle_maximized),
@@ -60,8 +66,37 @@ class TitleBar(QWidget):
             )
             button.setFixedSize(46, 48)
             button.clicked.connect(callback)
-            buttons.addWidget(button)
+            control_layout.addWidget(button)
+            self.control_buttons[name] = button
+        buttons.addWidget(self.controls)
         self.drag_origin: QPoint | None = None
+
+    def set_chrome(self, style):
+        mac = style == "macos"
+        self.controls.setParent(self.left if mac else self.right)
+        if mac:
+            self.left.layout().insertWidget(0, self.controls)
+        else:
+            self.right.layout().addWidget(self.controls)
+        order = ("close", "minimize", "maximize") if mac else ("minimize", "maximize", "close")
+        layout = self.controls.layout()
+        for name in order:
+            button = self.control_buttons[name]
+            layout.removeWidget(button)
+            layout.addWidget(button)
+            button.setFixedSize(14, 14) if mac else button.setFixedSize(46, 48)
+            button.setProperty("macChrome", mac)
+            button.style().unpolish(button)
+            button.style().polish(button)
+        layout.setSpacing(8 if mac else 0)
+        self.controls.show()
+        self.icon_label.setVisible(not mac)
+        self.left.layout().setSpacing(12 if mac else 16)
+        self.left.layout().activate()
+        self.right.layout().activate()
+        minimum = 2 * (max(self.left.sizeHint().width(), self.right.sizeHint().width()) + 20) + 40
+        self.window.setMinimumWidth(max(800, minimum))
+        self.arrange()
 
     def release_action(self, action) -> None:
         for button in self.quick_slots:

@@ -134,7 +134,7 @@ def test_icon_generation_and_distribution_assets(tmp_path, qapp):
         json.loads((application / "distribution.json").read_text(encoding="utf-8"))["mode"]
         == "portable-folder"
     )
-    with zipfile.ZipFile(application / "examples" / "negative-plugin.zip") as archive:
+    with zipfile.ZipFile(application / "examples" / "sdk" / "negative-plugin.zip") as archive:
         assert set(archive.namelist()) == {"manifest.json", "main.py"}
     config = application / "config" / "plugins.json"
     config.write_text("custom settings", encoding="utf-8")

@@ -2,6 +2,7 @@
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from picer.chrome import STYLE
@@ -18,7 +19,14 @@ COLORS = {
 }
 
 
-def load_skin(directory: Path, theme: str) -> tuple[str, dict[str, str]]:
+@dataclass(frozen=True)
+class Skin:
+    style: str
+    colors: dict[str, str]
+    chrome: str = "standard"
+
+
+def load_skin(directory: Path, theme: str) -> Skin:
     try:
         path = directory / theme
         if path.stat().st_size > 64 * 1024:
@@ -52,6 +60,9 @@ def load_skin(directory: Path, theme: str) -> tuple[str, dict[str, str]]:
             if extra.stat().st_size > 256 * 1024:
                 raise ValueError("QSS 不能超过 256 KiB")
             style += "\n" + extra.read_text(encoding="utf-8")
-        return style, colors
+        chrome = data.get("chrome", "standard")
+        if chrome not in ("standard", "macos"):
+            raise ValueError("chrome 必须为 standard 或 macos")
+        return Skin(style, colors, chrome)
     except (OSError, ValueError, UnicodeError) as error:
         raise PluginError(f"皮肤读取失败：{error}") from error

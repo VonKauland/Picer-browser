@@ -128,8 +128,13 @@ class Plugin:
 
 | 权限 | API | 行为 |
 | --- | --- | --- |
+| settings | `add_settings(fields, on_apply)` / `show_settings()` | 声明 SettingField 设置表单，并在宿主对话框应用 |
+| image.navigate | `open_image(path)` / `navigate(offset)` / `jump_to(index)` | 打开或按当前目录顺序导航、按零起始位置跳转 |
+| image.read | `image_paths()` | 当前目录顺序的 Path 元组快照 |
+| image.read + tasks | `request_metadata(callback)` | 后台读取原图元数据，丢弃过期结果 |
+| ui.panels | `frosted_surface(parent, popup=False)` | 创建与面板相同的毛玻璃子界面或弹出窗 |
 | ui.panels | `add_panel(widget, area="right")` | 仅面板类，注册一个停靠面板；支持 left/right/bottom，停用时删除 |
-| ui.commands | `add_command(id, label, callback, shortcut="", requires_image=True, menu="插件")` | 在支持的菜单注册动作，停用时自动删除 |
+| ui.commands | `add_command(id, label, callback, shortcut="", requires_image=True, menu="插件")` | 注册单功能动作，可传入 icon=QIcon；停用时删除，宿主皮肤保留外部图标 |
 | image.read | `current_path()` | 返回当前 `Path`，未打开图片时为 `None` |
 | image.read | `image()` | 返回当前预览的独立 `QImage` 拷贝，包含当前显示变换 |
 | image.read | `thumbnail()` | 返回当前原图的独立缩略图拷贝，不含插件预览变换 |
@@ -172,7 +177,7 @@ token = context.run_task(work, context.replace_image)
 
 ## 随附示例与构建验证
 
-`examples/negative_plugin` 展示菜单、图片读写、事件、设置和后台任务。Windows Actions 会将其打包为 `Picer/examples/negative-plugin.zip`，随完整软件文件夹上传。
+`examples/negative_plugin` 展示菜单、图片读写、事件、设置和后台任务。Windows Actions 会将其打包为 `Picer/examples/sdk/negative-plugin.zip`，随完整软件文件夹上传。
 
 手动打包：
 
@@ -189,3 +194,5 @@ v1 是可信 Python 插件系统，运行在宿主进程中。权限声明只控
 冻结 EXE 中只保证宿主已打包的 Python/Qt 模块可用。不会自动执行 pip 或下载依赖。插件可携带纯 Python 相对导入模块；额外原生库、未打包标准库模块或其他 Qt 模块需要专门适配和构建验证。
 
 后续可在稳定 SDK 上增加：独立进程插件、解码器与导出器注册、撤销栈、插件版本依赖范围与签名分发。目前没有实现插件商店、网络更新或不可信插件沙箱。
+
+SettingField 支持 bool、int、choice、path、text；字段包括 key、label、kind、default、minimum、maximum、choices。`add_settings` 只注册一次，清理上下文时移除表单。完整实例与参数范围见 [示例组件说明](example-components.md)。

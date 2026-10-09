@@ -1,0 +1,9 @@
+{
+  "id": "example.macos",
+  "name": "macOS · Frost",
+  "version": "1.0.0",
+  "api_version": 1,
+  "type": "skin",
+  "theme": "theme.json",
+  "description": "macOS 风格的宿主控件、菜单和交通灯窗口按钮；不改动插件内容区及图标。"
+}

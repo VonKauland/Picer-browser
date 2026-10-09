@@ -1,4 +1,4 @@
-# 揽映组件规则（Picer 0.5）
+# 揽映组件规则（Picer 0.6）
 
 组件只有三种类型。新开发必须显式声明 `type`，不可混用按钮、面板和皮肤入口。API 仍为 v1，已有图片、事件、配置和任务接口继续可用。
 
@@ -66,8 +66,8 @@ manifest.json
 
 ```json
 {
-  "id": "example.midnight",
-  "name": "午夜蓝",
+  "id": "example.skin",
+  "name": "自定义皮肤",
   "version": "1.0.0",
   "api_version": 1,
   "type": "skin",
@@ -92,7 +92,7 @@ manifest.json
 }
 ```
 
-颜色值只接受 `#RRGGBB`，未指定项使用默认值。`stylesheet` 可省略；如填写，必须是同包根目录的 `.qss` 文件，最多 256 KiB。基础颜色覆盖宿主的窗口、顶栏、菜单、面板和画布；QSS 可进一步更改整个软件的控件样式。图片画布背景由 `background` 控制，避免 QGraphicsView 画刷覆盖皮肤。不要在 QSS 内使用依赖工作目录的相对资源 URL。
+颜色值只接受 `#RRGGBB`，未指定项使用默认值。`stylesheet` 可省略；如填写，必须是同包根目录的 `.qss` 文件，最多 256 KiB。基础颜色覆盖宿主的窗口、顶栏、菜单、面板和画布；QSS 可进一步更改宿主控件样式，自动限定到宿主标记，保留插件自己的样式与图标。图片画布背景由 `background` 控制，避免 QGraphicsView 画刷覆盖皮肤。不要在 QSS 内使用依赖工作目录的相对资源 URL。
 
 同一时刻只启用一款皮肤，选择另一款会停用原皮肤；恢复默认或卸载前停用即可。皮肤没有 Python 激活代码，也不会导入包内 `.py` 文件。
 
@@ -139,6 +139,10 @@ class Plugin:
 
 ## 示例与验证
 
-分发包 `examples/` 提供三个可直接安装的 ZIP：`negative-plugin.zip`（功能）、`midnight-skin.zip`（皮肤）、`info-panel.zip`（面板）。源码分别在对应的 examples 子目录。
+分发包 `examples/` 提供四个主要示例 ZIP：`file-browser.zip`、`info-panel.zip`、`progress-panel.zip`（面板），以及 `macos-skin.zip`（皮肤）。旧功能回归示例为 `sdk/negative-plugin.zip`。源码分别在对应的 examples 子目录。
 
 自动化测试覆盖类型校验、贡献数量限制、激活失败清理、皮肤单选与回退、菜单启停、快捷位持久化和面板全屏规则。Windows 打包验证实际 EXE 的三类组件、快捷位调用、全屏面板隐藏及整目录移动后的配置保留。人工桌面视觉测试需要另行执行。
+
+统一设置、四个示例、毛玻璃和隐藏条动效详见 [示例组件说明](example-components.md)。`add_panel` 返回宿主 QDockWidget，可监听 dockLocationChanged 调整内部布局。皮肤 QSS 自动限定到宿主控件，插件内容不会继承皮肤。
+
+皮肤 theme.json 可指定 `chrome: "macos"` 使用左侧交通灯按钮；省略则为默认 Windows 顶栏控件布局。它不修改操作系统或磁盘 EXE 图标。

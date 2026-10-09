@@ -14,7 +14,8 @@ Picer/
     plugins/<plugin-id>/        插件独立缓存（声明 cache 权限后可使用）
   config/plugins.json           插件启用状态、独立设置
   logs/plugins.log              日志，自动轮转
-  examples/negative-plugin.zip  可安装的负片示例插件
+  examples/                    文件浏览器、图片信息、进度面板、macOS 皮肤 ZIP
+    sdk/negative-plugin.zip     负片功能回归示例
   docs/                         插件开发与分发指南
   distribution.json             名称、版本、架构与布局信息
   README.txt                    使用说明

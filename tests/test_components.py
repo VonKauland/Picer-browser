@@ -10,6 +10,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QDockWidget, QLabel
 
 from picer.chrome import STYLE
+from picer.host_style import scope_style
 from picer.plugins.api import PluginError
 from picer.window import MainWindow
 
@@ -101,7 +102,7 @@ def test_skin_storage_switch_restart_and_default(window, tmp_path, qtbot):
     assert restarted.plugins.records["test.other"].state == "enabled"
     assert restarted.view.backgroundBrush().color() == QColor("#112233")
     restarted.components.default_skin()
-    assert restarted.styleSheet() == STYLE
+    assert restarted.styleSheet() == scope_style(STYLE)
     restarted.plugins.uninstall(plugin_id)
     assert not (manager.paths.skins / plugin_id).exists()
     restarted.plugins.shutdown()

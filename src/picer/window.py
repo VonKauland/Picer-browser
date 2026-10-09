@@ -29,6 +29,8 @@ from PySide6.QtWidgets import (
 from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
+from picer.host_style import HostStyleFilter, mark_host, scope_style
+from picer.panels import GlassBackdrop, PanelHovers
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
@@ -91,7 +93,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(800, 420)
         self.resize(1200, 800)
         self.skin_colors = dict(COLORS)
-        self.setStyleSheet(STYLE)
+        self.chrome_style = "standard"
+        self._skin_filter = HostStyleFilter(self)
+        QApplication.instance().installEventFilter(self._skin_filter)
+        self.setStyleSheet(scope_style(STYLE))
         self.setAcceptDrops(True)
         self.paths: list[Path] = []
         self.current_path: Path | None = None
@@ -149,10 +154,18 @@ class MainWindow(QMainWindow):
         self.add_action(help_menu, "打开应用数据目录", "", self.open_data_directory)
         self.add_action(help_menu, "清理图片缓存", "", self.clear_thumbnail_cache)
         self.image_revision = 0
+        mark_host(self)
+        self.glass = GlassBackdrop(self)
+        self.panel_hovers = PanelHovers(self)
         self.plugins = PluginManager(self, self.paths_layout.root, load_external=load_external)
+        self.plugins.changed.connect(self.panel_hovers.layout_strips)
         self.components = ComponentUI(self, plugin_menu)
         self.update_actions()
         self.title_bar.arrange()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.panel_hovers.layout_strips()
 
     def add_action(self, menu, text, shortcut, callback) -> QAction:
         action = QAction(text, self)
@@ -163,9 +176,11 @@ class MainWindow(QMainWindow):
         self.addAction(action)
         return action
 
-    def apply_skin(self, style: str | None, colors: dict[str, str]) -> None:
+    def apply_skin(self, style: str | None, colors: dict[str, str], *, chrome="standard") -> None:
         self.skin_colors = dict(colors)
-        self.setStyleSheet(STYLE if style is None else style)
+        self.chrome_style = chrome
+        self.setStyleSheet(scope_style(STYLE if style is None else style))
+        self.title_bar.set_chrome(chrome)
         self.view.setBackgroundBrush(QColor(colors["background"]))
         if hasattr(self, "components"):
             self.components.refresh_slots()
@@ -243,7 +258,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 0.5.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 0.6.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

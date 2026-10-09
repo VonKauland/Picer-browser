@@ -6,8 +6,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QThread
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QIcon, QImage
 from PySide6.QtWidgets import QWidget
+
+from picer.metadata import inspect_image
 
 if TYPE_CHECKING:
     from picer.plugins.manager import PluginManager
@@ -17,6 +19,7 @@ PERMISSIONS = {
     "ui.commands",
     "ui.panels",
     "image.read",
+    "image.navigate",
     "image.modify",
     "events.subscribe",
     "settings",
@@ -64,16 +67,63 @@ class PluginContext:
         shortcut: str = "",
         requires_image: bool = True,
         menu: str = "插件",
+        icon: QIcon | None = None,
     ) -> None:
         self._check("ui.commands")
         self._manager.add_command(
-            self.plugin_id, command_id, label, callback, shortcut, requires_image, menu
+            self.plugin_id, command_id, label, callback, shortcut, requires_image, menu, icon
         )
 
-    def add_panel(self, widget: QWidget, *, area: str = "right") -> None:
+    def add_panel(self, widget: QWidget, *, area: str = "right"):
         """Register the component's single dockable panel on the GUI thread."""
         self._check("ui.panels")
-        self._manager.add_panel(self.plugin_id, widget, area)
+        return self._manager.add_panel(self.plugin_id, widget, area)
+
+    def frosted_surface(self, parent=None, *, popup=False):
+        self._check("ui.panels")
+        from picer.host_style import PLUGIN_STYLE
+        from picer.panels import GlassSurface
+
+        surface = GlassSurface(self._manager.host.glass, parent, popup=popup)
+        surface.setStyleSheet(PLUGIN_STYLE)
+        return surface
+
+    def add_settings(self, fields, on_apply: Callable[[], None]) -> None:
+        self._check("settings")
+        self._manager.add_settings(self.plugin_id, fields, on_apply)
+
+    def show_settings(self) -> None:
+        self._check("settings")
+        self._manager.show_settings(self.plugin_id)
+
+    def image_paths(self) -> tuple[Path, ...]:
+        self._check("image.read")
+        return tuple(self._manager.host.paths)
+
+    def open_image(self, path: Path) -> bool:
+        self._check("image.navigate")
+        return self._manager.host.open_image(Path(path))
+
+    def navigate(self, offset: int) -> None:
+        self._check("image.navigate")
+        if type(offset) is not int:
+            raise PluginError("导航偏移必须为整数")
+        self._manager.host.navigate(offset)
+
+    def jump_to(self, index: int) -> None:
+        self._check("image.navigate")
+        paths = self._manager.host.paths
+        if type(index) is not int or not 0 <= index < len(paths):
+            raise PluginError("图片位置超出范围")
+        self._manager.host.open_image(paths[index])
+
+    def request_metadata(self, on_result: Callable):
+        self._check("image.read")
+        self._check("tasks")
+        path = self._manager.host.current_path
+        if path is None:
+            return None
+        return self.run_task(lambda token: inspect_image(path, token), on_result)
 
     def current_path(self) -> Path | None:
         self._check("image.read")
