@@ -18,8 +18,8 @@ def images(tmp_path, qapp):
 
 
 @pytest.fixture
-def window(qtbot):
-    window = MainWindow()
+def window(qtbot, tmp_path):
+    window = MainWindow(plugin_root=tmp_path)
     qtbot.addWidget(window)
     window.show()
     return window
@@ -100,7 +100,13 @@ def test_single_title_row_and_centered_filename(window, images):
     window.open_image(images[0])
     assert not window.findChildren(QStatusBar)
     assert not window.findChildren(QToolBar)
-    assert [a.text() for a in window.title_bar.menu.actions()] == ["文件", "编辑", "视图", "帮助"]
+    assert [a.text() for a in window.title_bar.menu.actions()] == [
+        "文件",
+        "编辑",
+        "视图",
+        "插件",
+        "帮助",
+    ]
     assert abs(window.title_bar.caption.geometry().center().x() - window.title_bar.width() / 2) <= 1
 
 

@@ -1,0 +1,523 @@
+"""Plugin discovery, lifecycle, contributions and persistent state."""
+
+import copy
+import importlib
+import importlib.util
+import json
+import logging
+import re
+import shutil
+import sys
+import tempfile
+import types
+import zipfile
+from collections.abc import Callable
+from dataclasses import dataclass
+from logging.handlers import RotatingFileHandler
+from pathlib import Path, PurePosixPath
+from typing import Any
+
+from PySide6.QtCore import QObject, Qt, QThreadPool, Signal
+from PySide6.QtGui import QAction, QKeySequence
+
+from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
+from picer.plugins.builtin.transforms import Plugin as Transforms
+from picer.plugins.manifest import Manifest
+from picer.plugins.tasks import TaskCancelled, Worker
+
+
+@dataclass
+class PluginRecord:
+    manifest: Manifest
+    directory: Path | None = None
+    state: str = "disabled"
+    error: str = ""
+    instance: Any = None
+    context: PluginContext | None = None
+    namespace: str = ""
+
+
+class PluginManager(QObject):
+    """Trusted in-process extensions with transactional activation and cleanup."""
+
+    changed = Signal()
+
+    def __init__(self, host, root: Path, *, load_external: bool = True) -> None:
+        super().__init__(host)
+        self.host = host
+        self.root = root.resolve()
+        self.directory = self.root / "plugins"
+        self.state_file = self.root / "plugins.json"
+        self.records: dict[str, PluginRecord] = {}
+        self.commands: dict[str, QAction] = {}
+        self.subscribers: dict[str, list[tuple[str, Callable]]] = {}
+        self.diagnostics: list[str] = []
+        self._dispatching = False
+        self._closed = False
+        self.jobs: dict[int, Worker] = {}
+        self._next_job = 0
+        self.logger = logging.getLogger(f"picer.plugins.{id(self)}")
+        self.logger.propagate = False
+        self.log_handler = None
+        self.preferences: dict[str, Any] = {"enabled": {}, "settings": {}}
+        try:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            if self.state_file.exists():
+                data = json.loads(self.state_file.read_text(encoding="utf-8"))
+                if not isinstance(data, dict) or any(
+                    not isinstance(data.get(key, {}), dict) for key in ("enabled", "settings")
+                ):
+                    raise ValueError("配置结构无效")
+                self.preferences = {key: data.get(key, {}) for key in ("enabled", "settings")}
+        except (OSError, ValueError, UnicodeError) as error:
+            self.diagnostics.append(f"配置读取失败：{error}")
+        try:
+            self.log_handler = RotatingFileHandler(
+                self.root / "plugins.log", maxBytes=256 * 1024, backupCount=2, encoding="utf-8"
+            )
+            self.logger.addHandler(self.log_handler)
+        except OSError as error:
+            self.diagnostics.append(f"插件日志无法写入：{error}")
+        builtin = Manifest(
+            id="picer.transforms",
+            name="基础图片处理",
+            version="1.0.0",
+            api_version=API_VERSION,
+            entrypoint="transforms:Plugin",
+            description="旋转、水平翻转和灰度预览；不修改原文件。",
+            author="Picer",
+            permissions=("ui.commands", "image.read", "image.modify"),
+        )
+        self.records[builtin.id] = PluginRecord(builtin)
+        if load_external:
+            self.discover()
+        # Newly installed external plugins never execute until explicitly enabled.
+        for plugin_id, record in list(self.records.items()):
+            enabled = self.preferences["enabled"].get(plugin_id, record.directory is None)
+            if enabled is True:
+                try:
+                    self.enable(plugin_id)
+                except PluginError as error:
+                    record.error = str(error)
+                    record.state = (
+                        "error" if record.manifest.api_version == API_VERSION else "incompatible"
+                    )
+                    self.preferences["enabled"][plugin_id] = False
+        self._save()
+
+    def discover(self) -> None:
+        """Read manifests only; do not execute plugin code during discovery."""
+        try:
+            directories = sorted(self.directory.iterdir())
+        except OSError as error:
+            self.diagnostics.append(str(error))
+            return
+        for directory in directories:
+            if not directory.is_dir() or directory.is_symlink() or directory.name.startswith("."):
+                continue
+            try:
+                manifest = Manifest.read(directory / "manifest.json")
+                if manifest.id in self.records:
+                    raise PluginError(f"重复插件 id：{manifest.id}")
+                record = PluginRecord(manifest, directory=directory)
+                if manifest.api_version != API_VERSION:
+                    record.state = "incompatible"
+                    record.error = f"需要 API {manifest.api_version}，当前为 {API_VERSION}"
+                self.records[manifest.id] = record
+            except PluginError as error:
+                self.diagnostics.append(f"{directory.name}：{error}")
+
+    def _save(self) -> None:
+        """Write atomically; keep startup usable even if the directory is read-only."""
+        temporary = None
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.root, prefix=".plugins-", delete=False
+            ) as file:
+                temporary = Path(file.name)
+                json.dump(self.preferences, file, ensure_ascii=False, indent=2, allow_nan=False)
+            temporary.replace(self.state_file)
+        except (OSError, ValueError, TypeError) as error:
+            self.diagnostics.append(f"插件配置保存失败：{error}")
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def enable(self, plugin_id: str) -> None:
+        activated: list[str] = []
+        try:
+            self._enable(plugin_id, set(), activated)
+        except Exception as error:
+            for enabled_id in reversed(activated):
+                self._cleanup(self.records[enabled_id])
+                self.preferences["enabled"][enabled_id] = False
+            self._save()
+            self.changed.emit()
+            raise PluginError(str(error)) from error
+        self._save()
+        self.changed.emit()
+
+    def _enable(self, plugin_id: str, visiting: set[str], activated: list[str]) -> None:
+        if self._closed:
+            raise PluginError("插件管理器已关闭")
+        if plugin_id not in self.records:
+            raise PluginError(f"缺少依赖插件：{plugin_id}")
+        record = self.records[plugin_id]
+        if record.state == "enabled":
+            return
+        if record.manifest.api_version != API_VERSION:
+            raise PluginError(record.error or "插件 API 不兼容")
+        if plugin_id in visiting:
+            raise PluginError(f"插件依赖循环：{plugin_id}")
+        visiting.add(plugin_id)
+        for dependency in record.manifest.requires:
+            self._enable(dependency, visiting, activated)
+        visiting.remove(plugin_id)
+        record.error = ""
+        record.state = "activating"
+        record.context = PluginContext(self, plugin_id)
+        try:
+            if record.directory is None:
+                factory = Transforms
+            else:
+                namespace = f"_picer_plugin_{id(self)}_{plugin_id.encode().hex()}"
+                record.namespace = namespace
+                package = types.ModuleType(namespace)
+                package.__path__ = [str(record.directory)]
+                package.__package__ = namespace
+                package.__spec__ = importlib.util.spec_from_loader(
+                    namespace, loader=None, is_package=True
+                )
+                sys.modules[namespace] = package
+                module_name, class_name = record.manifest.entrypoint.split(":")
+                module = importlib.import_module(f"{namespace}.{module_name}")
+                factory = getattr(module, class_name)
+            record.instance = factory()
+            record.instance.activate(record.context)
+            record.state = "enabled"
+            self.preferences["enabled"][plugin_id] = True
+            activated.append(plugin_id)
+        except Exception as error:
+            self._cleanup(record)
+            record.state = "error"
+            record.error = f"{type(error).__name__}：{error}"
+            self.preferences["enabled"][plugin_id] = False
+            self.logger.exception("Plugin activation failed: %s", plugin_id)
+            raise PluginError(record.error) from error
+
+    def _dependents(self, plugin_id: str) -> list[str]:
+        return [
+            key
+            for key, record in self.records.items()
+            if record.state == "enabled" and plugin_id in record.manifest.requires
+        ]
+
+    def disable(self, plugin_id: str) -> None:
+        dependents = self._dependents(plugin_id)
+        if dependents:
+            raise PluginError(f"请先停用依赖此插件的插件：{', '.join(dependents)}")
+        self._cleanup(self.records[plugin_id])
+        self.preferences["enabled"][plugin_id] = False
+        self._save()
+        self.changed.emit()
+
+    def reload(self, plugin_id: str) -> None:
+        record = self.records[plugin_id]
+        self.disable(plugin_id)
+        if record.directory is not None:
+            manifest = Manifest.read(record.directory / "manifest.json")
+            if manifest.id != plugin_id:
+                raise PluginError("重载时不能修改插件 id")
+            record.manifest = manifest
+            try:
+                for cache in record.directory.rglob("__pycache__"):
+                    if cache.is_dir() and not cache.is_symlink():
+                        shutil.rmtree(cache)
+            except OSError as error:
+                raise PluginError(f"重载无法清理旧字节码：{error}") from error
+            importlib.invalidate_caches()
+        self.enable(plugin_id)
+
+    def _cleanup(self, record: PluginRecord) -> None:
+        """Revoke context and remove contributions even if deactivate raises."""
+        plugin_id = record.manifest.id
+        record.state = "disabled"
+        for worker in self.jobs.values():
+            if worker.plugin_id == plugin_id:
+                worker.token.cancel()
+        if record.context is not None:
+            record.context._active = False
+        if record.instance is not None:
+            try:
+                deactivate = getattr(record.instance, "deactivate", None)
+                if deactivate:
+                    deactivate()
+            except Exception as error:
+                record.error = f"停用失败：{error}"
+                self.logger.exception("Plugin deactivation failed: %s", plugin_id)
+        for key in list(self.commands):
+            action = self.commands[key]
+            if action.property("plugin_id") == plugin_id:
+                self.host.removeAction(action)
+                for menu in self.host.plugin_menus.values():
+                    menu.removeAction(action)
+                action.deleteLater()
+                del self.commands[key]
+        for event in self.subscribers:
+            self.subscribers[event] = [
+                (key, fn) for key, fn in self.subscribers[event] if key != plugin_id
+            ]
+        if record.namespace:
+            for key in list(sys.modules):
+                if key == record.namespace or key.startswith(record.namespace + "."):
+                    del sys.modules[key]
+        record.namespace = ""
+        record.instance = None
+        record.context = None
+
+    def _fail(self, plugin_id: str, error: Exception) -> None:
+        self.logger.error(
+            "Plugin callback failed: %s",
+            plugin_id,
+            exc_info=(type(error), error, error.__traceback__),
+        )
+        # Disable dependents first; a broken dependency must not leave them active.
+        for dependent in self._dependents(plugin_id):
+            self._fail(dependent, PluginError(f"依赖 {plugin_id} 已出错"))
+        record = self.records[plugin_id]
+        self._cleanup(record)
+        record.state = "error"
+        record.error = f"{type(error).__name__}：{error}"
+        self.preferences["enabled"][plugin_id] = False
+        self._save()
+        self.changed.emit()
+
+    def _invoke(self, plugin_id: str, callback: Callable, *args) -> None:
+        if self.records[plugin_id].state != "enabled":
+            return
+        try:
+            callback(*args)
+        except Exception as error:
+            self._fail(plugin_id, error)
+
+    def add_command(self, plugin_id, command_id, label, callback, shortcut, requires_image, menu):
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", command_id):
+            raise PluginError("命令 id 无效")
+        key = f"{plugin_id}:{command_id}"
+        if key in self.commands:
+            raise PluginError(f"重复命令：{key}")
+        if menu not in self.host.plugin_menus or not label or not callable(callback):
+            raise PluginError("菜单、标签或回调无效")
+        sequence = QKeySequence(shortcut)
+        if shortcut and (
+            sequence.isEmpty()
+            or any(sequence == existing.shortcut() for existing in self.host.actions())
+        ):
+            raise PluginError(f"快捷键无效或冲突：{shortcut}")
+        action = QAction(label, self.host)
+        action.setShortcut(sequence)
+        action.setProperty("plugin_id", plugin_id)
+        action.setProperty("requires_image", requires_image)
+        action.triggered.connect(lambda: self._invoke(plugin_id, callback))
+        self.host.plugin_menus[menu].addAction(action)
+        self.host.addAction(action)
+        self.commands[key] = action
+        self.update_commands()
+
+    def update_commands(self) -> None:
+        for action in self.commands.values():
+            action.setEnabled(
+                not action.property("requires_image") or self.host.current_path is not None
+            )
+
+    def subscribe(self, plugin_id: str, event: str, callback: Callable) -> None:
+        if not callable(callback):
+            raise PluginError("事件回调必须可调用")
+        self.subscribers.setdefault(event, []).append((plugin_id, callback))
+
+    def emit_image(self, reason: str) -> None:
+        self.update_commands()
+        if self._dispatching:
+            return  # Mutations inside an event listener do not recursively dispatch events.
+        image = self.host.view.image_item.pixmap()
+        event = ImageEvent(self.host.current_path, image.width(), image.height(), reason)
+        self._dispatching = True
+        try:
+            for name in (
+                ["image.opened", "image.changed"] if reason == "opened" else ["image.changed"]
+            ):
+                for plugin_id, callback in list(self.subscribers.get(name, [])):
+                    self._invoke(plugin_id, callback, event)
+        finally:
+            self._dispatching = False
+
+    def run_task(self, context, work, on_result, image_bound):
+        if not callable(work) or not callable(on_result):
+            raise PluginError("后台任务与结果回调必须可调用")
+        if len(self.jobs) >= 16:
+            raise PluginError("后台任务队列已满，请等待现有任务完成")
+        worker = Worker(work)
+        worker.plugin_id = context.plugin_id
+        revision = self.host.image_revision
+        job_id = self._next_job
+        self._next_job += 1
+        self.jobs[job_id] = worker
+
+        def finish(result, error):
+            self.jobs.pop(job_id, None)
+            record = self.records.get(context.plugin_id)
+            if (
+                worker.token.cancelled
+                or record is None
+                or record.context is not context
+                or record.state != "enabled"
+            ):
+                return
+            if error is not None:
+                if not isinstance(error, TaskCancelled):
+                    self._fail(context.plugin_id, error)
+                return
+            if image_bound and revision != self.host.image_revision:
+                return
+            self._invoke(context.plugin_id, on_result, result)
+
+        worker.signals.finished.connect(finish, Qt.ConnectionType.QueuedConnection)
+        QThreadPool.globalInstance().start(worker)
+        return worker.token
+
+    def get_setting(self, plugin_id: str, key: str, default: Any) -> Any:
+        values = self.preferences["settings"].get(plugin_id, {})
+        return copy.deepcopy(values.get(key, default)) if isinstance(values, dict) else default
+
+    def set_setting(self, plugin_id: str, key: str, value: Any) -> None:
+        if not isinstance(key, str) or not key:
+            raise PluginError("设置键必须为非空字符串")
+        try:
+            encoded = json.dumps(value, allow_nan=False)
+            if len(encoded) > 64 * 1024:
+                raise ValueError("单个设置不能超过 64 KiB")
+        except (ValueError, TypeError) as error:
+            raise PluginError(f"设置必须为有限的 JSON 值：{error}") from error
+        settings = self.preferences["settings"]
+        if not isinstance(settings.get(plugin_id), dict):
+            settings[plugin_id] = {}
+        settings[plugin_id][key] = json.loads(encoded)
+        self._save()
+
+    def install(self, archive: Path, *, replace_existing: bool = False) -> str:
+        """Install/update a disabled ZIP package without executing it."""
+        try:
+            with tempfile.TemporaryDirectory(
+                prefix=".install-", dir=self.directory, ignore_cleanup_errors=True
+            ) as temporary:
+                temporary_root = Path(temporary)
+                staging = temporary_root / "package"
+                staging.mkdir()
+                with zipfile.ZipFile(archive) as file:
+                    entries = file.infolist()
+                    if (
+                        len(entries) > 500
+                        or sum(info.file_size for info in entries) > 20 * 1024 * 1024
+                    ):
+                        raise PluginError("插件包最多包含 500 个文件，解压后不超过 20 MiB")
+                    seen = set()
+                    for info in entries:
+                        path = PurePosixPath(info.filename)
+                        reserved = {"CON", "PRN", "AUX", "NUL"}
+                        reserved.update(
+                            f"{prefix}{number}"
+                            for prefix in ("COM", "LPT")
+                            for number in range(1, 10)
+                        )
+                        if (
+                            path.is_absolute()
+                            or ".." in path.parts
+                            or "\\" in info.filename
+                            or ":" in info.filename
+                            or (info.external_attr >> 16) & 0o170000 == 0o120000
+                            or any(
+                                part.rstrip(" .") != part or part.split(".")[0].upper() in reserved
+                                for part in path.parts
+                            )
+                        ):
+                            raise PluginError("插件包含非法路径或符号链接")
+                        normalized = str(path).casefold()
+                        if normalized in seen:
+                            raise PluginError("插件包含重复或大小写冲突的路径")
+                        seen.add(normalized)
+                    file.extractall(staging)
+                manifest = Manifest.read(staging / "manifest.json")
+                previous = self.records.get(manifest.id)
+                if previous:
+                    if not replace_existing or previous.directory is None:
+                        raise PluginError("该插件已存在，不能覆盖内置插件")
+                    if previous.state == "enabled" or self._dependents(manifest.id):
+                        raise PluginError("更新前请先停用插件及其依赖者")
+                destination = previous.directory if previous else self.directory / manifest.id
+                if destination.exists() and previous is None:
+                    raise PluginError("插件目录已存在")
+                module_name = manifest.entrypoint.split(":")[0]
+                module_path = staging.joinpath(*module_name.split("."))
+                if (
+                    not module_path.with_suffix(".py").is_file()
+                    and not (module_path / "__init__.py").is_file()
+                ):
+                    raise PluginError("插件入口文件不存在")
+                backup = temporary_root / "previous"
+                if previous:
+                    destination.rename(backup)
+                try:
+                    staging.rename(destination)
+                except OSError:
+                    if backup.exists():
+                        backup.rename(destination)
+                    raise
+            record = PluginRecord(manifest, directory=destination)
+            if manifest.api_version != API_VERSION:
+                record.state = "incompatible"
+                record.error = f"需要 API {manifest.api_version}，当前为 {API_VERSION}"
+            self.records[manifest.id] = record
+            self.preferences["enabled"][manifest.id] = False
+            self._save()
+            self.changed.emit()
+            return manifest.id
+        except (OSError, zipfile.BadZipFile, RuntimeError) as error:
+            raise PluginError(f"安装失败：{error}") from error
+
+    def uninstall(self, plugin_id: str) -> None:
+        record = self.records[plugin_id]
+        if record.directory is None:
+            raise PluginError("不能卸载内置插件")
+        if record.state == "enabled" or self._dependents(plugin_id):
+            raise PluginError("请先停用插件及其依赖者")
+        try:
+            shutil.rmtree(record.directory)
+        except OSError as error:
+            raise PluginError(f"卸载失败：{error}") from error
+        del self.records[plugin_id]
+        self.preferences["enabled"].pop(plugin_id, None)
+        self.preferences["settings"].pop(plugin_id, None)
+        self._save()
+        self.changed.emit()
+
+    def shutdown(self) -> None:
+        self._closed = True
+        for worker in self.jobs.values():
+            worker.token.cancel()
+        remaining = {key for key, record in self.records.items() if record.state == "enabled"}
+        while remaining:
+            leaves = [key for key in remaining if not (set(self._dependents(key)) & remaining)]
+            if not leaves:
+                leaves = list(remaining)
+            for key in leaves:
+                self._cleanup(self.records[key])
+                remaining.remove(key)
+
+        if self.log_handler is not None:
+            self.logger.removeHandler(self.log_handler)
+            self.log_handler.close()
+            self.log_handler = None

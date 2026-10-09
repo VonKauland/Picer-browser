@@ -1,0 +1,11 @@
+{
+  "id": "example.negative",
+  "name": "负片预览",
+  "version": "1.0.0",
+  "api_version": 1,
+  "entrypoint": "main:Plugin",
+  "description": "对当前图片进行反色预览，并记录已打开图片数。不会修改原文件。",
+  "author": "Picer SDK example",
+  "permissions": ["ui.commands", "image.read", "image.modify", "events.subscribe", "settings", "tasks"],
+  "requires": []
+}

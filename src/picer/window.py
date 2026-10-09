@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QColor, QImageReader, QKeySequence, QPixmap, QTransform
+from PySide6.QtCore import QStandardPaths, Qt
+from PySide6.QtGui import QAction, QColor, QImageReader, QKeySequence, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from picer.chrome import STYLE, TitleBar
+from picer.plugins.dialog import PluginDialog
+from picer.plugins.manager import PluginManager
 
 
 class ImageView(QGraphicsView):
@@ -65,7 +67,7 @@ class ImageView(QGraphicsView):
 class MainWindow(QMainWindow):
     """Browse supported images in the selected file's directory."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, plugin_root: Path | None = None, load_external: bool = True) -> None:
         super().__init__()
         self.setWindowTitle("揽映")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
@@ -96,12 +98,13 @@ class MainWindow(QMainWindow):
         file_menu = self.title_bar.menu.addMenu("文件")
         edit_menu = self.title_bar.menu.addMenu("编辑")
         view_menu = self.title_bar.menu.addMenu("视图")
+        plugin_menu = self.title_bar.menu.addMenu("插件")
         help_menu = self.title_bar.menu.addMenu("帮助")
+        self.plugin_menus = {"编辑": edit_menu, "视图": view_menu, "插件": plugin_menu}
         self.open_action = self.add_action(file_menu, "打开图片…", "Ctrl+O", self.choose_image)
         self.add_action(file_menu, "打开文件夹…", "Ctrl+Shift+O", self.choose_folder)
         file_menu.addSeparator()
         self.add_action(file_menu, "退出", "Alt+F4", self.close)
-        self.rotate_action = self.add_action(edit_menu, "顺时针旋转", "Ctrl+R", self.rotate_image)
         self.copy_action = self.add_action(
             edit_menu, "复制文件路径", "Ctrl+Shift+C", self.copy_path
         )
@@ -122,6 +125,16 @@ class MainWindow(QMainWindow):
         self.fullscreen_action = self.add_action(view_menu, "全屏", "F11", self.toggle_fullscreen)
         self.add_action(view_menu, "退出全屏", "Esc", self.exit_fullscreen)
         self.add_action(help_menu, "关于揽映", "", self.show_about)
+        self.add_action(plugin_menu, "插件管理…", "Ctrl+Shift+P", self.show_plugins)
+        plugin_menu.addSeparator()
+        if plugin_root is None:
+            plugin_root = Path(
+                QStandardPaths.writableLocation(
+                    QStandardPaths.StandardLocation.AppLocalDataLocation
+                )
+            )
+        self.image_revision = 0
+        self.plugins = PluginManager(self, plugin_root, load_external=load_external)
         self.update_actions()
         self.title_bar.arrange()
 
@@ -152,14 +165,28 @@ class MainWindow(QMainWindow):
         if self.current_path:
             QApplication.clipboard().setText(str(self.current_path))
 
-    def rotate_image(self) -> None:
-        if self.current_path:
-            pixmap = self.view.image_item.pixmap().transformed(
-                QTransform().rotate(90), Qt.TransformationMode.SmoothTransformation
-            )
-            self.view.image_item.setPixmap(pixmap)
-            self.view.scene.setSceneRect(self.view.image_item.boundingRect())
-            self.view.fit_image()
+    @property
+    def rotate_action(self):
+        return self.plugins.commands.get("picer.transforms:rotate")
+
+    def replace_image(self, image) -> None:
+        self.view.image_item.setPixmap(QPixmap.fromImage(image))
+        self.view.scene.setSceneRect(self.view.image_item.boundingRect())
+        self.view.fit_image()
+        self.image_revision += 1
+        self.plugins.emit_image("edited")
+
+    def plugin_notification(self, message: str) -> None:
+        QMessageBox.information(self, "揽映 · 插件", str(message))
+
+    def show_plugins(self) -> None:
+        dialog = PluginDialog(self.plugins, self)
+        dialog.exec()
+        dialog.deleteLater()
+
+    def closeEvent(self, event) -> None:
+        self.plugins.shutdown()
+        super().closeEvent(event)
 
     def toggle_fullscreen(self) -> None:
         if self.isFullScreen():
@@ -179,7 +206,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 0.2.0\n简洁的本地图片浏览器。\n"
+            "揽映 0.3.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -259,6 +286,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{path.name} — 揽映")
         self.title_bar.set_filename(path.name)
         self.update_actions()
+        self.image_revision += 1
+        self.plugins.emit_image("opened")
         return True
 
     def navigate(self, offset: int) -> None:
@@ -279,7 +308,8 @@ class MainWindow(QMainWindow):
             self.zoom_out_action,
             self.fit_action,
             self.actual_action,
-            self.rotate_action,
             self.copy_action,
         ):
             action.setEnabled(self.current_path is not None)
+
+        self.plugins.update_commands()
