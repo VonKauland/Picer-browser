@@ -15,7 +15,8 @@ def main() -> int:
     """Launch the image browser or exercise the packaged GUI in CI."""
     smoke_test = "--smoke-test" in sys.argv[1:]
     app = QApplication([sys.argv[0]] if smoke_test else sys.argv)
-    app.setApplicationName("WindowsTool")
+    app.setApplicationName("映览")
+    app.setStyle("Fusion")
     window = MainWindow()
     window.show()
 
@@ -34,6 +35,9 @@ def main() -> int:
                     window.actual_action.trigger()
                     window.zoom_in_action.trigger()
                     passed = passed and window.view.transform().m11() > 1
+                    window.rotate_action.trigger()
+                    passed = passed and window.view.image_item.pixmap().width() == 60
+                    passed = passed and window.title_bar.caption.text() == second.name
                     app.exit(0 if passed and window.isVisible() else 1)
             except Exception:
                 app.exit(1)

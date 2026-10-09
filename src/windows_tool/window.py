@@ -3,15 +3,21 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QImageReader, QKeySequence, QPixmap
+from PySide6.QtGui import QAction, QColor, QImageReader, QKeySequence, QPixmap, QTransform
 from PySide6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QGraphicsPixmapItem,
     QGraphicsScene,
     QGraphicsView,
+    QLabel,
     QMainWindow,
-    QToolBar,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
 )
+
+from windows_tool.chrome import STYLE, TitleBar
 
 
 class ImageView(QGraphicsView):
@@ -25,7 +31,7 @@ class ImageView(QGraphicsView):
         self.scene.addItem(self.image_item)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setBackgroundBrush(Qt.GlobalColor.darkGray)
+        self.setBackgroundBrush(QColor("#191b1f"))
         self.fit_mode = True
 
     def fit_image(self) -> None:
@@ -52,6 +58,8 @@ class ImageView(QGraphicsView):
         super().resizeEvent(event)
         if self.fit_mode:
             self.fit_image()
+        if hasattr(self, "empty_label"):
+            self.empty_label.setGeometry(self.rect())
 
 
 class MainWindow(QMainWindow):
@@ -59,39 +67,153 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("WindowsTool 图片浏览器")
-        self.resize(1000, 700)
+        self.setWindowTitle("映览")
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
+        self.setMinimumSize(680, 420)
+        self.resize(1200, 800)
+        self.setStyleSheet(STYLE)
+        self.setAcceptDrops(True)
         self.paths: list[Path] = []
         self.current_path: Path | None = None
+        self.last_error = ""
         self.view = ImageView()
-        self.setCentralWidget(self.view)
+        self.title_bar = TitleBar(self)
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(6, 0, 6, 6)
+        layout.setSpacing(0)
+        layout.addWidget(self.title_bar)
+        layout.addWidget(self.view, 1)
+        self.setCentralWidget(container)
+        self.empty_label = QLabel("打开图片，开始浏览\nCtrl+O  ·  或将图片拖入窗口", self.view)
+        self.view.empty_label = self.empty_label
+        self.empty_label.setObjectName("empty")
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.supported_suffixes = {
             f".{bytes(fmt).decode().lower()}" for fmt in QImageReader.supportedImageFormats()
         }
-        toolbar = QToolBar("图片操作", self)
-        toolbar.setMovable(False)
-        self.addToolBar(toolbar)
-        self.open_action = self.add_action(toolbar, "打开图片", "Ctrl+O", self.choose_image)
-        self.previous_action = self.add_action(toolbar, "上一张", "Left", lambda: self.navigate(-1))
-        self.next_action = self.add_action(toolbar, "下一张", "Right", lambda: self.navigate(1))
-        toolbar.addSeparator()
+        file_menu = self.title_bar.menu.addMenu("文件")
+        edit_menu = self.title_bar.menu.addMenu("编辑")
+        view_menu = self.title_bar.menu.addMenu("视图")
+        help_menu = self.title_bar.menu.addMenu("帮助")
+        self.open_action = self.add_action(file_menu, "打开图片…", "Ctrl+O", self.choose_image)
+        self.add_action(file_menu, "打开文件夹…", "Ctrl+Shift+O", self.choose_folder)
+        file_menu.addSeparator()
+        self.add_action(file_menu, "退出", "Alt+F4", self.close)
+        self.rotate_action = self.add_action(edit_menu, "顺时针旋转", "Ctrl+R", self.rotate_image)
+        self.copy_action = self.add_action(
+            edit_menu, "复制文件路径", "Ctrl+Shift+C", self.copy_path
+        )
+        self.previous_action = self.add_action(
+            view_menu, "上一张", "Left", lambda: self.navigate(-1)
+        )
+        self.next_action = self.add_action(view_menu, "下一张", "Right", lambda: self.navigate(1))
+        view_menu.addSeparator()
         self.zoom_in_action = self.add_action(
-            toolbar, "放大", "Ctrl+=", lambda: self.view.zoom(1.25)
+            view_menu, "放大", "Ctrl+=", lambda: self.view.zoom(1.25)
         )
         self.zoom_out_action = self.add_action(
-            toolbar, "缩小", "Ctrl+-", lambda: self.view.zoom(0.8)
+            view_menu, "缩小", "Ctrl+-", lambda: self.view.zoom(0.8)
         )
-        self.fit_action = self.add_action(toolbar, "适应窗口", "Ctrl+0", self.view.fit_image)
-        self.actual_action = self.add_action(toolbar, "原始大小", "Ctrl+1", self.view.actual_size)
+        self.fit_action = self.add_action(view_menu, "适应窗口", "Ctrl+0", self.view.fit_image)
+        self.actual_action = self.add_action(view_menu, "原始大小", "Ctrl+1", self.view.actual_size)
+        view_menu.addSeparator()
+        self.fullscreen_action = self.add_action(view_menu, "全屏", "F11", self.toggle_fullscreen)
+        self.add_action(view_menu, "退出全屏", "Esc", self.exit_fullscreen)
+        self.add_action(help_menu, "关于映览", "", self.show_about)
         self.update_actions()
-        self.statusBar().showMessage("点击“打开图片”开始浏览；滚轮缩放，拖动图片平移。")
+        self.title_bar.arrange()
 
-    def add_action(self, toolbar, text, shortcut, callback) -> QAction:
+    def add_action(self, menu, text, shortcut, callback) -> QAction:
         action = QAction(text, self)
-        action.setShortcut(QKeySequence(shortcut))
+        if shortcut:
+            action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(callback)
-        toolbar.addAction(action)
+        menu.addAction(action)
+        self.addAction(action)
         return action
+
+    def choose_folder(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "打开文件夹")
+        if not folder:
+            return
+        try:
+            paths = sorted(Path(folder).iterdir(), key=lambda p: (p.name.casefold(), p.name))
+            for path in paths:
+                if path.is_file() and path.suffix.lower() in self.supported_suffixes:
+                    if self.open_image(path):
+                        return
+        except OSError as error:
+            self.last_error = str(error)
+        QMessageBox.information(self, "映览", "该文件夹中没有可读取的图片。")
+
+    def copy_path(self) -> None:
+        if self.current_path:
+            QApplication.clipboard().setText(str(self.current_path))
+
+    def rotate_image(self) -> None:
+        if self.current_path:
+            pixmap = self.view.image_item.pixmap().transformed(
+                QTransform().rotate(90), Qt.TransformationMode.SmoothTransformation
+            )
+            self.view.image_item.setPixmap(pixmap)
+            self.view.scene.setSceneRect(self.view.image_item.boundingRect())
+            self.view.fit_image()
+
+    def toggle_fullscreen(self) -> None:
+        if self.isFullScreen():
+            self.exit_fullscreen()
+        else:
+            self.was_maximized = self.isMaximized()
+            self.showFullScreen()
+
+    def exit_fullscreen(self) -> None:
+        if self.isFullScreen():
+            if getattr(self, "was_maximized", False):
+                self.showMaximized()
+            else:
+                self.showNormal()
+
+    def show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            "关于映览",
+            "映览 0.2.0\n简洁的本地图片浏览器。\n"
+            "滚轮缩放 · 拖动平移 · 左右键切换\n"
+            "旋转仅影响当前显示，不修改原文件。",
+        )
+
+    def mousePressEvent(self, event) -> None:
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and not self.isMaximized()
+            and not self.isFullScreen()
+        ):
+            position = event.position()
+            edges = Qt.Edge(0)
+            if position.x() < 6:
+                edges |= Qt.Edge.LeftEdge
+            if position.x() >= self.width() - 6:
+                edges |= Qt.Edge.RightEdge
+            if position.y() < 6:
+                edges |= Qt.Edge.TopEdge
+            if position.y() >= self.height() - 6:
+                edges |= Qt.Edge.BottomEdge
+            if edges and self.windowHandle():
+                self.windowHandle().startSystemResize(edges)
+        super().mousePressEvent(event)
+
+    def dragEnterEvent(self, event) -> None:
+        if event.mimeData().hasUrls() and any(url.isLocalFile() for url in event.mimeData().urls()):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event) -> None:
+        for url in event.mimeData().urls():
+            if url.isLocalFile() and self.open_image(Path(url.toLocalFile())):
+                event.acceptProposedAction()
+                return
+        QMessageBox.warning(self, "无法打开图片", self.last_error)
 
     def choose_image(self) -> None:
         patterns = " ".join(f"*{suffix}" for suffix in sorted(self.supported_suffixes))
@@ -102,7 +224,8 @@ class MainWindow(QMainWindow):
             f"图片 ({patterns});;所有文件 (*)",
         )
         if filename:
-            self.open_image(Path(filename))
+            if not self.open_image(Path(filename)):
+                QMessageBox.warning(self, "无法打开图片", self.last_error)
 
     def open_image(self, path: Path) -> bool:
         """Decode before updating state so failed files leave the current image intact."""
@@ -111,7 +234,7 @@ class MainWindow(QMainWindow):
         reader.setAutoTransform(True)
         image = reader.read()
         if image.isNull():
-            self.statusBar().showMessage(f"无法打开 {path.name}：{reader.errorString()}")
+            self.last_error = f"无法打开 {path.name}：{reader.errorString()}"
             return False
         try:
             paths = sorted(
@@ -131,11 +254,10 @@ class MainWindow(QMainWindow):
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
         self.view.scene.setSceneRect(self.view.image_item.boundingRect())
         self.view.fit_image()
-        self.setWindowTitle(f"{path.name} — WindowsTool 图片浏览器")
-        self.statusBar().showMessage(
-            f"{self.paths.index(path) + 1}/{len(self.paths)}  |  {path.name}  |  "
-            f"{image.width()} × {image.height()} 像素"
-        )
+        self.last_error = ""
+        self.empty_label.hide()
+        self.setWindowTitle(f"{path.name} — 映览")
+        self.title_bar.set_filename(path.name)
         self.update_actions()
         return True
 
@@ -157,5 +279,7 @@ class MainWindow(QMainWindow):
             self.zoom_out_action,
             self.fit_action,
             self.actual_action,
+            self.rotate_action,
+            self.copy_action,
         ):
             action.setEnabled(self.current_path is not None)

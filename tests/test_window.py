@@ -36,7 +36,7 @@ def test_open_image(window, images):
     assert window.open_image(images[0])
     assert window.current_path == images[0]
     assert window.view.image_item.pixmap().width() == 120
-    assert "120 × 80" in window.statusBar().currentMessage()
+    assert window.title_bar.caption.text() == images[0].name
     assert window.next_action.isEnabled()
 
 
@@ -55,7 +55,7 @@ def test_invalid_image_preserves_current(window, images):
     assert not window.open_image(images[0].parent / "missing.png")
     assert window.current_path == images[0]
     assert window.view.image_item.pixmap().width() == 120
-    assert "无法打开" in window.statusBar().currentMessage()
+    assert "无法打开" in window.last_error
 
 
 def test_navigation_skips_corrupt_image(window, images):
@@ -83,3 +83,35 @@ def test_file_dialog(window, images, monkeypatch):
     )
     window.open_action.trigger()
     assert window.current_path == images[0]
+
+
+def test_rotation_does_not_modify_file(window, images):
+    before = images[0].read_bytes()
+    window.open_image(images[0])
+    window.rotate_action.trigger()
+    assert window.view.image_item.pixmap().width() == 80
+    assert window.view.image_item.pixmap().height() == 120
+    assert images[0].read_bytes() == before
+
+
+def test_single_title_row_and_centered_filename(window, images):
+    from PySide6.QtWidgets import QStatusBar, QToolBar
+
+    window.open_image(images[0])
+    assert not window.findChildren(QStatusBar)
+    assert not window.findChildren(QToolBar)
+    assert [a.text() for a in window.title_bar.menu.actions()] == ["文件", "编辑", "视图", "帮助"]
+    assert abs(window.title_bar.caption.geometry().center().x() - window.title_bar.width() / 2) <= 1
+
+
+def test_fullscreen_restore(window):
+    window.fullscreen_action.trigger()
+    assert window.isFullScreen()
+    window.exit_fullscreen()
+    assert not window.isFullScreen()
+
+
+def test_copy_path(window, images, qapp):
+    window.open_image(images[0])
+    window.copy_action.trigger()
+    assert qapp.clipboard().text() == str(images[0])

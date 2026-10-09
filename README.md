@@ -1,80 +1,74 @@
-# WindowsTool
+# 映览 · Yinglan
 
-基于 Python 3.12、PySide6 的 Windows x64 图片浏览器。
+Python 3.12 / PySide6 Windows x64 图片浏览器。暗黑极简界面：单行顶栏左侧显示名称和「文件、编辑、视图、帮助」菜单，文件名居中，右侧为窗口控制按钮。没有底栏、图片状态信息或独立工具按钮组。
 
-## 图片浏览功能
+## 使用
 
-- 点击“打开图片”或按 `Ctrl+O` 选择图片；支持 PNG、JPEG、BMP、WebP 等当前 Qt 插件支持的格式（GIF 显示静态帧）。
-- 自动读取同目录图片，按文件名排序；使用“上一张 / 下一张”或左右方向键切换，首尾循环，自动跳过无法读取的图片。
-- 滚轮缩放，按住鼠标左键拖动平移；工具栏支持放大、缩小、适应窗口和原始大小。
-- `Ctrl+0` 适应窗口，`Ctrl+1` 原始大小，`Ctrl+=` 放大，`Ctrl+-` 缩小。
-- 状态栏显示文件名、图片序号与像素尺寸；打开失败时保留当前图片并显示错误。
-- 也可运行 `python -m windows_tool "C:\Pictures\photo.jpg"` 直接打开文件。
+从 GitHub Actions 成功运行的 **Yinglan-windows-x64** 产物下载 ZIP，解压后运行 **Yinglan.exe**，无需安装 Python。EXE 未签名；首次启动需解压依赖，可能稍慢。产物保留 30 天。
 
-图片仅在本机读取，不上传；不修改图片文件。
+- **文件**：打开图片、打开文件夹、退出。支持将图片拖入窗口，也可传入命令行文件路径。
+- **编辑**：顺时针旋转、复制文件路径。旋转仅改变当前显示，不写入原图片。
+- **视图**：上一张、下一张、放大、缩小、适应窗口、原始大小、全屏。
+- **帮助**：关于与操作提示。
+- 支持 PNG、JPEG、BMP 等当前 Qt 图片插件提供的格式，GIF 显示静态帧。
+- 同目录图片按文件名排序并循环切换，自动跳过损坏图片。打开失败时保留当前图片。
+- 滚轮缩放，鼠标拖动平移；拖动顶栏移动窗口，双击顶栏最大化或还原，可从窗口边缘调整大小。
 
-## 项目结构
+| 快捷键 | 功能 |
+| --- | --- |
+| Ctrl+O | 打开图片 |
+| Ctrl+Shift+O | 打开文件夹 |
+| 左 / 右方向键 | 上一张 / 下一张 |
+| Ctrl+= / Ctrl+- | 放大 / 缩小 |
+| Ctrl+0 / Ctrl+1 | 适应窗口 / 原始大小 |
+| Ctrl+R | 顺时针旋转 |
+| Ctrl+Shift+C | 复制路径 |
+| F11 / Esc | 切换全屏 / 退出全屏 |
 
-```text
-src/windows_tool/        应用包、主窗口与启动入口
-scripts/entrypoint.py    PyInstaller 入口
-tests/                  pytest / pytest-qt 测试
-.github/workflows/      Windows CI 构建流程
-pyproject.toml          项目、pytest 与 Ruff 配置
-requirements.txt        运行依赖
-requirements-dev.txt    测试、检查与打包依赖
-AGENTS.md               仓库协作约定
-```
+图片只在本机读取，不上传，也不修改原文件。
 
-## Windows 开发
+## 开发与检查
 
-安装 Python 3.12 x64，在仓库根目录执行 PowerShell 命令：
+安装 Python 3.12 x64，在仓库根目录执行 PowerShell：
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
 python -m pip install -r requirements-dev.txt -e .
 python -m windows_tool
-```
-
-也可以使用安装后生成的 `windows-tool` 命令。若 PowerShell 限制激活脚本，可直接使用 `.\.venv\Scripts\python.exe` 执行上述命令，无须修改系统策略。
-
-## 自动化检查
-
-```powershell
 python -m ruff check .
 python -m ruff format --check .
 python -m pytest
 ```
 
-测试覆盖初始窗口、PNG/JPEG 解码、文件选择、目录切换与循环、损坏文件处理、缩放，以及独立进程中的 GUI 启动与图片浏览。
-Linux 无显示环境可运行 `QT_QPA_PLATFORM=offscreen python -m pytest`；Linux 测试通过不代表 Windows EXE 已验证。
+也可以直接执行 `.\.venv\Scripts\python.exe`，无需激活虚拟环境。命令行打开图片：`python -m windows_tool "C:\Pictures\photo.jpg"`。
 
-## Windows x64 打包
+Linux 无显示环境使用 `QT_QPA_PLATFORM=offscreen python -m pytest`。Linux 检查不验证 Windows EXE；请查看对应提交的 Windows Actions 实际结果。
 
-请在 Windows 上使用 Python 3.12 x64：
+## 项目结构
 
-```powershell
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name WindowsTool --paths src scripts/entrypoint.py
+```text
+src/windows_tool/       应用启动、图片视图、自定义顶栏
+scripts/entrypoint.py   PyInstaller 入口
+tests/                 pytest / pytest-qt 测试
+.github/workflows/     Windows CI 构建流程
+pyproject.toml         项目、pytest 与 Ruff 配置
+requirements*.txt      运行与开发依赖
+AGENTS.md              仓库协作约定
 ```
 
-生成 `dist/WindowsTool.exe`，可在未安装 Python 的 Windows x64 电脑上启动。`--windowed` 隐藏控制台；`--onefile` 在启动时解压运行依赖，首次启动可能较慢。当前 EXE 未进行代码签名。
+## Windows 构建
 
-## GitHub Actions 与下载
+```powershell
+python -m PyInstaller --noconfirm --clean --onefile --windowed --name Yinglan --exclude-module PySide6.QtQml --exclude-module PySide6.QtQuick --exclude-module PySide6.QtNetwork --paths src scripts/entrypoint.py
+```
 
-每次推送 `main` 或向 `main` 提交 PR，`Build Windows` 工作流会在 `windows-latest` 上执行：
+仅依赖 `PySide6-Essentials`，不安装 Addons；排除未使用的 QML、QtQuick 和网络模块。实际 EXE 大小记录在 Actions 运行摘要中。
 
-1. 安装 Python 3.12 x64 和项目依赖。
-2. 执行 Ruff 检查、格式检查和 pytest / pytest-qt GUI 测试。
-3. 使用 PyInstaller 构建 `WindowsTool.exe`。
-4. 启动生成的 EXE，使用 `--smoke-test` 验证 PNG/JPEG 解码、图片切换和缩放，然后检查退出码（超时或非零退出码会让任务失败）。
-5. 通过 `actions/upload-artifact` 上传 EXE 和测试报告。
+每次推送 `main` 或向 `main` 提交 PR，工作流在 `windows-latest` 安装 Python 3.12 x64，检查代码、运行 GUI 测试、打包，并实际启动生成的 EXE，通过 `--smoke-test` 验证 PNG/JPEG 解码、切换、缩放、旋转和文件名更新。通过后才上传 EXE；测试报告单独上传。还可手动运行工作流。
 
-在仓库 **Actions → Build Windows → 成功的运行 → Artifacts** 下载 `WindowsTool-windows-x64`，解压后运行 `WindowsTool.exe`。产物保留 30 天。也可在合并后通过 **Run workflow** 手动构建。
+自动化测试不替代真实 Windows 桌面上的人工视觉检查、拖动和窗口边缘操作验证。
 
-CI 的 EXE 冒烟测试验证启动、图片读取和浏览交互，不替代真实 Windows 桌面上的人工视觉检查。云端 Linux 无法直接验证 Windows EXE；请查看对应提交的 Windows Actions 结果，确认构建、测试和上传步骤是否成功。
+## 合并
 
-## 合并 Pull Request
-
-打开 PR，查看 **Files changed**，等待 **Test and build Windows x64** 检查通过，然后点击 **Squash and merge → Confirm squash and merge**（或仓库允许的其他合并方式）。合并到 `main` 后会再次自动测试并打包。若检查失败，先查看 Actions 日志并修复；若仓库要求审核，请先获得审核批准。
+打开 PR，审核 Files changed，等待 **Test and build Windows x64** 通过，点击 **Squash and merge** 并确认。合并后 `main` 会自动再次测试和打包。
