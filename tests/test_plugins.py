@@ -400,7 +400,8 @@ def test_management_dialog_enable_disable(window, qtbot):
     assert window.rotate_action is None
     dialog.toggle()
     assert window.rotate_action is not None
-    assert "基础图片处理" in dialog.details.toPlainText()
+    assert "顺时针旋转" in dialog.details.toPlainText()
+    assert "类型：功能" in dialog.details.toPlainText()
 
 
 def test_background_context_access_is_rejected(window, tmp_path, qtbot):

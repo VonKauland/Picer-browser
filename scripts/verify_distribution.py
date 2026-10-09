@@ -15,6 +15,10 @@ def run_smoke(application: Path, working_directory: Path) -> None:
             "--smoke-test",
             "--plugin-archive",
             str(application / "examples" / "negative-plugin.zip"),
+            "--skin-archive",
+            str(application / "examples" / "midnight-skin.zip"),
+            "--panel-archive",
+            str(application / "examples" / "info-panel.zip"),
         ],
         cwd=working_directory,
     )
@@ -39,6 +43,9 @@ def verify(application: Path) -> None:
         "logs",
         "examples/negative-plugin.zip",
         "docs/plugins.md",
+        "docs/components.md",
+        "examples/midnight-skin.zip",
+        "examples/info-panel.zip",
         "README.txt",
         "distribution.json",
     ):
@@ -59,13 +66,22 @@ def verify(application: Path) -> None:
             raise RuntimeError("Application logs are missing")
         if not list((first / "cache" / "thumbnails").glob("*.png")):
             raise RuntimeError("Thumbnail cache was not created")
+        if not (first / "skins" / "example.midnight" / "theme.json").is_file():
+            raise RuntimeError("Skin was not installed beside the application")
+        if preferences["ui"]["quick_slots"][4] != "example.negative:negative":
+            raise RuntimeError("Quick slot assignment was not persisted")
         moved = root / "迁移后的 Picer"
         first.rename(moved)
         run_smoke(moved, unrelated)
         preferences = json.loads((moved / "config" / "plugins.json").read_text(encoding="utf-8"))
         if preferences["settings"]["example.negative"]["opened_count"] != 4:
             raise RuntimeError("Plugin configuration did not survive relocation and restart")
-        print("Folder layout, icons, external plugin, cache, restart and relocation checks passed")
+        if preferences["ui"]["quick_slots"][4] != "example.negative:negative":
+            raise RuntimeError("Quick slot assignment did not survive relocation")
+        print(
+            "Folder layout, icons, function/skin/panel components, quick slots, fullscreen, "
+            "cache, restart and relocation checks passed"
+        )
 
 
 if __name__ == "__main__":

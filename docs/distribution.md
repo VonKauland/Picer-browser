@@ -7,7 +7,8 @@ Picer/
   Picer.exe                     启动程序，带应用图标与版本信息
   _internal/                    PyInstaller、Python、Qt 运行库
   assets/icons/                 picer.svg、picer.png、picer.ico
-  plugins/                      用户安装的第三方插件，初始为空
+  plugins/                      功能与面板组件，初始为空
+  skins/                        首次安装皮肤后创建，存储皮肤组件
   cache/
     thumbnails/                 打开图片后自动生成，最多 256 个 PNG
     plugins/<plugin-id>/        插件独立缓存（声明 cache 权限后可使用）
@@ -49,7 +50,7 @@ Picer/
 
 ## 更新、备份与卸载
 
-- 更新：先关闭程序，解压新版到一个新目录，再从旧目录复制 `plugins` 和 `config`。可选复制 `logs`；缓存无需备份。避免用新包的默认配置覆盖已有设置。
+- 更新：先关闭程序，解压新版到一个新目录，再从旧目录复制 `plugins`、`skins` 和 `config`。可选复制 `logs`；缓存无需备份。避免用新包的默认配置覆盖已有设置。
 - 备份与迁移：复制整个应用目录即可；若数据曾退回用户目录或通过参数指定，还需复制实际数据目录。
 - 清理：关闭应用后可删除缓存内容，下次会重新生成缩略图。
 - 卸载：关闭应用并删除应用目录；另行删除实际退回/指定的数据目录即可移除用户数据。程序不自动修改 Windows 文件关联或注册表。
@@ -65,4 +66,4 @@ python -m scripts.verify_distribution
 
 构建使用 PyInstaller `--onedir --windowed --contents-directory _internal`，输出 `dist/Picer/`，再复制图标、示例插件、文档和数据目录。
 
-Windows CI 在临时目录复制完整软件，从无关工作目录启动 EXE，执行图片与外部插件冒烟测试，检查实际配置、日志和缓存写入位置，然后迁移整个文件夹并再次启动，确认插件设置保留。最终上传原始干净的 `dist/`，测试写入的数据不会包含在分发包内。
+Windows CI 在临时目录复制完整软件，从无关工作目录启动 EXE，执行图片、三类组件、快捷位与全屏面板冒烟测试，检查实际配置、日志和缓存写入位置，然后迁移整个文件夹并再次启动，确认插件设置保留。最终上传原始干净的 `dist/`，测试写入的数据不会包含在分发包内。

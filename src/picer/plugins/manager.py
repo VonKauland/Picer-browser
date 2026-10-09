@@ -19,10 +19,12 @@ from typing import Any
 
 from PySide6.QtCore import QObject, Qt, QThreadPool, Signal
 from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import QDockWidget, QWidget
 
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
 from picer.plugins.builtin.transforms import Plugin as Transforms
 from picer.plugins.manifest import Manifest
+from picer.plugins.skins import COLORS, load_skin
 from picer.plugins.tasks import TaskCancelled, Worker
 
 
@@ -52,6 +54,9 @@ class PluginManager(QObject):
         self.log_file = self.paths.logs / "plugins.log"
         self.records: dict[str, PluginRecord] = {}
         self.commands: dict[str, QAction] = {}
+        self.panels: dict[str, QDockWidget] = {}
+        self._panel_transition = False
+        self._fullscreen = host.isFullScreen()
         self.subscribers: dict[str, list[tuple[str, Callable]]] = {}
         self.diagnostics: list[str] = [self.paths.notice] if self.paths.notice else []
         self._dispatching = False
@@ -61,16 +66,16 @@ class PluginManager(QObject):
         self.logger = logging.getLogger(f"picer.plugins.{id(self)}")
         self.logger.propagate = False
         self.log_handler = None
-        self.preferences: dict[str, Any] = {"enabled": {}, "settings": {}}
+        self.preferences: dict[str, Any] = {"enabled": {}, "settings": {}, "ui": {}}
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
             if self.state_file.exists():
                 data = json.loads(self.state_file.read_text(encoding="utf-8"))
                 if not isinstance(data, dict) or any(
-                    not isinstance(data.get(key, {}), dict) for key in ("enabled", "settings")
+                    not isinstance(data.get(key, {}), dict) for key in ("enabled", "settings", "ui")
                 ):
                     raise ValueError("配置结构无效")
-                self.preferences = {key: data.get(key, {}) for key in ("enabled", "settings")}
+                self.preferences = {key: data.get(key, {}) for key in ("enabled", "settings", "ui")}
         except (OSError, ValueError, UnicodeError) as error:
             self.diagnostics.append(f"配置读取失败：{error}")
         try:
@@ -80,17 +85,27 @@ class PluginManager(QObject):
             self.logger.addHandler(self.log_handler)
         except OSError as error:
             self.diagnostics.append(f"插件日志无法写入：{error}")
-        builtin = Manifest(
-            id="picer.transforms",
-            name="基础图片处理",
-            version="1.0.0",
-            api_version=API_VERSION,
-            entrypoint="transforms:Plugin",
-            description="旋转、水平翻转和灰度预览；不修改原文件。",
-            author="Picer",
-            permissions=("ui.commands", "image.read", "image.modify"),
-        )
-        self.records[builtin.id] = PluginRecord(builtin)
+        # Preserve the old multi-function built-in's enable preference during migration.
+        for plugin_id in ("picer.mirror", "picer.grayscale"):
+            self.preferences["enabled"].setdefault(
+                plugin_id, self.preferences["enabled"].get("picer.transforms", True) is True
+            )
+        for plugin_id, label in (
+            ("picer.transforms", "顺时针旋转"),
+            ("picer.mirror", "水平翻转"),
+            ("picer.grayscale", "灰度预览"),
+        ):
+            builtin = Manifest(
+                id=plugin_id,
+                name=label,
+                version="1.1.0",
+                api_version=API_VERSION,
+                entrypoint="transforms:Plugin",
+                description="仅修改当前预览，不修改原文件。",
+                author="Picer",
+                permissions=("ui.commands", "image.read", "image.modify"),
+            )
+            self.records[builtin.id] = PluginRecord(builtin)
         if load_external:
             self.discover()
         # Newly installed external plugins never execute until explicitly enabled.
@@ -109,25 +124,34 @@ class PluginManager(QObject):
 
     def discover(self) -> None:
         """Read manifests only; do not execute plugin code during discovery."""
-        try:
-            directories = sorted(self.directory.iterdir())
-        except OSError as error:
-            self.diagnostics.append(str(error))
-            return
-        for directory in directories:
-            if not directory.is_dir() or directory.is_symlink() or directory.name.startswith("."):
+        for base in (self.directory, self.paths.skins):
+            if not base.exists():
                 continue
             try:
-                manifest = Manifest.read(directory / "manifest.json")
-                if manifest.id in self.records:
-                    raise PluginError(f"重复插件 id：{manifest.id}")
-                record = PluginRecord(manifest, directory=directory)
-                if manifest.api_version != API_VERSION:
-                    record.state = "incompatible"
-                    record.error = f"需要 API {manifest.api_version}，当前为 {API_VERSION}"
-                self.records[manifest.id] = record
-            except PluginError as error:
-                self.diagnostics.append(f"{directory.name}：{error}")
+                directories = sorted(base.iterdir())
+            except OSError as error:
+                self.diagnostics.append(str(error))
+                continue
+            for directory in directories:
+                if (
+                    not directory.is_dir()
+                    or directory.is_symlink()
+                    or directory.name.startswith(".")
+                ):
+                    continue
+                try:
+                    manifest = Manifest.read(directory / "manifest.json")
+                    if (manifest.type == "skin") != (base == self.paths.skins):
+                        raise PluginError("组件存储目录与类型不匹配，请重新安装")
+                    if manifest.id in self.records:
+                        raise PluginError(f"重复插件 id：{manifest.id}")
+                    record = PluginRecord(manifest, directory=directory)
+                    if manifest.api_version != API_VERSION:
+                        record.state = "incompatible"
+                        record.error = f"需要 API {manifest.api_version}，当前为 {API_VERSION}"
+                    self.records[manifest.id] = record
+                except PluginError as error:
+                    self.diagnostics.append(f"{directory.name}：{error}")
 
     def _save(self) -> None:
         """Write atomically; keep startup usable even if the directory is read-only."""
@@ -155,12 +179,22 @@ class PluginManager(QObject):
 
     def enable(self, plugin_id: str) -> None:
         activated: list[str] = []
+        previous_skin = next(
+            (
+                key
+                for key, value in self.records.items()
+                if value.manifest.type == "skin" and value.state == "enabled"
+            ),
+            None,
+        )
         try:
             self._enable(plugin_id, set(), activated)
         except Exception as error:
             for enabled_id in reversed(activated):
                 self._cleanup(self.records[enabled_id])
                 self.preferences["enabled"][enabled_id] = False
+            if previous_skin and self.records[previous_skin].state != "enabled":
+                self._enable(previous_skin, set(), [])
             self._save()
             self.changed.emit()
             raise PluginError(str(error)) from error
@@ -187,8 +221,23 @@ class PluginManager(QObject):
         record.state = "activating"
         record.context = PluginContext(self, plugin_id)
         try:
+            if record.manifest.type == "skin":
+                style, colors = load_skin(record.directory, record.manifest.theme)
+                for old in list(self.records.values()):
+                    if old is not record and old.manifest.type == "skin" and old.state == "enabled":
+                        if self._dependents(old.manifest.id):
+                            raise PluginError("当前皮肤被其他组件依赖，不能切换")
+                        self._cleanup(old)
+                        self.preferences["enabled"][old.manifest.id] = False
+                self.host.apply_skin(style, colors)
+                record.state = "enabled"
+                self.preferences["enabled"][plugin_id] = True
+                activated.append(plugin_id)
+                return
             if record.directory is None:
-                factory = Transforms
+
+                def factory():
+                    return Transforms(plugin_id)
             else:
                 namespace = f"_picer_plugin_{id(self)}_{plugin_id.encode().hex()}"
                 record.namespace = namespace
@@ -204,6 +253,14 @@ class PluginManager(QObject):
                 factory = getattr(module, class_name)
             record.instance = factory()
             record.instance.activate(record.context)
+            if not record.manifest.legacy:
+                count = sum(
+                    action.property("plugin_id") == plugin_id for action in self.commands.values()
+                )
+                if record.manifest.type == "function" and count != 1:
+                    raise PluginError("功能组件必须且只能注册一个功能按钮")
+                if record.manifest.type == "panel" and plugin_id not in self.panels:
+                    raise PluginError("面板组件必须注册一个面板")
             record.state = "enabled"
             self.preferences["enabled"][plugin_id] = True
             activated.append(plugin_id)
@@ -238,6 +295,8 @@ class PluginManager(QObject):
             manifest = Manifest.read(record.directory / "manifest.json")
             if manifest.id != plugin_id:
                 raise PluginError("重载时不能修改插件 id")
+            if manifest.type != record.manifest.type:
+                raise PluginError("重载时不能修改组件类型")
             record.manifest = manifest
             try:
                 for cache in record.directory.rglob("__pycache__"):
@@ -251,7 +310,14 @@ class PluginManager(QObject):
     def _cleanup(self, record: PluginRecord) -> None:
         """Revoke context and remove contributions even if deactivate raises."""
         plugin_id = record.manifest.id
+        was_enabled = record.state == "enabled"
         record.state = "disabled"
+        if record.manifest.type == "skin" and was_enabled:
+            self.host.apply_skin(None, COLORS)
+        dock = self.panels.pop(plugin_id, None)
+        if dock is not None:
+            self.host.removeDockWidget(dock)
+            dock.deleteLater()
         for worker in self.jobs.values():
             if worker.plugin_id == plugin_id:
                 worker.token.cancel()
@@ -268,6 +334,7 @@ class PluginManager(QObject):
         for key in list(self.commands):
             action = self.commands[key]
             if action.property("plugin_id") == plugin_id:
+                self.host.title_bar.release_action(action)
                 self.host.removeAction(action)
                 for menu in self.host.plugin_menus.values():
                     menu.removeAction(action)
@@ -311,6 +378,13 @@ class PluginManager(QObject):
             self._fail(plugin_id, error)
 
     def add_command(self, plugin_id, command_id, label, callback, shortcut, requires_image, menu):
+        manifest = self.records[plugin_id].manifest
+        if manifest.type != "function":
+            raise PluginError("只有功能组件可以注册功能按钮")
+        if not manifest.legacy and any(
+            action.property("plugin_id") == plugin_id for action in self.commands.values()
+        ):
+            raise PluginError("功能组件只能注册一个功能按钮")
         if not re.fullmatch(r"[a-z][a-z0-9_]*", command_id):
             raise PluginError("命令 id 无效")
         key = f"{plugin_id}:{command_id}"
@@ -329,10 +403,76 @@ class PluginManager(QObject):
         action.setProperty("plugin_id", plugin_id)
         action.setProperty("requires_image", requires_image)
         action.triggered.connect(lambda: self._invoke(plugin_id, callback))
-        self.host.plugin_menus[menu].addAction(action)
+        self.host.plugin_menus["插件"].addAction(action)
+        if menu != "插件":
+            self.host.plugin_menus[menu].addAction(action)
         self.host.addAction(action)
         self.commands[key] = action
         self.update_commands()
+
+    def add_panel(self, plugin_id: str, widget: QWidget, area: str) -> None:
+        areas = {
+            "left": Qt.DockWidgetArea.LeftDockWidgetArea,
+            "right": Qt.DockWidgetArea.RightDockWidgetArea,
+            "bottom": Qt.DockWidgetArea.BottomDockWidgetArea,
+        }
+        if self.records[plugin_id].manifest.type != "panel":
+            raise PluginError("只有面板组件可以注册面板")
+        if plugin_id in self.panels:
+            raise PluginError("面板组件只能注册一个面板")
+        if (
+            not isinstance(widget, QWidget)
+            or widget is self.host
+            or widget is self.host.view
+            or widget.parent() is not None
+        ):
+            raise PluginError("面板必须为无父级的新 QWidget")
+        if area not in areas:
+            raise PluginError("面板位置必须为 left、right 或 bottom")
+        dock = QDockWidget(self.records[plugin_id].manifest.name, self.host)
+        dock.setObjectName("panel:" + plugin_id)
+        dock.setAllowedAreas(
+            Qt.DockWidgetArea.LeftDockWidgetArea
+            | Qt.DockWidgetArea.RightDockWidgetArea
+            | Qt.DockWidgetArea.BottomDockWidgetArea
+        )
+        dock.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
+        dock.setWidget(widget)
+        dock.toggleViewAction().setText("显示：" + dock.windowTitle())
+        self.panels[plugin_id] = dock
+        self.host.addDockWidget(areas[area], dock)
+        visibility = self.preferences["ui"].get("panels", {})
+        visible = visibility.get(plugin_id, True) if isinstance(visibility, dict) else True
+        dock.setVisible(not self._fullscreen and visible is not False)
+        dock.visibilityChanged.connect(lambda _: self._remember_panel(plugin_id))
+
+    def _remember_panel(self, plugin_id: str) -> None:
+        if self._panel_transition or self._fullscreen or plugin_id not in self.panels:
+            return
+        ui = self.preferences["ui"]
+        if not isinstance(ui.get("panels"), dict):
+            ui["panels"] = {}
+        ui["panels"][plugin_id] = not self.panels[plugin_id].isHidden()
+        self._save()
+
+    def fullscreen_changed(self, fullscreen: bool) -> None:
+        if fullscreen == self._fullscreen:
+            return
+        if fullscreen:
+            for plugin_id in self.panels:
+                self._remember_panel(plugin_id)
+        self._fullscreen = fullscreen
+        self._panel_transition = True
+        try:
+            visibility = self.preferences["ui"].get("panels", {})
+            for plugin_id, dock in self.panels.items():
+                visible = visibility.get(plugin_id, True) if isinstance(visibility, dict) else True
+                dock.setVisible(not fullscreen and visible is not False)
+        finally:
+            self._panel_transition = False
 
     def update_commands(self) -> None:
         for action in self.commands.values():
@@ -467,12 +607,18 @@ class PluginManager(QObject):
                         raise PluginError("该插件已存在，不能覆盖内置插件")
                     if previous.state == "enabled" or self._dependents(manifest.id):
                         raise PluginError("更新前请先停用插件及其依赖者")
-                destination = previous.directory if previous else self.directory / manifest.id
+                base = self.paths.skins if manifest.type == "skin" else self.directory
+                if manifest.type == "skin":
+                    load_skin(staging, manifest.theme)
+                if previous and previous.manifest.type != manifest.type:
+                    raise PluginError("更新不能更改组件类型，请先卸载旧组件")
+                base.mkdir(parents=True, exist_ok=True)
+                destination = previous.directory if previous else base / manifest.id
                 if destination.exists() and previous is None:
                     raise PluginError("插件目录已存在")
                 module_name = manifest.entrypoint.split(":")[0]
                 module_path = staging.joinpath(*module_name.split("."))
-                if (
+                if manifest.type != "skin" and (
                     not module_path.with_suffix(".py").is_file()
                     and not (module_path / "__init__.py").is_file()
                 ):
@@ -511,6 +657,15 @@ class PluginManager(QObject):
         del self.records[plugin_id]
         self.preferences["enabled"].pop(plugin_id, None)
         self.preferences["settings"].pop(plugin_id, None)
+        visibility = self.preferences["ui"].get("panels", {})
+        if isinstance(visibility, dict):
+            visibility.pop(plugin_id, None)
+        slots = self.preferences["ui"].get("quick_slots", [])
+        if isinstance(slots, list):
+            self.preferences["ui"]["quick_slots"] = [
+                "" if isinstance(key, str) and key.startswith(plugin_id + ":") else key
+                for key in slots
+            ]
         self._save()
         self.changed.emit()
 

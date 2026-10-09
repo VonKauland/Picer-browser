@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QEvent, Qt, QUrl
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -28,9 +28,11 @@ from PySide6.QtWidgets import (
 
 from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
+from picer.components import ComponentUI
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
+from picer.plugins.skins import COLORS
 
 
 class ImageView(QGraphicsView):
@@ -86,8 +88,9 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(str(self.paths_layout.icon)))
         self.setWindowTitle("揽映")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
-        self.setMinimumSize(680, 420)
+        self.setMinimumSize(800, 420)
         self.resize(1200, 800)
+        self.skin_colors = dict(COLORS)
         self.setStyleSheet(STYLE)
         self.setAcceptDrops(True)
         self.paths: list[Path] = []
@@ -99,7 +102,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(6, 0, 6, 6)
         layout.setSpacing(0)
-        layout.addWidget(self.title_bar)
+        self.setMenuWidget(self.title_bar)
         layout.addWidget(self.view, 1)
         self.setCentralWidget(container)
         self.empty_label = QLabel("打开图片，开始浏览\nCtrl+O  ·  或将图片拖入窗口", self.view)
@@ -115,7 +118,8 @@ class MainWindow(QMainWindow):
         view_menu = self.title_bar.menu.addMenu("视图")
         plugin_menu = self.title_bar.menu.addMenu("插件")
         help_menu = self.title_bar.menu.addMenu("帮助")
-        self.plugin_menus = {"编辑": edit_menu, "视图": view_menu, "插件": plugin_menu}
+        run_menu = plugin_menu.addMenu("调用功能")
+        self.plugin_menus = {"编辑": edit_menu, "视图": view_menu, "插件": run_menu}
         self.open_action = self.add_action(file_menu, "打开图片…", "Ctrl+O", self.choose_image)
         self.add_action(file_menu, "打开文件夹…", "Ctrl+Shift+O", self.choose_folder)
         file_menu.addSeparator()
@@ -146,6 +150,7 @@ class MainWindow(QMainWindow):
         self.add_action(help_menu, "清理图片缓存", "", self.clear_thumbnail_cache)
         self.image_revision = 0
         self.plugins = PluginManager(self, self.paths_layout.root, load_external=load_external)
+        self.components = ComponentUI(self, plugin_menu)
         self.update_actions()
         self.title_bar.arrange()
 
@@ -157,6 +162,18 @@ class MainWindow(QMainWindow):
         menu.addAction(action)
         self.addAction(action)
         return action
+
+    def apply_skin(self, style: str | None, colors: dict[str, str]) -> None:
+        self.skin_colors = dict(colors)
+        self.setStyleSheet(STYLE if style is None else style)
+        self.view.setBackgroundBrush(QColor(colors["background"]))
+        if hasattr(self, "components"):
+            self.components.refresh_slots()
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "plugins"):
+            self.plugins.fullscreen_changed(self.isFullScreen())
 
     def choose_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "打开文件夹")
@@ -226,7 +243,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 0.4.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 0.5.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

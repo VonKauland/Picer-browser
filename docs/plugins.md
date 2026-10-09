@@ -1,6 +1,8 @@
 # Picer 插件系统 v1
 
-揽映将图片处理能力放在插件层。内置 `picer.transforms` 使用与第三方相同的 SDK 提供旋转、水平翻转和灰度预览；主窗口负责图片显示、文件导航和窗口操作。插件不需要修改宿主源码。
+揽映将图片处理能力放在插件层。内置 `picer.transforms`、`picer.mirror` 和 `picer.grayscale` 使用与第三方相同的 SDK 分别提供旋转、水平翻转和灰度预览；主窗口负责图片显示、文件导航和窗口操作。插件不需要修改宿主源码。
+
+新开发请先阅读 [三类组件规则](components.md)：明确声明 `type` 为 `skin`、`function` 或 `panel`，功能单按钮、面板单 QWidget，皮肤独立安装到 `skins`。
 
 ## 架构与生命周期
 
@@ -32,7 +34,7 @@ flowchart LR
 
 1. 选择 **安装/更新 ZIP…**，安装后查看名称、版本、来源、权限、依赖和错误。
 2. 确认来源可信后点击 **启用**，依赖会一并启用。
-3. 插件命令出现在 **插件** 菜单；插件也可贡献到 **编辑**、**视图** 菜单。
+3. 在 **插件 → 功能** 勾选启停，通过 **调用功能** 或快捷位执行；命令也可同时出现在 **编辑**、**视图** 菜单。皮肤与面板各有二级菜单。
 4. 可停用、重载或卸载；更新前先停用，卸载同时删除该插件配置。
 
 **打开插件目录** 可查看实际存储位置。文件夹版本默认使用 EXE 所在目录保存数据；源码开发或软件目录不可写时使用用户目录。也可通过 `--data-dir` 指定位置。
@@ -77,7 +79,8 @@ negative-plugin.zip
 {
   "id": "example.negative",
   "name": "负片预览",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "type": "function",
   "api_version": 1,
   "entrypoint": "main:Plugin",
   "description": "当前图片反色预览，不修改原文件。",
@@ -92,6 +95,7 @@ negative-plugin.zip
 | id | 稳定、全局唯一，小写字母开头的点分标识符；内置 id 为 `picer.transforms` |
 | name / version | 非空名称；版本格式 `major.minor.patch` |
 | api_version | 当前仅支持整数 `1`，不匹配的插件不执行 |
+| type | 新开发必须声明 `skin`、`function` 或 `panel`，见组件规则 |
 | entrypoint | `module:Class`；模块可为多层包，如 `effects.main:Plugin` |
 | permissions | API 能力声明，见下表 |
 | requires | 插件 id 列表；v1 校验依赖存在及依赖自身的 API 兼容，不解析插件版本范围 |
@@ -124,6 +128,7 @@ class Plugin:
 
 | 权限 | API | 行为 |
 | --- | --- | --- |
+| ui.panels | `add_panel(widget, area="right")` | 仅面板类，注册一个停靠面板；支持 left/right/bottom，停用时删除 |
 | ui.commands | `add_command(id, label, callback, shortcut="", requires_image=True, menu="插件")` | 在支持的菜单注册动作，停用时自动删除 |
 | image.read | `current_path()` | 返回当前 `Path`，未打开图片时为 `None` |
 | image.read | `image()` | 返回当前预览的独立 `QImage` 拷贝，包含当前显示变换 |
@@ -183,4 +188,4 @@ v1 是可信 Python 插件系统，运行在宿主进程中。权限声明只控
 
 冻结 EXE 中只保证宿主已打包的 Python/Qt 模块可用。不会自动执行 pip 或下载依赖。插件可携带纯 Python 相对导入模块；额外原生库、未打包标准库模块或其他 Qt 模块需要专门适配和构建验证。
 
-后续可在稳定 SDK 上增加：独立进程插件、解码器与导出器注册、参数面板、撤销栈、插件版本依赖范围与签名分发。目前没有实现插件商店、网络更新或不可信插件沙箱。
+后续可在稳定 SDK 上增加：独立进程插件、解码器与导出器注册、撤销栈、插件版本依赖范围与签名分发。目前没有实现插件商店、网络更新或不可信插件沙箱。

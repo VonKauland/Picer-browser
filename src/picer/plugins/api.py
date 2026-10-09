@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QThread
 from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QWidget
 
 if TYPE_CHECKING:
     from picer.plugins.manager import PluginManager
@@ -14,6 +15,7 @@ if TYPE_CHECKING:
 API_VERSION = 1
 PERMISSIONS = {
     "ui.commands",
+    "ui.panels",
     "image.read",
     "image.modify",
     "events.subscribe",
@@ -67,6 +69,11 @@ class PluginContext:
         self._manager.add_command(
             self.plugin_id, command_id, label, callback, shortcut, requires_image, menu
         )
+
+    def add_panel(self, widget: QWidget, *, area: str = "right") -> None:
+        """Register the component's single dockable panel on the GUI thread."""
+        self._check("ui.panels")
+        self._manager.add_panel(self.plugin_id, widget, area)
 
     def current_path(self) -> Path | None:
         self._check("image.read")

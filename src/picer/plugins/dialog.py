@@ -5,6 +5,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from picer.components import TYPES
 from picer.plugins.api import PluginError
 
 STATES = {"enabled": "已启用", "disabled": "未启用", "error": "已出错", "incompatible": "不兼容"}
@@ -29,12 +31,18 @@ class PluginDialog(QDialog):
         self.setWindowTitle("揽映 · 插件管理")
         self.resize(720, 480)
         layout = QVBoxLayout(self)
-        heading = QLabel("扩展揽映的能力")
+        heading = QLabel("皮肤 · 功能 · 面板")
         heading.setStyleSheet("font-size: 20px; font-weight: 600; padding: 8px 0;")
         layout.addWidget(heading)
         note = QLabel("第三方 Python 插件具有本机程序权限，请仅启用可信来源。")
         note.setWordWrap(True)
         layout.addWidget(note)
+        self.filter = QComboBox()
+        self.filter.addItem("全部组件", "")
+        for key, label in TYPES.items():
+            self.filter.addItem(label, key)
+        self.filter.currentIndexChanged.connect(self.refresh)
+        layout.addWidget(self.filter)
         content = QHBoxLayout()
         self.list = QListWidget()
         self.list.setMinimumWidth(240)
@@ -69,8 +77,11 @@ class PluginDialog(QDialog):
         selected = self.selected_id()
         self.list.clear()
         for plugin_id, record in self.manager.records.items():
+            if self.filter.currentData() and record.manifest.type != self.filter.currentData():
+                continue
             item = QListWidgetItem(
-                f"{record.manifest.name}\n{STATES.get(record.state, record.state)}"
+                f"{record.manifest.name}\n{TYPES[record.manifest.type]} · "
+                f"{STATES.get(record.state, record.state)}"
             )
             item.setData(Qt.ItemDataRole.UserRole, plugin_id)
             self.list.addItem(item)
@@ -96,6 +107,7 @@ class PluginDialog(QDialog):
         text = (
             f"{manifest.name}\n{manifest.description}\n\n"
             f"ID：{manifest.id}\n版本：{manifest.version}\nAPI：{manifest.api_version}\n"
+            f"类型：{TYPES[manifest.type]}{'（旧版兼容，建议迁移）' if manifest.legacy else ''}\n"
             f"作者：{manifest.author or '未填写'}\n"
             f"来源：{record.directory or '内置'}\n"
             f"状态：{STATES.get(record.state, record.state)}\n"
@@ -144,4 +156,11 @@ class PluginDialog(QDialog):
             self.operation(lambda: self.manager.uninstall(plugin_id))
 
     def open_directory(self) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.manager.directory)))
+        record = self.manager.records.get(self.selected_id())
+        directory = (
+            self.manager.paths.skins
+            if record and record.manifest.type == "skin"
+            else self.manager.directory
+        )
+        directory.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))

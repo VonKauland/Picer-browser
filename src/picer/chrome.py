@@ -1,7 +1,7 @@
 """A single-row title and menu bar with a genuinely centered filename."""
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenuBar, QPushButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenuBar, QPushButton, QToolButton, QWidget
 
 
 class TitleBar(QWidget):
@@ -12,6 +12,7 @@ class TitleBar(QWidget):
         self.window = window
         self.filename = ""
         self.setObjectName("titleBar")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         self.setFixedHeight(48)
         self.left = QWidget(self)
         self.left.setObjectName("titleLeft")
@@ -36,6 +37,17 @@ class TitleBar(QWidget):
         buttons = QHBoxLayout(self.right)
         buttons.setContentsMargins(0, 0, 0, 0)
         buttons.setSpacing(0)
+        self.quick_slots = []
+        for index in range(5):
+            button = QToolButton(self.right)
+            button.setObjectName("quickSlot")
+            button.setFixedSize(28, 28)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            button.setAccessibleName(f"功能快捷栏位 {index + 1}")
+            buttons.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
+            self.quick_slots.append(button)
+        buttons.addSpacing(8)
         for text, name, callback in (
             ("—", "minimize", window.showMinimized),
             ("□", "maximize", self.toggle_maximized),
@@ -50,6 +62,11 @@ class TitleBar(QWidget):
             button.clicked.connect(callback)
             buttons.addWidget(button)
         self.drag_origin: QPoint | None = None
+
+    def release_action(self, action) -> None:
+        for button in self.quick_slots:
+            if button.defaultAction() is action:
+                button.setDefaultAction(None)
 
     def set_filename(self, filename: str) -> None:
         self.filename = filename
@@ -119,6 +136,13 @@ QPushButton { border: none; background: transparent; font-size: 18px; }
 QPushButton:hover { background: #35383e; }
 QPushButton#close:hover { background: #c42b3a; color: white; }
 QGraphicsView { border: none; background: #191b1f; }
+QToolButton#quickSlot { border: none; border-radius: 6px; margin: 2px;
+background: transparent; color: #92969e; font-size: 16px; }
+QToolButton#quickSlot:hover { background: #35383e; }
+QToolButton#quickSlot:disabled { color: #777b83; }
+QDockWidget { font-size: 12px; }
+QDockWidget::title { background: #202226; padding: 8px; }
+QMainWindow::separator { background: #3a3d44; width: 3px; height: 3px; }
 QLabel#empty { color: #92969e; font-size: 15px; background: transparent; }
 QScrollBar { background: #202226; width: 9px; height: 9px; }
 QScrollBar::handle { background: #4a4e56; border-radius: 4px; min-height: 20px; min-width: 20px; }

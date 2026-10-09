@@ -1,0 +1,10 @@
+{
+  "id": "example.midnight",
+  "name": "午夜蓝",
+  "version": "1.0.0",
+  "api_version": 1,
+  "type": "skin",
+  "theme": "theme.json",
+  "description": "覆盖窗口、菜单、面板与图片背景的午夜蓝皮肤。",
+  "author": "Picer SDK example"
+}

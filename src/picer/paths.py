@@ -20,6 +20,10 @@ class AppPaths:
         return self.root / "plugins"
 
     @property
+    def skins(self) -> Path:
+        return self.root / "skins"
+
+    @property
     def cache(self) -> Path:
         return self.root / "cache"
 

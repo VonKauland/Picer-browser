@@ -20,6 +20,8 @@ def main() -> int:
     parser.add_argument("--safe-mode", action="store_true", help="本次启动不加载第三方插件")
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--plugin-archive", help=argparse.SUPPRESS)
+    parser.add_argument("--skin-archive", help=argparse.SUPPRESS)
+    parser.add_argument("--panel-archive", help=argparse.SUPPRESS)
     args = parser.parse_args()
     smoke_test = args.smoke_test
     app = QApplication([sys.argv[0]])
@@ -61,7 +63,27 @@ def main() -> int:
                         count_before = window.plugins.records[plugin_id].context.get_setting(
                             "opened_count", 0
                         )
-                    passed = image.save(str(first)) and image.save(str(second))
+                    components_ok = len(window.title_bar.quick_slots) == 5
+                    for archive_path, component_id in (
+                        (args.skin_archive, "example.midnight"),
+                        (args.panel_archive, "example.info"),
+                    ):
+                        if archive_path:
+                            if component_id not in window.plugins.records:
+                                window.plugins.install(Path(archive_path))
+                            window.plugins.enable(component_id)
+                    if args.skin_archive:
+                        components_ok = (
+                            components_ok and window.skin_colors["background"] == "#131820"
+                        )
+                    if args.panel_archive:
+                        dock = window.plugins.panels["example.info"]
+                        components_ok = components_ok and not dock.isHidden()
+                        window.toggle_fullscreen()
+                        components_ok = components_ok and dock.isHidden()
+                        window.exit_fullscreen()
+                        components_ok = components_ok and not dock.isHidden()
+                    passed = components_ok and image.save(str(first)) and image.save(str(second))
                     passed = passed and window.open_image(first)
                     window.next_action.trigger()
                     passed = passed and window.current_path == second.resolve()
@@ -79,7 +101,13 @@ def main() -> int:
                         context = window.plugins.records[plugin_id].context
                         passed = passed and context.get_setting("opened_count") == count_before + 2
                         before = window.view.image_item.pixmap().toImage().pixelColor(0, 0)
-                        window.plugins.commands[f"{plugin_id}:negative"].trigger()
+                        if count_before:
+                            passed = (
+                                passed
+                                and window.components.assignments()[4] == f"{plugin_id}:negative"
+                            )
+                        window.components.assign(4, f"{plugin_id}:negative")
+                        window.title_bar.quick_slots[4].click()
 
                         def verify_worker() -> None:
                             if window.plugins.jobs:

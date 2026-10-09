@@ -7,11 +7,17 @@ from picer.plugins.api import PluginContext
 
 
 class Plugin:
+    def __init__(self, plugin_id: str = "picer.transforms") -> None:
+        self.plugin_id = plugin_id
+
     def activate(self, context: PluginContext) -> None:
         self.context = context
-        context.add_command("rotate", "顺时针旋转", self.rotate, shortcut="Ctrl+R", menu="编辑")
-        context.add_command("mirror", "水平翻转", self.mirror, menu="编辑")
-        context.add_command("grayscale", "灰度预览", self.grayscale, menu="编辑")
+        if self.plugin_id == "picer.transforms":
+            context.add_command("rotate", "顺时针旋转", self.rotate, shortcut="Ctrl+R", menu="编辑")
+        elif self.plugin_id == "picer.mirror":
+            context.add_command("mirror", "水平翻转", self.mirror, menu="编辑")
+        else:
+            context.add_command("grayscale", "灰度预览", self.grayscale, menu="编辑")
 
     def rotate(self) -> None:
         self.context.replace_image(

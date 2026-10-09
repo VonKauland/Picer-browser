@@ -16,3 +16,6 @@
 - Preserve the packaged EXE smoke test that installs and executes the real external example ZIP.
 
 - Resolve resources from the application directory; never derive data paths from cwd. Keep plugins, cache, config and logs separate; preserve user settings during migrations and updates.
+
+- New components must declare type skin/function/panel. Skin packages are declarative resources in skins; functions register exactly one command; panels register exactly one widget and dock only left/right/bottom. Preserve explicit legacy API v1 migration support.
+- Revoke quick-slot bindings and docks on cleanup. Keep exactly five top-bar slots and no bottom status bar. Test fullscreen/normal panel visibility transitions and persisted user choices.
