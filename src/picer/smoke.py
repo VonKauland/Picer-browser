@@ -124,9 +124,8 @@ def verify_browser(window, browser, folder):
             color = pixels.pixelColor(x, y)
             channels = (color.red(), color.green(), color.blue())
             assert min(channels) < 210 and color.blue() <= max(color.red(), color.green()) + 20
-    root = browser.tree.rootIndex()
-    wait_for(lambda: browser.model.rowCount(root) == 3)
-    assert browser.model.isDir(browser.model.index(0, 0, root))
+    wait_for(lambda: browser.model.rowCount(browser.tree.rootIndex()) == 3)
+    assert browser.model.isDir(browser.model.index(0, 0, browser.tree.rootIndex()))
     browser.model.data(browser.model.index(str(child)), Qt.ItemDataRole.DecorationRole)
     wait_for(lambda: browser.model.files.folders.cache.get(str(child)) is True)
     print(

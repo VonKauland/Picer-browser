@@ -802,9 +802,12 @@ def test_browser_directories_first_for_every_sort(
     plugin.context.set_setting("descending", descending)
     plugin.sort_tree()
     plugin.open_folder(pictures)
-    root = plugin.tree.rootIndex()
-    qtbot.waitUntil(lambda: plugin.model.rowCount(root) == 5)
-    entries = [plugin.model.isDir(plugin.model.index(row, 0, root)) for row in range(5)]
+    # Proxy indexes can be invalidated while the asynchronous filesystem model
+    # loads or resorts. Fetch the view's persistent root after each event turn.
+    qtbot.waitUntil(lambda: plugin.model.rowCount(plugin.tree.rootIndex()) == 5)
+    entries = [
+        plugin.model.isDir(plugin.model.index(row, 0, plugin.tree.rootIndex())) for row in range(5)
+    ]
     assert entries == [True, True, False, False, False]
     assert plugin.parent_entry.isVisible()
 
