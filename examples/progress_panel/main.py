@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from picer.plugins import SettingField
+from picer.plugins import SettingField, ui_icon
 
 
 def make_preview(context, parent):
@@ -44,17 +44,19 @@ class Plugin:
         self.layout.setContentsMargins(12, 12, 12, 12)
         self.buttons = QHBoxLayout()
         self.controls = {}
-        for key, label, tip, callback in (
-            ("previous", "‹", "上一张", lambda: context.navigate(-1)),
-            ("next", "›", "下一张", lambda: context.navigate(1)),
-            ("preview", "▦", "弹出缩略预览", self.show_preview),
-            ("rotate", "↻", "旋转", self.rotate),
-            ("slideshow", "▷", "幻灯片", self.toggle_slideshow),
-            ("settings", "⚙", "插件设置", context.show_settings),
+        for key, icon, tip, callback in (
+            ("previous", "left", "上一张", lambda: context.navigate(-1)),
+            ("next", "right", "下一张", lambda: context.navigate(1)),
+            ("preview", "grid", "弹出缩略预览", self.show_preview),
+            ("rotate", "rotate", "旋转", self.rotate),
+            ("slideshow", "play", "幻灯片", self.toggle_slideshow),
         ):
-            button = QPushButton(label)
-            button.setFixedSize(28, 28)
+            button = QPushButton()
+            button.setIcon(ui_icon(icon))
+            button.setObjectName("circleButton")
+            button.setFixedSize(32, 32)
             button.setToolTip(tip)
+            button.setAccessibleName(tip)
             button.clicked.connect(callback)
             self.buttons.addWidget(button)
             self.controls[key] = button
@@ -128,12 +130,11 @@ class Plugin:
         self.slider.blockSignals(False)
         self.slider.setEnabled(len(paths) > 1)
         self.count.setText(f"{index + 1}/{len(paths)}")
-        for key, button in self.controls.items():
-            if key != "settings":
-                button.setEnabled(bool(paths))
+        for button in self.controls.values():
+            button.setEnabled(bool(paths))
         if len(paths) < 2 and self.timer.isActive():
             self.timer.stop()
-            self.controls["slideshow"].setText("▷")
+            self.controls["slideshow"].setIcon(ui_icon("play"))
 
     def seek(self, index):
         if self.context.image_paths():
@@ -148,7 +149,7 @@ class Plugin:
             self.timer.stop()
         elif len(self.context.image_paths()) > 1:
             self.timer.start()
-        self.controls["slideshow"].setText("Ⅱ" if self.timer.isActive() else "▷")
+        self.controls["slideshow"].setIcon(ui_icon("pause" if self.timer.isActive() else "play"))
 
     def show_preview(self):
         paths = self.context.image_paths()

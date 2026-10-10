@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, Qt, QUrl
+from PySide6.QtCore import QByteArray, QEvent, Qt, QUrl
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -35,6 +35,7 @@ from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
 from picer.plugins.skins import COLORS
+from picer.preferences import DEFAULTS, read_preferences
 
 
 class ImageView(QGraphicsView):
@@ -48,8 +49,10 @@ class ImageView(QGraphicsView):
         self.scene.addItem(self.image_item)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        self.setBackgroundBrush(QColor("#191b1f"))
+        self.setBackgroundBrush(QColor(COLORS["background"]))
         self.fit_mode = True
+        self.zoom_step = 25
+        self.double_click = "toggle"
 
     def fit_image(self) -> None:
         self.fit_mode = True
@@ -68,8 +71,19 @@ class ImageView(QGraphicsView):
         self.resetTransform()
 
     def wheelEvent(self, event) -> None:
-        self.zoom(1.25 if event.angleDelta().y() > 0 else 0.8)
+        factor = 1 + self.zoom_step / 100
+        self.zoom(factor if event.angleDelta().y() > 0 else 1 / factor)
         event.accept()
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.double_click == "fit" or (self.double_click == "toggle" and not self.fit_mode):
+                self.fit_image()
+            else:
+                self.actual_size()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -93,6 +107,9 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(800, 420)
         self.resize(1200, 800)
         self.skin_colors = dict(COLORS)
+        self.app_preferences = dict(DEFAULTS)
+        self._skin_style = STYLE
+        self.shortcut_actions, self.default_shortcuts = {}, {}
         self.chrome_style = "standard"
         self._skin_filter = HostStyleFilter(self)
         QApplication.instance().installEventFilter(self._skin_filter)
@@ -132,6 +149,7 @@ class MainWindow(QMainWindow):
         self.copy_action = self.add_action(
             edit_menu, "复制文件路径", "Ctrl+Shift+C", self.copy_path
         )
+        self.settings_action = self.add_action(edit_menu, "设置…", "Ctrl+,", self.show_settings)
         self.previous_action = self.add_action(
             view_menu, "上一张", "Left", lambda: self.navigate(-1)
         )
@@ -160,6 +178,7 @@ class MainWindow(QMainWindow):
         self.plugins = PluginManager(self, self.paths_layout.root, load_external=load_external)
         self.plugins.changed.connect(self.panel_hovers.layout_strips)
         self.components = ComponentUI(self, plugin_menu)
+        self.apply_preferences()
         self.update_actions()
         self.title_bar.arrange()
 
@@ -174,16 +193,71 @@ class MainWindow(QMainWindow):
         action.triggered.connect(callback)
         menu.addAction(action)
         self.addAction(action)
+        if shortcut:
+            self.shortcut_actions[text] = action
+            self.default_shortcuts[text] = shortcut
         return action
 
     def apply_skin(self, style: str | None, colors: dict[str, str], *, chrome="standard") -> None:
         self.skin_colors = dict(colors)
         self.chrome_style = chrome
-        self.setStyleSheet(scope_style(STYLE if style is None else style))
+        self._skin_style = STYLE if style is None else style
+        self.apply_host_style()
         self.title_bar.set_chrome(chrome)
         self.view.setBackgroundBrush(QColor(colors["background"]))
         if hasattr(self, "components"):
             self.components.refresh_slots()
+
+    def apply_host_style(self):
+        style = self._skin_style
+        if self.app_preferences["density"] == "compact":
+            style += "\nQWidget { font-size: 12px; } QMenu::item { padding: 6px 24px 6px 12px; }"
+        self.setStyleSheet(scope_style(style))
+
+    def apply_preferences(self):
+        self.app_preferences = read_preferences(self.plugins)
+        self.view.zoom_step = self.app_preferences["zoom_step"]
+        self.view.double_click = self.app_preferences["double_click"]
+        self.thumbnail_cache.byte_limit = self.app_preferences["cache_mb"] * 1048576
+        self.thumbnail_cache.prune()
+        self.apply_host_style()
+        self.restore_shortcuts(self.plugins.preferences["ui"].get("shortcuts", {}))
+        for surface in tuple(self.glass.surfaces):
+            surface.update()
+        self.title_bar.arrange()
+
+    def restore_shortcuts(self, shortcuts):
+        if isinstance(shortcuts, dict):
+            used = set()
+            for name, action in self.shortcut_actions.items():
+                value = shortcuts.get(name, self.default_shortcuts[name])
+                if isinstance(value, str) and len(value) <= 128:
+                    sequence = QKeySequence(value)
+                    normalized = sequence.toString(QKeySequence.SequenceFormat.PortableText)
+                    if normalized and normalized in used:
+                        sequence = QKeySequence()
+                    action.setShortcut(sequence)
+                    if normalized:
+                        used.add(normalized)
+        shortcut = self.open_action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
+        self.empty_label.setText(
+            "打开图片，开始浏览\n" + (shortcut + "  ·  " if shortcut else "") + "或将图片拖入窗口"
+        )
+
+    def restore_startup(self, *, restore_image=True):
+        ui = self.plugins.preferences["ui"]
+        geometry = ui.get("window_geometry")
+        if (
+            self.app_preferences["remember_window"]
+            and isinstance(geometry, str)
+            and len(geometry) <= 16384
+        ):
+            self.restoreGeometry(QByteArray.fromHex(geometry.encode()))
+        last = ui.get("last_image")
+        if restore_image and self.app_preferences["start"] == "last" and isinstance(last, str):
+            path = Path(last)
+            if path.is_file():
+                self.open_image(path)
 
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
@@ -227,7 +301,20 @@ class MainWindow(QMainWindow):
         dialog.exec()
         dialog.deleteLater()
 
+    def show_settings(self):
+        from picer.settings import ApplicationSettings
+
+        dialog = ApplicationSettings(self)
+        dialog.exec()
+        dialog.deleteLater()
+
     def closeEvent(self, event) -> None:
+        ui = self.plugins.preferences["ui"]
+        if self.app_preferences["remember_window"] and not self.isFullScreen():
+            ui["window_geometry"] = bytes(self.saveGeometry().toHex()).decode()
+        if self.current_path:
+            ui["last_image"] = str(self.current_path)
+        self.plugins._save()
         self.plugins.shutdown()
         super().closeEvent(event)
 
@@ -258,7 +345,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 0.6.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.8.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -310,7 +397,7 @@ class MainWindow(QMainWindow):
         """Decode before updating state so failed files leave the current image intact."""
         path = path.resolve()
         reader = QImageReader(str(path))
-        reader.setAutoTransform(True)
+        reader.setAutoTransform(self.app_preferences["auto_orient"])
         image = reader.read()
         if image.isNull():
             self.last_error = f"无法打开 {path.name}：{reader.errorString()}"
@@ -328,12 +415,17 @@ class MainWindow(QMainWindow):
             paths = []
         if path not in paths:
             paths.append(path)
+        if not self.app_preferences["browse_folder"]:
+            paths = [path]
         self.paths = paths
         self.current_path = path
         self.current_thumbnail = self.thumbnail_cache.thumbnail(path, image)
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
         self.view.scene.setSceneRect(self.view.image_item.boundingRect())
-        self.view.fit_image()
+        if self.app_preferences["default_scale"] == "fit":
+            self.view.fit_image()
+        else:
+            self.view.actual_size()
         self.last_error = ""
         self.empty_label.hide()
         self.setWindowTitle(f"{path.name} — 揽映")
@@ -341,6 +433,8 @@ class MainWindow(QMainWindow):
         self.update_actions()
         self.image_revision += 1
         self.plugins.emit_image("opened")
+        if self.app_preferences["focus_image"]:
+            self.view.setFocus(Qt.FocusReason.OtherFocusReason)
         return True
 
     def navigate(self, offset: int) -> None:
@@ -350,7 +444,10 @@ class MainWindow(QMainWindow):
         paths = self.paths.copy()
         index = paths.index(self.current_path)
         for step in range(1, len(paths)):
-            if self.open_image(paths[(index + offset * step) % len(paths)]):
+            target = index + offset * step
+            if not self.app_preferences["wrap"] and not 0 <= target < len(paths):
+                return
+            if self.open_image(paths[target % len(paths)]):
                 return
 
     def update_actions(self) -> None:

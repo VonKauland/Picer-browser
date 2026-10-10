@@ -10,7 +10,6 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QTextEdit,
     QVBoxLayout,
@@ -70,11 +69,6 @@ class Plugin:
         self.title.setTextFormat(Qt.TextFormat.PlainText)
         self.title.setWordWrap(True)
         top.addWidget(self.title, 1)
-        settings = QPushButton("⚙")
-        settings.setFixedSize(28, 28)
-        settings.setToolTip("插件设置")
-        settings.clicked.connect(context.show_settings)
-        top.addWidget(settings)
         layout.addLayout(top)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)

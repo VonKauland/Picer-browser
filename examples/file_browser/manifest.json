@@ -1,5 +1,5 @@
 {
-  "id": "example.files", "name": "文件浏览器", "version": "1.0.0", "api_version": 1,
+  "id": "example.files", "name": "文件浏览器", "version": "1.1.0", "api_version": 1,
   "type": "panel", "entrypoint": "main:Plugin",
   "description": "左侧多级文件树；可设置首页、图标大小与排序。",
   "permissions": ["ui.panels", "image.read", "image.navigate", "settings"]

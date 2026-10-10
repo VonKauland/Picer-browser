@@ -26,7 +26,7 @@ from picer.panels import DOCK_AREAS, DockTitleSpacer, dock_surface, saved_layout
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
 from picer.plugins.builtin.transforms import Plugin as Transforms
 from picer.plugins.manifest import Manifest
-from picer.plugins.settings import SettingField, SettingsDialog
+from picer.plugins.settings import SettingField
 from picer.plugins.skins import COLORS, load_skin
 from picer.plugins.tasks import TaskCancelled, Worker
 
@@ -82,6 +82,8 @@ class PluginManager(QObject):
                 self.preferences = {key: data.get(key, {}) for key in ("enabled", "settings", "ui")}
         except (OSError, ValueError, UnicodeError) as error:
             self.diagnostics.append(f"配置读取失败：{error}")
+        # Restore core bindings before loading plugins that may use a freed shortcut.
+        self.host.restore_shortcuts(self.preferences["ui"].get("shortcuts", {}))
         try:
             self.log_handler = RotatingFileHandler(
                 self.log_file, maxBytes=256 * 1024, backupCount=2, encoding="utf-8"
@@ -602,9 +604,11 @@ class PluginManager(QObject):
         self.settings_forms[plugin_id] = (fields, callback)
 
     def show_settings(self, plugin_id):
+        from picer.plugins.dialog import PluginDialog
+
         if plugin_id not in self.settings_forms:
             raise PluginError("请先启用提供设置的组件")
-        dialog = SettingsDialog(self, plugin_id, self.host)
+        dialog = PluginDialog(self, self.host, selected_id=plugin_id, open_settings=True)
         dialog.exec()
         dialog.deleteLater()
 

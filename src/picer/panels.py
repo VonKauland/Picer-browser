@@ -90,7 +90,7 @@ class GlassBackdrop(QObject):
         self.capturing = True
         try:
             canvas = QImage(self.host.size(), QImage.Format.Format_RGBA8888)
-            canvas.fill(QColor("#121722"))
+            canvas.fill(QColor("#242426"))
             painter = QPainter(canvas)
             photo = self.host.view.image_item.pixmap()
             if not photo.isNull():
@@ -118,7 +118,8 @@ class GlassBackdrop(QObject):
             pixels = PillowImage.frombytes(
                 "RGBA", (small.width(), small.height()), bytes(small.bits())
             )
-            blurred = pixels.filter(ImageFilter.GaussianBlur(7))
+            # Neutral luminance preserves actual frosted detail without coloring the UI.
+            blurred = pixels.convert("L").convert("RGBA").filter(ImageFilter.GaussianBlur(7))
             self.image = (
                 QImage(
                     blurred.tobytes(), blurred.width, blurred.height, QImage.Format.Format_RGBA8888
@@ -160,7 +161,9 @@ class GlassSurface(QWidget):
         if not self.backdrop.image.isNull():
             origin = self.mapTo(self.backdrop.host, QPoint())
             painter.drawImage(self.rect(), self.backdrop.image, QRect(origin, self.size()))
-        painter.fillPath(path, QColor(25, 33, 47, 150))
+        strength = getattr(self.backdrop.host, "app_preferences", {}).get("glass_strength", 70)
+        enabled = getattr(self.backdrop.host, "app_preferences", {}).get("glass", True)
+        painter.fillPath(path, QColor(48, 48, 50, round(255 - strength * 0.5) if enabled else 255))
 
 
 class PanelGrip(QWidget):
@@ -179,7 +182,7 @@ class PanelGrip(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(161, 182, 210, 210 if self.underMouse() else 125))
+        painter.setBrush(QColor("#E8FF59" if self.underMouse() else "#A2A2A6"))
         center = QPointF(self.rect().center())
         for offset in (-6, 0, 6):
             delta = QPointF(offset, 0) if self.surface.horizontal else QPointF(0, offset)
@@ -361,7 +364,9 @@ class HiddenStrip(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(161, 182, 210, 165 if self.underMouse() else 90))
+        color = QColor("#E8FF59" if self.underMouse() else "#A2A2A6")
+        color.setAlpha(200 if self.underMouse() else 115)
+        painter.setBrush(color)
         painter.drawRoundedRect(self.rect(), 3, 3)
 
 
@@ -708,7 +713,7 @@ class DockDropHint(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(125, 177, 235, 145))
+        painter.setBrush(QColor(232, 255, 89, 145))
         painter.drawRoundedRect(self.rect(), 4, 4)
 
 

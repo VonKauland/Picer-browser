@@ -1,5 +1,5 @@
 {
-  "id": "example.progress", "name": "浏览进度", "version": "1.1.0", "api_version": 1,
+  "id": "example.progress", "name": "浏览进度", "version": "1.2.0", "api_version": 1,
   "type": "panel", "entrypoint": "main:Plugin",
   "description": "导航、旋转、幻灯片与可拖动进度；缩略预览随停靠方向排列。",
   "permissions": ["ui.panels", "image.read", "image.navigate", "image.modify", "events.subscribe", "settings", "tasks"]

@@ -22,3 +22,5 @@
 
 - Scope skins to host widgets only; preserve external plugin QIcon and content styles. All panel shells use shared glass backdrops; hover reveals must preserve hidden preferences and restore widget ownership on cleanup.
 - Keep four primary example ZIPs (file browser, image info, progress, macOS skin) plus the SDK negative regression ZIP. EXE checks must read actual JPEG EXIF and exercise hover animation and persistent example settings.
+- Keep default UI charcoal with a distinct lime accent. Default example panels have no settings buttons; edit component settings inline in Plugin Management. Application preferences belong in Edit → Settings.
+- Preserve panel motion: 420 ms OutBack (overshoot 0.55) expansion, 300 ms InOutCubic collapse, 220 ms leave delay and continuous reversal. Visual restyling must not change these animations.

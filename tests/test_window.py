@@ -129,7 +129,7 @@ def test_equal_colored_window_controls_and_maximize_restore(window, qtbot):
     assert controls["minimize"].x() < controls["maximize"].x() < controls["close"].x()
     for button in controls.values():
         pixels = button.grab().toImage()
-        color = button.COLORS[button.objectName()]
+        color = button.COLORS[button.objectName()].lower()
         assert any(
             pixels.pixelColor(x, y).name() == color
             for x in range(pixels.width())

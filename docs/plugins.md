@@ -128,7 +128,7 @@ class Plugin:
 
 | 权限 | API | 行为 |
 | --- | --- | --- |
-| settings | `add_settings(fields, on_apply)` / `show_settings()` | 声明 SettingField 设置表单，并在宿主对话框应用 |
+| settings | `add_settings(fields, on_apply)` / `show_settings()` | 声明 SettingField 设置表单，在插件管理的内嵌设置页应用 |
 | image.navigate | `open_image(path)` / `navigate(offset)` / `jump_to(index)` | 打开或按当前目录顺序导航、按零起始位置跳转 |
 | image.read | `image_paths()` | 当前目录顺序的 Path 元组快照 |
 | image.read + tasks | `request_metadata(callback)` | 后台读取原图元数据，丢弃过期结果 |
@@ -196,3 +196,5 @@ v1 是可信 Python 插件系统，运行在宿主进程中。权限声明只控
 后续可在稳定 SDK 上增加：独立进程插件、解码器与导出器注册、撤销栈、插件版本依赖范围与签名分发。目前没有实现插件商店、网络更新或不可信插件沙箱。
 
 SettingField 支持 bool、int、choice、path、text；字段包括 key、label、kind、default、minimum、maximum、choices。`add_settings` 只注册一次，清理上下文时移除表单。完整实例与参数范围见 [示例组件说明](example-components.md)。
+
+`show_settings()` 定位到插件管理中当前组件的设置页；默认面板不要增加设置按钮。`from picer.plugins import ui_icon` 可获取宿主随附的静态细线图标（`folder`、`home`、`up`、`left`、`right`、`grid`、`rotate`、`play`、`pause` 等），颜色默认为白色，保持独立于宿主皮肤。API v1 生命周期与权限契约不变。

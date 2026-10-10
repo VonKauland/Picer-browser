@@ -4,11 +4,13 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenuBar, QPushButton, QToolButton, QWidget
 
+from picer.theme import STYLE as STYLE
+
 
 class WindowButton(QPushButton):
     """Equal-sized controls with font-independent, colored line symbols."""
 
-    COLORS = {"minimize": "#d5ad67", "maximize": "#70b781", "close": "#d76b6b"}
+    COLORS = {"minimize": "#E8FF59", "maximize": "#70b781", "close": "#d76b6b"}
 
     def __init__(self, name, callback):
         super().__init__()
@@ -170,34 +172,3 @@ class TitleBar(QWidget):
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.toggle_maximized()
-
-
-STYLE = """
-QWidget { background: #191b1f; color: #e5e6e8; font-size: 13px;
-font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
-QWidget#titleBar { background: #202226; }
-QWidget#titleLeft, QWidget#titleRight, QWidget#windowControls, QLabel { background: transparent; }
-QLabel#brand { font-size: 15px; font-weight: 600; }
-QMenuBar { background: transparent; padding: 0; }
-QMenuBar::item { padding: 8px 10px; background: transparent; }
-QMenuBar::item:selected { background: #32353b; border-radius: 4px; }
-QMenu { background: #25272c; border: 1px solid #3a3d44; padding: 6px; }
-QMenu::item { padding: 7px 28px 7px 14px; border-radius: 3px; }
-QMenu::item:selected { background: #3a3d44; }
-QMenu::item:disabled { color: #777b83; }
-QMenu::separator { height: 1px; background: #3a3d44; margin: 5px 8px; }
-QPushButton { border: none; background: transparent; font-size: 18px; }
-QPushButton:hover { background: #35383e; }
-QPushButton#close:hover { background: #c42b3a; color: white; }
-QGraphicsView { border: none; background: #191b1f; }
-QToolButton#quickSlot { border: none; border-radius: 6px; margin: 2px;
-background: transparent; color: #92969e; font-size: 16px; }
-QToolButton#quickSlot:hover { background: #35383e; }
-QToolButton#quickSlot:disabled { color: #777b83; }
-QDockWidget { font-size: 12px; }
-QMainWindow::separator { background: transparent; width: 0px; height: 0px; }
-QLabel#empty { color: #92969e; font-size: 15px; background: transparent; }
-QScrollBar { background: #202226; width: 9px; height: 9px; }
-QScrollBar::handle { background: #4a4e56; border-radius: 4px; min-height: 20px; min-width: 20px; }
-QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
-"""

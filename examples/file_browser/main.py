@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from picer.plugins import SettingField
+from picer.plugins import SettingField, ui_icon
 
 
 class Plugin:
@@ -48,14 +48,16 @@ class Plugin:
         layout = QVBoxLayout(self.panel)
         layout.setContentsMargins(12, 12, 12, 12)
         toolbar = QHBoxLayout()
-        for label, tip, callback in (
-            ("⌂", "首页", self.go_home),
-            ("↑", "上一级", self.go_up),
-            ("⚙", "插件设置", context.show_settings),
+        for icon, tip, callback in (
+            ("home", "首页", self.go_home),
+            ("up", "上一级", self.go_up),
         ):
-            button = QPushButton(label)
-            button.setFixedSize(28, 28)
+            button = QPushButton()
+            button.setIcon(ui_icon(icon))
+            button.setObjectName("circleButton")
+            button.setFixedSize(32, 32)
             button.setToolTip(tip)
+            button.setAccessibleName(tip)
             button.clicked.connect(callback)
             toolbar.addWidget(button)
         self.sort = QComboBox()

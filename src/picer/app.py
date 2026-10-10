@@ -47,6 +47,8 @@ def main() -> int:
         if temporary_plugins:
             temporary_plugins.cleanup()
         return 1
+    if not smoke_test:
+        window.restore_startup(restore_image=not bool(args.image))
     window.show()
 
     temporary_images = (

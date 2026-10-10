@@ -7,8 +7,11 @@ from PIL import Image
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QCursor, QImage
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QPushButton
 
 from picer.panels import DOCK_AREAS
+from picer.plugins.dialog import PluginDialog
+from picer.settings import ApplicationSettings
 
 
 def run(window, args, folder, done):
@@ -45,17 +48,39 @@ def run(window, args, folder, done):
             for button in window.title_bar.control_buttons.values()
         )
         assert all(dock.titleBarWidget().height() == 0 for dock in window.plugins.panels.values())
+        for plugin_id in ("example.files", "example.info", "example.progress"):
+            record = window.plugins.records.get(plugin_id)
+            if record:
+                assert all(
+                    "设置" not in button.text() + button.toolTip() + button.accessibleName()
+                    for button in record.instance.panel.findChildren(QPushButton)
+                )
         if args.file_panel_archive:
             browser_record = window.plugins.records["example.files"]
             browser = browser_record.instance
             if count_before:
                 assert browser_record.context.get_setting("home") == str(folder)
                 assert browser_record.context.get_setting("icon_size") == 40
-            browser_record.context.set_setting("home", str(folder))
-            browser_record.context.set_setting("icon_size", 40)
-            browser.apply_settings()
+            management = PluginDialog(
+                window.plugins, window, selected_id="example.files", open_settings=True
+            )
+            assert management.pages.currentIndex() == 1
+            management.settings_form.editors["home"].setText(str(folder))
+            management.settings_form.editors["icon_size"].setValue(40)
+            management.save_settings()
+            assert management.summary.text() == "设置已保存"
+            management.close()
+            management.deleteLater()
             assert browser.location.text() == str(folder.resolve())
             assert browser.tree.iconSize().width() == 40
+            if count_before:
+                assert window.app_preferences["zoom_step"] == 30
+            application_settings = ApplicationSettings(window)
+            assert application_settings.pages.count() == 6
+            application_settings.editors["zoom_step"].setValue(30)
+            application_settings.save()
+            assert window.view.zoom_step == 30
+            application_settings.deleteLater()
         progress = (
             window.plugins.records["example.progress"].instance
             if args.progress_panel_archive
@@ -78,9 +103,15 @@ def run(window, args, folder, done):
             settings = window.plugins.records["example.progress"].context
             if count_before:
                 assert settings.get_setting("thumbnail_size") == 80
-            settings.set_setting("thumbnail_size", 80)
-            settings.set_setting("thumbnail_count", 3)
-            progress.apply_settings()
+            management = PluginDialog(
+                window.plugins, window, selected_id="example.progress", open_settings=True
+            )
+            management.settings_form.editors["thumbnail_size"].setValue(80)
+            management.settings_form.editors["thumbnail_count"].setValue(3)
+            management.save_settings()
+            assert management.summary.text() == "设置已保存"
+            management.close()
+            management.deleteLater()
             progress.controls["slideshow"].click()
             assert progress.timer.isActive()
             progress.controls["slideshow"].click()
@@ -212,7 +243,7 @@ def run(window, args, folder, done):
             assert not window.glass.image.isNull()
             print(
                 "Packaged examples: file tree, settings, metadata/EXIF, histogram, progress, "
-                "thumbnails, macOS isolation, glass, hover morph, "
+                "thumbnails, embedded/app settings, macOS isolation, glass, hover morph, "
                 "hidden-strip drag/pin and grips passed"
             )
             done(0)

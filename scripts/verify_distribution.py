@@ -90,6 +90,8 @@ def verify(application: Path) -> None:
             raise RuntimeError("Quick slot assignment did not survive relocation")
         if preferences["settings"]["example.files"]["home"] != str(images):
             raise RuntimeError("File browser home did not survive relocation")
+        if preferences["ui"]["application"]["zoom_step"] != 30:
+            raise RuntimeError("Application settings did not survive relocation")
         print(
             "Folder layout, icons, function/skin/panel components, quick slots, fullscreen, "
             "cache, restart and relocation checks passed"

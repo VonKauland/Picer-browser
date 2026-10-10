@@ -7,16 +7,7 @@ from pathlib import Path
 
 from picer.chrome import STYLE
 from picer.plugins.api import PluginError
-
-COLORS = {
-    "background": "#191b1f",
-    "title": "#202226",
-    "text": "#e5e6e8",
-    "menu": "#25272c",
-    "border": "#3a3d44",
-    "hover": "#35383e",
-    "muted": "#92969e",
-}
+from picer.theme import COLORS as COLORS
 
 
 @dataclass(frozen=True)
