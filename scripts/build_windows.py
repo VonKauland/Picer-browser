@@ -49,6 +49,8 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
         "assets/icons：图标资源；_internal：必需运行库，请勿删除。\n"
         "examples 提供文件浏览器、图片信息、浏览进度及 macOS 皮肤，请在插件管理中安装并启用。\n"
         "顶栏 5 个快捷位可右键配置；毛玻璃面板隐藏后悬停边缘细条即可展开。\n"
+        "面板三点条拖动调宽/调高，右键自动隐藏，Shift 拖动换边。\n"
+        "点击隐藏细条靠边固定；拖动细条到左、右、底部换边并保持隐藏。\n"
         "插件管理提供设置入口，可配置首页、排序、信息分类、缩略图与幻灯片间隔。\n"
         "迁移软件时复制整个目录；更新时保留 plugins、skins 与 config。\n"
         "目录不可写时用户数据退回 LocalAppData/Picer，可从帮助菜单查看位置。\n"

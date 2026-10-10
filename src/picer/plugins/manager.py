@@ -22,7 +22,7 @@ from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import QDockWidget, QWidget
 
 from picer.host_style import PLUGIN_STYLE
-from picer.panels import dock_surface, dock_title
+from picer.panels import DOCK_AREAS, DockTitleSpacer, dock_surface, saved_layout
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
 from picer.plugins.builtin.transforms import Plugin as Transforms
 from picer.plugins.manifest import Manifest
@@ -423,11 +423,6 @@ class PluginManager(QObject):
         self.update_commands()
 
     def add_panel(self, plugin_id: str, widget: QWidget, area: str) -> None:
-        areas = {
-            "left": Qt.DockWidgetArea.LeftDockWidgetArea,
-            "right": Qt.DockWidgetArea.RightDockWidgetArea,
-            "bottom": Qt.DockWidgetArea.BottomDockWidgetArea,
-        }
         if self.records[plugin_id].manifest.type != "panel":
             raise PluginError("只有面板组件可以注册面板")
         if plugin_id in self.panels:
@@ -439,8 +434,11 @@ class PluginManager(QObject):
             or widget.parent() is not None
         ):
             raise PluginError("面板必须为无父级的新 QWidget")
-        if area not in areas:
+        if area not in DOCK_AREAS:
             raise PluginError("面板位置必须为 left、right 或 bottom")
+        preferred = saved_layout(self, plugin_id).get("area")
+        if isinstance(preferred, str) and preferred in DOCK_AREAS:
+            area = preferred
         dock = QDockWidget(self.records[plugin_id].manifest.name, self.host)
         dock.setObjectName("panel:" + plugin_id)
         dock.setAllowedAreas(
@@ -453,12 +451,14 @@ class PluginManager(QObject):
             | QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
         dock.setProperty("pluginSurface", True)
-        dock.setStyleSheet(PLUGIN_STYLE)
+        dock.setStyleSheet(
+            PLUGIN_STYLE + "\nQDockWidget { border: none; background: transparent; }"
+        )
         dock.setWidget(dock_surface(self.host, widget))
-        dock.setTitleBarWidget(dock_title(self.host, dock))
+        dock.setTitleBarWidget(DockTitleSpacer(dock))
         dock.toggleViewAction().setText("显示：" + dock.windowTitle())
         self.panels[plugin_id] = dock
-        self.host.addDockWidget(areas[area], dock)
+        self.host.addDockWidget(DOCK_AREAS[area], dock)
         visibility = self.preferences["ui"].get("panels", {})
         visible = visibility.get(plugin_id, True) if isinstance(visibility, dict) else True
         dock.setVisible(not self._fullscreen and visible is not False)
@@ -742,6 +742,9 @@ class PluginManager(QObject):
         visibility = self.preferences["ui"].get("panels", {})
         if isinstance(visibility, dict):
             visibility.pop(plugin_id, None)
+        layouts = self.preferences["ui"].get("panel_layouts", {})
+        if isinstance(layouts, dict):
+            layouts.pop(plugin_id, None)
         slots = self.preferences["ui"].get("quick_slots", [])
         if isinstance(slots, list):
             self.preferences["ui"]["quick_slots"] = [

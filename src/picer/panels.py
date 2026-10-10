@@ -9,23 +9,36 @@ from PySide6.QtCore import (
     QEvent,
     QObject,
     QPoint,
+    QPointF,
     QRect,
+    QRectF,
+    QSize,
     Qt,
     QTimer,
     QVariantAnimation,
 )
-from PySide6.QtGui import QColor, QCursor, QImage, QPainter, QPainterPath, QPen, QRegion
+from PySide6.QtGui import QColor, QCursor, QImage, QPainter, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QApplication,
     QGraphicsBlurEffect,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
+    QMenu,
     QVBoxLayout,
     QWidget,
 )
 
 from picer.host_style import PLUGIN_STYLE
+
+DOCK_AREAS = {
+    "left": Qt.DockWidgetArea.LeftDockWidgetArea,
+    "right": Qt.DockWidgetArea.RightDockWidgetArea,
+    "bottom": Qt.DockWidgetArea.BottomDockWidgetArea,
+}
+
+
+def saved_layout(manager, plugin_id):
+    layouts = manager.preferences["ui"].get("panel_layouts", {})
+    value = layouts.get(plugin_id, {}) if isinstance(layouts, dict) else {}
+    return value if isinstance(value, dict) else {}
 
 
 class GlassBackdrop(QObject):
@@ -142,15 +155,112 @@ class GlassSurface(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         path = QPainterPath()
-        path.addRoundedRect(self.rect().adjusted(1, 1, -1, -1), self.radius, self.radius)
+        path.addRoundedRect(QRectF(self.rect()), self.radius, self.radius)
         painter.setClipPath(path)
         if not self.backdrop.image.isNull():
             origin = self.mapTo(self.backdrop.host, QPoint())
             painter.drawImage(self.rect(), self.backdrop.image, QRect(origin, self.size()))
         painter.fillPath(path, QColor(25, 33, 47, 150))
-        painter.setClipping(False)
-        painter.setPen(QPen(QColor(220, 235, 255, 40), 1))
-        painter.drawPath(path)
+
+
+class PanelGrip(QWidget):
+    """One internal three-dot handle; resize normally, Shift-drag to move a dock."""
+
+    def __init__(self, surface):
+        super().__init__(surface)
+        self.surface = surface
+        self.controller = None
+        self.origin = None
+        self.moving = False
+        self.setToolTip("拖动调整大小 · Shift 拖动换边 · 右键隐藏或停靠")
+        self.setAccessibleName("面板三点拖拽条")
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(161, 182, 210, 210 if self.underMouse() else 125))
+        center = QPointF(self.rect().center())
+        for offset in (-6, 0, 6):
+            delta = QPointF(offset, 0) if self.surface.horizontal else QPointF(0, offset)
+            painter.drawEllipse(center + delta, 1.5, 1.5)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.controller:
+            self.origin = event.globalPosition().toPoint()
+            self.start_extent = self.controller.current_extent()
+            self.moving = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            # Moving a hidden panel is done on its stable edge strip, not a morphing child.
+            self.moving = self.moving and not self.controller.dock.isHidden()
+            if self.moving:
+                self.controller.begin_move()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.origin is None:
+            return
+        position = event.globalPosition().toPoint()
+        if self.moving:
+            self.controller.update_move(position)
+        else:
+            delta = position - self.origin
+            amount = -delta.y() if self.surface.horizontal else delta.x()
+            if self.controller.area == DOCK_AREAS["right"]:
+                amount = -amount
+            self.controller.resize_extent(self.start_extent + amount)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.origin is not None:
+            self.origin = None
+            if self.moving:
+                self.controller.end_move(event.globalPosition().toPoint())
+            else:
+                self.controller.remember_layout()
+            self.moving = False
+            event.accept()
+
+    def contextMenuEvent(self, event):
+        if self.controller:
+            self.controller.show_menu(event.globalPos())
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.controller:
+            if self.controller.dock.isHidden():
+                self.controller.pin()
+            else:
+                self.controller.dock.close()
+
+
+class DockSurface(GlassSurface):
+    def __init__(self, host, content):
+        super().__init__(host.glass)
+        self.horizontal = False
+        self.area = DOCK_AREAS["left"]
+        layout = QVBoxLayout(self)
+        layout.addWidget(content)
+        self.grip = PanelGrip(self)
+
+    def arrange(self, area=None):
+        if area is not None:
+            self.area = area
+        self.horizontal = self.area == DOCK_AREAS["bottom"]
+        if self.horizontal:
+            self.layout().setContentsMargins(0, 16, 0, 0)
+            self.grip.setGeometry((self.width() - 44) // 2, 0, 44, 16)
+            self.grip.setCursor(Qt.CursorShape.SizeVerCursor)
+        else:
+            left = self.area == DOCK_AREAS["left"]
+            self.layout().setContentsMargins(0 if left else 16, 0, 16 if left else 0, 0)
+            self.grip.setGeometry(
+                self.width() - 16 if left else 0, (self.height() - 44) // 2, 16, 44
+            )
+            self.grip.setCursor(Qt.CursorShape.SizeHorCursor)
+        self.grip.raise_()
+        self.grip.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.arrange()
 
 
 def dock_surface(host, content):
@@ -163,27 +273,21 @@ def dock_surface(host, content):
         + original_style
         + '\nQWidget[picerPanelContent="true"] { background: transparent; }'
     )
-    surface = GlassSurface(host.glass)
-    layout = QVBoxLayout(surface)
-    layout.setContentsMargins(0, 0, 0, 0)
-    layout.addWidget(content)
-    return surface
+    return DockSurface(host, content)
 
 
-def dock_title(host, dock):
-    title = GlassSurface(host.glass, radius=8)
-    title.setStyleSheet(PLUGIN_STYLE)
-    layout = QHBoxLayout(title)
-    layout.setContentsMargins(12, 4, 6, 4)
-    label = QLabel(dock.windowTitle())
-    label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-    layout.addWidget(label, 1)
-    close = QPushButton("×")
-    close.setFixedSize(22, 22)
-    close.setToolTip("隐藏面板")
-    close.clicked.connect(dock.close)
-    layout.addWidget(close)
-    return title
+class DockTitleSpacer(QWidget):
+    """Suppress native dock chrome without Qt's invalid (-1, -1) size hints."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setFixedHeight(0)
+
+    def sizeHint(self):
+        return QSize(0, 0)
+
+    def minimumSizeHint(self):
+        return QSize(0, 0)
 
 
 class RevealEffect(QGraphicsBlurEffect):
@@ -203,19 +307,55 @@ class HiddenStrip(QWidget):
     def __init__(self, controller):
         super().__init__(controller.host)
         self.controller = controller
+        self.origin = None
+        self.dragging = False
         self.setProperty("pluginSurface", True)
-        self.setToolTip(controller.dock.windowTitle())
-        self.setAccessibleName(controller.dock.windowTitle() + " · 悬停展开")
+        self.setToolTip(controller.dock.windowTitle() + " · 悬停展开，点击固定，拖动换边")
+        self.setAccessibleName(controller.dock.windowTitle() + " · 悬停展开，点击固定，拖动换边")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.hide()
 
     def enterEvent(self, event):
-        self.controller.reveal()
+        if self.origin is None:
+            self.controller.reveal()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         self.controller.schedule_collapse()
         super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.origin = event.globalPosition().toPoint()
+            self.dragging = False
+            self.controller.leave_timer.stop()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self.origin is None:
+            return
+        position = event.globalPosition().toPoint()
+        if (
+            not self.dragging
+            and (position - self.origin).manhattanLength() >= QApplication.startDragDistance()
+        ):
+            self.dragging = True
+            self.controller.begin_move()
+        if self.dragging:
+            self.controller.update_move(position)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.origin is not None:
+            self.origin = None
+            if self.dragging:
+                self.controller.end_move(event.globalPosition().toPoint())
+            else:
+                self.controller.pin()
+            self.dragging = False
+            event.accept()
+
+    def contextMenuEvent(self, event):
+        self.controller.show_menu(event.globalPos())
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -232,14 +372,7 @@ class MorphPopup(GlassSurface):
         self.setStyleSheet(PLUGIN_STYLE)
         self.content = QWidget(self)
         layout = QVBoxLayout(self.content)
-        layout.setContentsMargins(6, 4, 6, 6)
-        row = QHBoxLayout()
-        row.addWidget(QLabel(controller.dock.windowTitle()), 1)
-        close = QPushButton("×")
-        close.setFixedSize(24, 24)
-        close.clicked.connect(controller.collapse)
-        row.addWidget(close)
-        layout.addLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(surface, 1)
         self.effect = RevealEffect(self.content)
         self.content.setGraphicsEffect(self.effect)
@@ -266,8 +399,19 @@ class HiddenPanel(QObject):
         self.surface = None
         self.progress = 0.0
         self.expanding = False
-        self.last_size = dock.size()
+        self.moving = False
+        self.initializing = True
+        self.relocating = False
+        self.extents = {"width": 320, "height": 180}
+        layout = saved_layout(manager, plugin_id)
+        for key in self.extents:
+            value = layout.get(key)
+            if type(value) is int and 80 <= value <= 4096:
+                self.extents[key] = value
+        self.last_size = QSize(self.extents["width"], self.extents["height"])
         self.area = self.host.dockWidgetArea(dock)
+        dock.widget().grip.controller = self
+        dock.widget().arrange(self.area)
         self.animation = QVariantAnimation(self)
         self.animation.valueChanged.connect(self.animate)
         self.animation.finished.connect(self.finished)
@@ -278,22 +422,136 @@ class HiddenPanel(QObject):
         dock.installEventFilter(self)
         dock.visibilityChanged.connect(self.visibility)
         dock.dockLocationChanged.connect(self.location)
+        self.size_timer = QTimer(self)
+        self.size_timer.setSingleShot(True)
+        self.size_timer.timeout.connect(self.initialize_size)
+        self.size_timer.start(0)
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.Resize and not self.dock.isHidden():
-            self.last_size = self.dock.size()
+        if (
+            event.type() == QEvent.Type.Resize
+            and not self.dock.isHidden()
+            and not self.initializing
+            and not self.relocating
+        ):
+            key = "height" if self.area == DOCK_AREAS["bottom"] else "width"
+            self.extents[key] = self.dock.height() if key == "height" else self.dock.width()
+            self.last_size = QSize(self.extents["width"], self.extents["height"])
         return False
 
     def location(self, area):
         if area != Qt.DockWidgetArea.NoDockWidgetArea:
             self.area = area
+            surface = self.surface or self.dock.widget()
+            surface.arrange(area)
             self.collection.layout_strips()
 
     def visibility(self, visible):
         if visible:
-            self.last_size = self.dock.size()
             self.collapse(immediate=True)
         self.collection.layout_strips()
+
+    def current_extent(self):
+        return self.extents["height" if self.area == DOCK_AREAS["bottom"] else "width"]
+
+    def restore_size(self):
+        if not self.dock.isHidden():
+            self.resize_extent(self.current_extent())
+
+    def initialize_size(self):
+        self.restore_size()
+        self.initializing = False
+
+    def resize_extent(self, extent):
+        horizontal = self.area == DOCK_AREAS["bottom"]
+        surface = self.surface or self.dock.widget()
+        minimum = surface.minimumSizeHint()
+        limit = (
+            self.host.height() - self.host.title_bar.height() if horizontal else self.host.width()
+        )
+        smallest = max(80, minimum.height() if horizontal else minimum.width())
+        extent = max(smallest, min(extent, max(smallest, limit - 120)))
+        self.extents["height" if horizontal else "width"] = extent
+        self.last_size = QSize(self.extents["width"], self.extents["height"])
+        if self.popup:
+            self.target = self.bounds()
+            self.popup.content.setFixedSize(self.target.size())
+            self.animate(self.progress)
+        else:
+            self.host.resizeDocks(
+                [self.dock],
+                [extent],
+                Qt.Orientation.Vertical if horizontal else Qt.Orientation.Horizontal,
+            )
+
+    def remember_layout(self):
+        ui = self.manager.preferences["ui"]
+        if not isinstance(ui.get("panel_layouts"), dict):
+            ui["panel_layouts"] = {}
+        ui["panel_layouts"][self.plugin_id] = {
+            "area": next(name for name, area in DOCK_AREAS.items() if area == self.area),
+            **self.extents,
+        }
+        self.manager._save()
+
+    def pin(self):
+        self.collapse(immediate=True)
+        self.dock.show()
+        self.restore_size()
+        self.remember_layout()
+        self.collection.layout_strips()
+
+    def move_to(self, area):
+        if area not in DOCK_AREAS.values():
+            return
+        self.collapse(immediate=True)
+        hidden = self.dock.isHidden()
+        transition = self.manager._panel_transition
+        self.manager._panel_transition = True
+        self.relocating = True
+        try:
+            self.host.addDockWidget(area, self.dock)
+            self.dock.setVisible(not hidden)
+        finally:
+            self.manager._panel_transition = transition
+            self.relocating = False
+        self.restore_size()
+        self.remember_layout()
+        self.collection.layout_strips()
+
+    def begin_move(self):
+        self.moving = True
+        self.collapse(immediate=True)
+        self.leave_timer.stop()
+
+    def update_move(self, global_position):
+        area = self.collection.edge_at(self.host.mapFromGlobal(global_position))
+        self.collection.show_drop_hint(area)
+
+    def end_move(self, global_position):
+        area = self.collection.edge_at(self.host.mapFromGlobal(global_position))
+        self.collection.show_drop_hint(None)
+        self.moving = False
+        if area:
+            self.move_to(area)
+        self.collection.layout_strips()
+
+    def show_menu(self, position):
+        menu = QMenu(self.strip)
+        menu.setStyleSheet(PLUGIN_STYLE)
+        hidden = self.dock.isHidden()
+        menu.addAction(
+            "靠边固定" if hidden else "自动隐藏", self.pin if hidden else self.dock.close
+        )
+        menu.addSeparator()
+        for name, label in (("left", "停靠左侧"), ("right", "停靠右侧"), ("bottom", "停靠底部")):
+            action = menu.addAction(
+                label, lambda checked=False, area=DOCK_AREAS[name]: self.move_to(area)
+            )
+            action.setCheckable(True)
+            action.setChecked(self.area == DOCK_AREAS[name])
+        menu.exec(position)
+        menu.deleteLater()
 
     def bounds(self):
         viewport = self.host.view.viewport()
@@ -321,7 +579,7 @@ class HiddenPanel(QObject):
 
     def reveal(self):
         record = self.manager.records.get(self.plugin_id)
-        if not self.dock.isHidden() or record is None or record.state != "enabled":
+        if self.moving or not self.dock.isHidden() or record is None or record.state != "enabled":
             return
         self.leave_timer.stop()
         if self.popup is None:
@@ -336,6 +594,7 @@ class HiddenPanel(QObject):
             self.surface.show()
             self.popup.show()
             self.popup.raise_()
+            self.strip.raise_()
         self.start_animation(True)
 
     def start_animation(self, expanding):
@@ -377,7 +636,7 @@ class HiddenPanel(QObject):
         self.popup.update()
 
     def schedule_collapse(self):
-        if self.popup and self.expanding:
+        if self.popup and self.expanding and not self.moving:
             self.leave_timer.start()
 
     def check_leave(self):
@@ -388,6 +647,7 @@ class HiddenPanel(QObject):
         if (
             self.popup.geometry().contains(cursor)
             or self.strip.geometry().contains(cursor)
+            or self.strip.origin is not None
             or popup_active
         ):
             self.leave_timer.start()
@@ -412,22 +672,44 @@ class HiddenPanel(QObject):
     def restore(self):
         if self.popup is None:
             return
-        self.surface.setGraphicsEffect(None)
-        self.surface.render_backdrop = True
-        self.surface.setParent(self.dock)
-        self.dock.setWidget(self.surface)
-        self.surface.show()
-        self.popup.hide()
-        self.popup.deleteLater()
+        surface, popup = self.surface, self.popup
+        # setWidget/show may synchronously emit visibilityChanged and reenter collapse.
+        # Clear transient state first so ownership is restored exactly once.
         self.popup, self.surface = None, None
         self.progress = 0.0
+        surface.setGraphicsEffect(None)
+        surface.render_backdrop = True
+        surface.setParent(self.dock)
+        self.dock.setWidget(surface)
+        surface.show()
+        popup.hide()
+        popup.deleteLater()
 
     def dispose(self):
         self.collapse(immediate=True)
         self.animation.stop()
         self.leave_timer.stop()
+        self.size_timer.stop()
+        if self.moving:
+            self.collection.show_drop_hint(None)
         self.strip.hide()
         self.strip.deleteLater()
+
+
+class DockDropHint(QWidget):
+    def __init__(self, host):
+        super().__init__(host)
+        self.setProperty("pluginSurface", True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.hide()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(125, 177, 235, 145))
+        painter.drawRoundedRect(self.rect(), 4, 4)
 
 
 class PanelHovers(QObject):
@@ -435,6 +717,7 @@ class PanelHovers(QObject):
         super().__init__(host)
         self.host = host
         self.controllers = {}
+        self.drop_hint = DockDropHint(host)
         host.installEventFilter(self)
 
     def eventFilter(self, obj, event):
@@ -452,8 +735,33 @@ class PanelHovers(QObject):
             controller.dispose()
 
     def close_all(self):
+        self.show_drop_hint(None)
         for controller in self.controllers.values():
             controller.collapse(immediate=True)
+
+    def edge_at(self, position):
+        if not self.host.rect().contains(position) or position.y() < self.host.title_bar.height():
+            return None
+        distances = {
+            DOCK_AREAS["left"]: position.x(),
+            DOCK_AREAS["right"]: self.host.width() - 1 - position.x(),
+            DOCK_AREAS["bottom"]: self.host.height() - 1 - position.y(),
+        }
+        area = min(distances, key=distances.get)
+        return area if distances[area] <= 72 else None
+
+    def show_drop_hint(self, area):
+        if not area:
+            self.drop_hint.hide()
+            return
+        top, width, height = self.host.title_bar.height() + 6, self.host.width(), self.host.height()
+        if area == DOCK_AREAS["bottom"]:
+            rect = QRect(8, height - 14, width - 16, 6)
+        else:
+            rect = QRect(8 if area == DOCK_AREAS["left"] else width - 14, top, 6, height - top - 8)
+        self.drop_hint.setGeometry(rect)
+        self.drop_hint.show()
+        self.drop_hint.raise_()
 
     def layout_strips(self):
         areas = {}

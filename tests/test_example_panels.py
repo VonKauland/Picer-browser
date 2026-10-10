@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 from PIL import Image
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QDockWidget
 
 from picer.metadata import inspect_image
-from picer.panels import GlassSurface
+from picer.panels import DOCK_AREAS, GlassSurface
 from picer.plugins.settings import SettingsDialog
 from picer.window import MainWindow
 
@@ -192,14 +192,14 @@ def test_macos_host_skin_keeps_plugin_styles_and_icons(window, tmp_path, picture
     skin_id = window.plugins.install(example(tmp_path, "macos_skin"))
     window.plugins.enable(skin_id)
     assert window.chrome_style == "macos"
-    assert window.title_bar.controls.parent() is window.title_bar.left
-    assert window.title_bar.control_buttons["close"].width() == 14
+    assert window.title_bar.controls.parent() is window.title_bar.right
+    assert window.title_bar.control_buttons["close"].width() == 32
     assert plugin.panel.styleSheet() == style
     assert external.icon().cacheKey() == cache_key
     assert not plugin.panel.property("picerHost")
     window.plugins.disable(skin_id)
     assert window.title_bar.controls.parent() is window.title_bar.right
-    assert window.title_bar.control_buttons["close"].width() == 46
+    assert window.title_bar.control_buttons["close"].width() == 32
 
 
 @pytest.mark.parametrize(
@@ -297,3 +297,140 @@ def test_invalid_settings_schema_and_disabled_settings_removed(window, tmp_path)
     assert "example.files" not in window.plugins.settings_forms
     with pytest.raises(PluginError, match="停用"):
         context.show_settings()
+
+
+def drag_to(qtbot, widget, destination, modifier=Qt.KeyboardModifier.NoModifier):
+    qtbot.mousePress(widget, Qt.MouseButton.LeftButton, modifier, pos=widget.rect().center())
+    qtbot.mouseMove(widget, widget.mapFromGlobal(destination))
+    qtbot.mouseRelease(
+        widget, Qt.MouseButton.LeftButton, modifier, pos=widget.mapFromGlobal(destination)
+    )
+
+
+@pytest.mark.parametrize("area", list(DOCK_AREAS.values()))
+def test_internal_grip_resizes_without_title_or_separator(window, tmp_path, qtbot, area):
+    plugin = enable(window, tmp_path, "progress_panel")
+    controller = window.panel_hovers.controllers["example.progress"]
+    controller.move_to(area)
+    qtbot.wait(50)
+    dock, surface = plugin.dock, plugin.dock.widget()
+    assert dock.titleBarWidget().height() == 0
+    assert surface.geometry() == dock.rect()
+    grip = surface.grip
+    if area == DOCK_AREAS["bottom"]:
+        assert abs(grip.geometry().center().x() - surface.rect().center().x()) <= 1
+        before = dock.height()
+        delta = QPoint(0, -55)
+    else:
+        assert abs(grip.geometry().center().y() - surface.rect().center().y()) <= 1
+        before = dock.width()
+        delta = QPoint(55 if area == DOCK_AREAS["left"] else -55, 0)
+    destination = grip.mapToGlobal(grip.rect().center()) + delta
+    drag_to(qtbot, grip, destination)
+    qtbot.wait(50)
+    after = dock.height() if area == DOCK_AREAS["bottom"] else dock.width()
+    assert after >= before + 40
+    assert controller.current_extent() == after
+    assert window.plugins.preferences["ui"]["panel_layouts"]["example.progress"]["area"] == next(
+        name for name, value in DOCK_AREAS.items() if value == area
+    )
+    window.plugins.shutdown()
+    restarted = MainWindow(plugin_root=window.plugins.root)
+    qtbot.addWidget(restarted)
+    restarted.show()
+    qtbot.wait(50)
+    restored = restarted.plugins.panels["example.progress"]
+    assert restarted.dockWidgetArea(restored) == area
+    assert (restored.height() if area == DOCK_AREAS["bottom"] else restored.width()) == after
+    restarted.plugins.shutdown()
+
+
+@pytest.mark.parametrize("settle_ms", [60, 500])
+def test_click_hidden_strip_pins_during_or_after_animation(window, tmp_path, qtbot, settle_ms):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.dock.close()
+    controller = window.panel_hovers.controllers["example.files"]
+    surface = plugin.dock.widget()
+    controller.reveal()
+    qtbot.wait(settle_ms)
+    qtbot.mouseClick(
+        controller.strip, Qt.MouseButton.LeftButton, pos=controller.strip.rect().center()
+    )
+    assert not plugin.dock.isHidden()
+    assert not controller.strip.isVisible()
+    assert controller.popup is None
+    assert plugin.dock.widget() is surface
+    assert surface.parent() is plugin.dock and surface.render_backdrop
+    assert window.plugins.preferences["ui"]["panels"]["example.files"] is True
+    qtbot.wait(500)
+    assert not plugin.dock.isHidden()  # No pending collapse may undo a pin.
+
+
+@pytest.mark.parametrize("area", ["right", "bottom", "left"])
+def test_hidden_strip_drag_relocates_and_persists(window, tmp_path, qtbot, area):
+    plugin = enable(window, tmp_path, "progress_panel")
+    controller = window.panel_hovers.controllers["example.progress"]
+    controller.move_to(DOCK_AREAS["bottom" if area != "bottom" else "left"])
+    plugin.dock.close()
+    controller.reveal()
+    qtbot.wait(80)
+    targets = {
+        "left": QPoint(4, window.height() // 2),
+        "right": QPoint(window.width() - 5, window.height() // 2),
+        "bottom": QPoint(window.width() // 2, window.height() - 5),
+    }
+    drag_to(qtbot, controller.strip, window.mapToGlobal(targets[area]))
+    qtbot.wait(50)
+    assert window.dockWidgetArea(plugin.dock) == DOCK_AREAS[area]
+    assert plugin.dock.isHidden() and controller.strip.isVisible()
+    assert controller.popup is None and not window.panel_hovers.drop_hint.isVisible()
+    assert controller.strip.width() == (84 if area == "bottom" else 5)
+    assert controller.strip.height() == (5 if area == "bottom" else 84)
+    assert window.plugins.preferences["ui"]["panels"]["example.progress"] is False
+    assert plugin.vertical is (area != "bottom")
+    assert plugin.slider.orientation() == (
+        Qt.Orientation.Horizontal if area == "bottom" else Qt.Orientation.Vertical
+    )
+    window.plugins.shutdown()
+    restarted = MainWindow(plugin_root=window.plugins.root)
+    qtbot.addWidget(restarted)
+    restarted.show()
+    restored = restarted.plugins.panels["example.progress"]
+    assert restarted.dockWidgetArea(restored) == DOCK_AREAS[area]
+    assert restored.isHidden()
+    assert restarted.plugins.records["example.progress"].instance.vertical is (area != "bottom")
+    restarted.plugins.shutdown()
+
+
+def test_invalid_drop_cancels_and_fullscreen_pin_keeps_normal_preference(window, tmp_path, qtbot):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.dock.close()
+    controller = window.panel_hovers.controllers["example.files"]
+    drag_to(qtbot, controller.strip, window.mapToGlobal(window.rect().center()))
+    assert controller.area == DOCK_AREAS["left"] and plugin.dock.isHidden()
+    assert controller.popup is None and not controller.moving
+    window.toggle_fullscreen()
+    controller.reveal()
+    qtbot.mouseClick(
+        controller.strip, Qt.MouseButton.LeftButton, pos=controller.strip.rect().center()
+    )
+    assert not plugin.dock.isHidden()
+    assert window.plugins.preferences["ui"]["panels"]["example.files"] is False
+    window.exit_fullscreen()
+    assert plugin.dock.isHidden()
+
+
+def test_shift_grip_moves_visible_panel_and_unload_cleans_drag_hint(window, tmp_path, qtbot):
+    plugin = enable(window, tmp_path, "file_browser")
+    qtbot.wait(50)
+    controller = window.panel_hovers.controllers["example.files"]
+    grip = plugin.dock.widget().grip
+    destination = window.mapToGlobal(QPoint(window.width() - 5, window.height() // 2))
+    drag_to(qtbot, grip, destination, Qt.KeyboardModifier.ShiftModifier)
+    assert controller.area == DOCK_AREAS["right"] and not plugin.dock.isHidden()
+    controller.begin_move()
+    controller.update_move(destination)
+    assert window.panel_hovers.drop_hint.isVisible()
+    window.plugins.disable("example.files")
+    assert not window.panel_hovers.drop_hint.isVisible()
+    assert "example.files" not in window.panel_hovers.controllers

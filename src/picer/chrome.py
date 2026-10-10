@@ -1,7 +1,47 @@
 """A single-row title and menu bar with a genuinely centered filename."""
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenuBar, QPushButton, QToolButton, QWidget
+
+
+class WindowButton(QPushButton):
+    """Equal-sized controls with font-independent, colored line symbols."""
+
+    COLORS = {"minimize": "#d5ad67", "maximize": "#70b781", "close": "#d76b6b"}
+
+    def __init__(self, name, callback):
+        super().__init__()
+        self.setObjectName(name)
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        self.setFixedSize(32, 32)
+        self.setAccessibleName(
+            {"minimize": "最小化", "maximize": "最大化或还原", "close": "关闭"}[name]
+        )
+        self.setToolTip(self.accessibleName())
+        self.clicked.connect(callback)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = QColor(self.COLORS[self.objectName()])
+        if self.underMouse() or self.hasFocus():
+            tint = QColor(color)
+            tint.setAlpha(48 if self.isDown() else 24)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(tint)
+            painter.drawRoundedRect(QRectF(self.rect()).adjusted(2, 2, -2, -2), 6, 6)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        center = QPointF(self.rect().center()) + QPointF(0.5, 0.5)
+        x, y = center.x(), center.y()
+        if self.objectName() == "minimize":
+            painter.drawLine(QPointF(x - 4, y), QPointF(x + 4, y))
+        elif self.objectName() == "maximize":
+            painter.drawRect(QRectF(x - 4, y - 3, 8, 6))
+        else:
+            painter.drawLine(QPointF(x - 4, y - 4), QPointF(x + 4, y + 4))
+            painter.drawLine(QPointF(x + 4, y - 4), QPointF(x - 4, y + 4))
 
 
 class TitleBar(QWidget):
@@ -50,47 +90,26 @@ class TitleBar(QWidget):
             self.quick_slots.append(button)
         buttons.addSpacing(8)
         self.controls = QWidget(self.right)
+        self.controls.setObjectName("windowControls")
         control_layout = QHBoxLayout(self.controls)
-        control_layout.setContentsMargins(0, 0, 0, 0)
-        control_layout.setSpacing(0)
+        control_layout.setSpacing(6)
+        control_layout.setContentsMargins(0, 0, 8, 0)
         self.control_buttons = {}
-        for text, name, callback in (
-            ("—", "minimize", window.showMinimized),
-            ("□", "maximize", self.toggle_maximized),
-            ("×", "close", window.close),
+        for name, callback in (
+            ("minimize", window.showMinimized),
+            ("maximize", self.toggle_maximized),
+            ("close", window.close),
         ):
-            button = QPushButton(text)
-            button.setObjectName(name)
-            button.setAccessibleName(
-                {"minimize": "最小化", "maximize": "最大化或还原", "close": "关闭"}[name]
-            )
-            button.setFixedSize(46, 48)
-            button.clicked.connect(callback)
+            button = WindowButton(name, callback)
             control_layout.addWidget(button)
             self.control_buttons[name] = button
-        buttons.addWidget(self.controls)
+        buttons.addWidget(self.controls, 0, Qt.AlignmentFlag.AlignVCenter)
         self.drag_origin: QPoint | None = None
 
     def set_chrome(self, style):
         mac = style == "macos"
-        self.controls.setParent(self.left if mac else self.right)
-        if mac:
-            self.left.layout().insertWidget(0, self.controls)
-        else:
-            self.right.layout().addWidget(self.controls)
-        order = ("close", "minimize", "maximize") if mac else ("minimize", "maximize", "close")
-        layout = self.controls.layout()
-        for name in order:
-            button = self.control_buttons[name]
-            layout.removeWidget(button)
-            layout.addWidget(button)
-            button.setFixedSize(14, 14) if mac else button.setFixedSize(46, 48)
-            button.setProperty("macChrome", mac)
-            button.style().unpolish(button)
-            button.style().polish(button)
-        layout.setSpacing(8 if mac else 0)
-        self.controls.show()
-        self.icon_label.setVisible(not mac)
+        # Keep the user's reference controls consistent across all host skins.
+        self.icon_label.show()
         self.left.layout().setSpacing(12 if mac else 16)
         self.left.layout().activate()
         self.right.layout().activate()
@@ -157,7 +176,7 @@ STYLE = """
 QWidget { background: #191b1f; color: #e5e6e8; font-size: 13px;
 font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
 QWidget#titleBar { background: #202226; }
-QWidget#titleLeft, QWidget#titleRight, QLabel { background: transparent; }
+QWidget#titleLeft, QWidget#titleRight, QWidget#windowControls, QLabel { background: transparent; }
 QLabel#brand { font-size: 15px; font-weight: 600; }
 QMenuBar { background: transparent; padding: 0; }
 QMenuBar::item { padding: 8px 10px; background: transparent; }
@@ -176,8 +195,7 @@ background: transparent; color: #92969e; font-size: 16px; }
 QToolButton#quickSlot:hover { background: #35383e; }
 QToolButton#quickSlot:disabled { color: #777b83; }
 QDockWidget { font-size: 12px; }
-QDockWidget::title { background: #202226; padding: 8px; }
-QMainWindow::separator { background: #3a3d44; width: 3px; height: 3px; }
+QMainWindow::separator { background: transparent; width: 0px; height: 0px; }
 QLabel#empty { color: #92969e; font-size: 15px; background: transparent; }
 QScrollBar { background: #202226; width: 9px; height: 9px; }
 QScrollBar::handle { background: #4a4e56; border-radius: 4px; min-height: 20px; min-width: 20px; }

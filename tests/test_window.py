@@ -121,3 +121,21 @@ def test_copy_path(window, images, qapp):
     window.open_image(images[0])
     window.copy_action.trigger()
     assert qapp.clipboard().text() == str(images[0])
+
+
+def test_equal_colored_window_controls_and_maximize_restore(window, qtbot):
+    controls = window.title_bar.control_buttons
+    assert all(button.width() == button.height() == 32 for button in controls.values())
+    assert controls["minimize"].x() < controls["maximize"].x() < controls["close"].x()
+    for button in controls.values():
+        pixels = button.grab().toImage()
+        color = button.COLORS[button.objectName()]
+        assert any(
+            pixels.pixelColor(x, y).name() == color
+            for x in range(pixels.width())
+            for y in range(pixels.height())
+        )
+    qtbot.mouseClick(controls["maximize"], Qt.MouseButton.LeftButton)
+    assert window.isMaximized()
+    qtbot.mouseClick(controls["maximize"], Qt.MouseButton.LeftButton)
+    assert not window.isMaximized()

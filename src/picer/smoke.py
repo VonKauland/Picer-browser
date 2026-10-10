@@ -4,8 +4,11 @@ import traceback
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QCursor, QImage
+from PySide6.QtTest import QTest
+
+from picer.panels import DOCK_AREAS
 
 
 def run(window, args, folder, done):
@@ -36,7 +39,12 @@ def run(window, args, folder, done):
         count_before = negative.context.get_setting("opened_count", 0) if negative else 0
         if args.skin_archive:
             assert window.chrome_style == "macos"
-            assert window.title_bar.controls.parent() is window.title_bar.left
+            assert window.title_bar.controls.parent() is window.title_bar.right
+        assert all(
+            button.size().width() == button.size().height() == 32
+            for button in window.title_bar.control_buttons.values()
+        )
+        assert all(dock.titleBarWidget().height() == 0 for dock in window.plugins.panels.values())
         if args.file_panel_archive:
             browser_record = window.plugins.records["example.files"]
             browser = browser_record.instance
@@ -175,11 +183,37 @@ def run(window, args, folder, done):
 
         def collapsed(controller):
             assert controller.popup is None and controller.dock.widget() is not None
-            controller.dock.show()
+            # Drag the hidden strip using actual mouse events, then click it during reveal to pin.
+            strip = controller.strip
+            QTest.mousePress(strip, Qt.MouseButton.LeftButton, pos=strip.rect().center())
+            target = QPoint(window.width() - 5, window.height() // 2)
+            QTest.mouseMove(strip, strip.mapFrom(window, target))
+            QTest.mouseRelease(strip, Qt.MouseButton.LeftButton, pos=strip.mapFrom(window, target))
+            assert controller.area == DOCK_AREAS["right"]
+            assert controller.dock.isHidden()
+            assert window.plugins.preferences["ui"]["panels"]["example.files"] is False
+            controller.reveal()
+            QTest.mouseClick(strip, Qt.MouseButton.LeftButton, pos=strip.rect().center())
+            assert not controller.dock.isHidden() and controller.popup is None
+            assert window.plugins.preferences["ui"]["panels"]["example.files"] is True
+            controller.move_to(DOCK_AREAS["left"])
+            QTest.qWait(50)
+            grip = controller.dock.widget().grip
+            start = grip.rect().center()
+            before_width = controller.dock.width()
+            QTest.mousePress(grip, Qt.MouseButton.LeftButton, pos=start)
+            QTest.mouseMove(grip, start + QPoint(50, 0))
+            QTest.mouseRelease(grip, Qt.MouseButton.LeftButton, pos=grip.rect().center())
+            QTest.qWait(50)
+            assert controller.dock.width() >= before_width + 40
+            assert (
+                window.plugins.preferences["ui"]["panel_layouts"]["example.files"]["area"] == "left"
+            )
             assert not window.glass.image.isNull()
             print(
                 "Packaged examples: file tree, settings, metadata/EXIF, histogram, progress, "
-                "thumbnails, macOS isolation, glass and hover morph passed"
+                "thumbnails, macOS isolation, glass, hover morph, "
+                "hidden-strip drag/pin and grips passed"
             )
             done(0)
 

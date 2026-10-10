@@ -75,7 +75,7 @@ class Plugin:
         self.timer = QTimer(self.panel)
         self.timer.timeout.connect(lambda: context.navigate(1))
         self.preview_token = None
-        self.reorient(Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.reorient(self.dock.parentWidget().dockWidgetArea(self.dock))
         context.subscribe("image.changed", self.on_image)
         self.apply_settings()
         self.update_progress()
