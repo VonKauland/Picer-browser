@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def window(qtbot, tmp_path):
-    host = MainWindow(plugin_root=tmp_path / "state")
+    host = MainWindow(load_examples=False, plugin_root=tmp_path / "state")
     qtbot.addWidget(host)
     host.show()
     yield host

@@ -108,8 +108,6 @@ class ComponentUI:
                 )
             else:
                 action.triggered.connect(lambda checked, key=plugin_id: self.toggle(key, checked))
-            if record.manifest.type == "panel" and plugin_id in self.manager.panels:
-                menu.addAction(self.manager.panels[plugin_id].toggleViewAction())
         self.refresh_slots()
 
     def default_skin(self) -> None:

@@ -19,7 +19,7 @@ def images(tmp_path, qapp):
 
 @pytest.fixture
 def window(qtbot, tmp_path):
-    window = MainWindow(plugin_root=tmp_path)
+    window = MainWindow(load_examples=False, plugin_root=tmp_path)
     qtbot.addWidget(window)
     window.show()
     return window

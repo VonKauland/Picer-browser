@@ -123,7 +123,8 @@ class SettingsForm(QWidget):
             card = Card("面板位置")
             self.dock_combo = QComboBox()
             for name, label in (("left", "左侧"), ("right", "右侧"), ("bottom", "底部")):
-                self.dock_combo.addItem(label, DOCK_AREAS[name])
+                if controller.dock.allowedAreas() & DOCK_AREAS[name]:
+                    self.dock_combo.addItem(label, DOCK_AREAS[name])
             self.dock_combo.setCurrentIndex(self.dock_combo.findData(controller.area))
             card.body.addLayout(form_row("停靠位置", self.dock_combo))
             layout.addWidget(card)

@@ -130,6 +130,10 @@ def test_icon_generation_and_distribution_assets(tmp_path, qapp):
     assert (application / "logs" / ".keep").is_file()
     assert (application / "cache" / ".keep").is_file()
     assert (application / "assets" / "icons" / "picer.ico").is_file()
+    assert (application / "plugins" / "example.progress" / "preview.py").is_file()
+    assert (application / "skins" / "example.macos" / "theme.json").is_file()
+    enabled = json.loads((application / "config" / "plugins.json").read_text())["enabled"]
+    assert enabled["example.progress"] is True and enabled["example.macos"] is False
     assert (
         json.loads((application / "distribution.json").read_text(encoding="utf-8"))["mode"]
         == "portable-folder"

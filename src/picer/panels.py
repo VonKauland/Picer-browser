@@ -20,6 +20,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QCursor, QImage, QPainter, QPainterPath, QRegion
 from PySide6.QtWidgets import (
     QApplication,
+    QDockWidget,
     QGraphicsBlurEffect,
     QMenu,
     QVBoxLayout,
@@ -248,9 +249,11 @@ class DockSurface(GlassSurface):
             self.area = area
         self.horizontal = self.area == DOCK_AREAS["bottom"]
         if self.horizontal:
-            self.layout().setContentsMargins(0, 16, 0, 0)
-            self.grip.setGeometry((self.width() - 44) // 2, 0, 44, 16)
-            self.grip.setCursor(Qt.CursorShape.SizeVerCursor)
+            height = 12
+            self.layout().setContentsMargins(0, height, 0, 0)
+            self.grip.setGeometry((self.width() - 44) // 2, 0, 44, height)
+            self.grip.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.grip.setToolTip("右键固定 / 自动隐藏 · 双击切换")
         else:
             left = self.area == DOCK_AREAS["left"]
             self.layout().setContentsMargins(0 if left else 16, 0, 16 if left else 0, 0)
@@ -293,6 +296,16 @@ class DockTitleSpacer(QWidget):
         return QSize(0, 0)
 
 
+class ProgressDock(QDockWidget):
+    """A host-owned bottom overlay, so side docks retain the full window height."""
+
+    def __init__(self, title, host):
+        super().__init__(title, host)
+        self.setWindowFlags(Qt.WindowType.Widget | Qt.WindowType.FramelessWindowHint)
+        self.setProperty("progressPanel", True)
+        self.setProperty("compactHeight", 76)
+
+
 class RevealEffect(QGraphicsBlurEffect):
     def __init__(self, parent):
         super().__init__(parent)
@@ -313,8 +326,11 @@ class HiddenStrip(QWidget):
         self.origin = None
         self.dragging = False
         self.setProperty("pluginSurface", True)
-        self.setToolTip(controller.dock.windowTitle() + " · 悬停展开，点击固定，拖动换边")
-        self.setAccessibleName(controller.dock.windowTitle() + " · 悬停展开，点击固定，拖动换边")
+        tip = controller.dock.windowTitle() + " · 悬停展开，点击固定"
+        if not controller.dock.property("progressPanel"):
+            tip += "，拖动左右换边"
+        self.setToolTip(tip)
+        self.setAccessibleName(tip)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.hide()
 
@@ -414,7 +430,11 @@ class HiddenPanel(QObject):
             if type(value) is int and 80 <= value <= 4096:
                 self.extents[key] = value
         self.last_size = QSize(self.extents["width"], self.extents["height"])
-        self.area = self.host.dockWidgetArea(dock)
+        self.area = (
+            DOCK_AREAS["bottom"]
+            if dock.property("progressPanel")
+            else self.host.dockWidgetArea(dock)
+        )
         dock.widget().grip.controller = self
         dock.widget().arrange(self.area)
         self.animation = QVariantAnimation(self)
@@ -457,6 +477,8 @@ class HiddenPanel(QObject):
         self.collection.layout_strips()
 
     def current_extent(self):
+        if self.dock.property("progressPanel"):
+            return self.dock.property("compactHeight")
         return self.extents["height" if self.area == DOCK_AREAS["bottom"] else "width"]
 
     def restore_size(self):
@@ -466,8 +488,14 @@ class HiddenPanel(QObject):
     def initialize_size(self):
         self.restore_size()
         self.initializing = False
+        if self.dock.property("progressPanel"):
+            self.extents["height"] = self.current_extent()
+        self.remember_layout()
 
     def resize_extent(self, extent):
+        if self.dock.property("progressPanel"):
+            self.collection.layout_progress(self)
+            return
         horizontal = self.area == DOCK_AREAS["bottom"]
         surface = self.surface or self.dock.widget()
         minimum = surface.minimumSizeHint()
@@ -507,7 +535,9 @@ class HiddenPanel(QObject):
         self.collection.layout_strips()
 
     def move_to(self, area):
-        if area not in DOCK_AREAS.values():
+        if area not in DOCK_AREAS.values() or not (self.dock.allowedAreas() & area):
+            return
+        if self.dock.property("progressPanel"):
             return
         self.collapse(immediate=True)
         hidden = self.dock.isHidden()
@@ -531,6 +561,8 @@ class HiddenPanel(QObject):
 
     def update_move(self, global_position):
         area = self.collection.edge_at(self.host.mapFromGlobal(global_position))
+        if area and not (self.dock.allowedAreas() & area):
+            area = None
         self.collection.show_drop_hint(area)
 
     def end_move(self, global_position):
@@ -548,8 +580,13 @@ class HiddenPanel(QObject):
         menu.addAction(
             "靠边固定" if hidden else "自动隐藏", self.pin if hidden else self.dock.close
         )
-        menu.addSeparator()
+        if not self.dock.property("progressPanel"):
+            menu.addSeparator()
         for name, label in (("left", "停靠左侧"), ("right", "停靠右侧"), ("bottom", "停靠底部")):
+            if self.dock.property("progressPanel"):
+                break
+            if not (self.dock.allowedAreas() & DOCK_AREAS[name]):
+                continue
             action = menu.addAction(
                 label, lambda checked=False, area=DOCK_AREAS[name]: self.move_to(area)
             )
@@ -559,13 +596,19 @@ class HiddenPanel(QObject):
         menu.deleteLater()
 
     def bounds(self):
+        if self.dock.property("progressPanel"):
+            width = max(240, self.host.width() // 3)
+            height = self.current_extent()
+            return QRect(
+                (self.host.width() - width) // 2, self.host.height() - height - 8, width, height
+            )
         viewport = self.host.view.viewport()
         position = viewport.mapTo(self.host, QPoint())
         canvas = QRect(position, viewport.size())
         host = self.host.rect().adjusted(
             12, max(self.host.title_bar.height() + 10, canvas.top()), -12, -12
         )
-        host.setBottom(min(host.bottom(), canvas.bottom() - 6))
+        host.setBottom(self.host.height() - 1)
         width = min(max(self.last_size.width(), 240), host.width())
         height = min(max(self.last_size.height(), 160), host.height())
         if self.area == Qt.DockWidgetArea.BottomDockWidgetArea:
@@ -731,6 +774,15 @@ class PanelHovers(QObject):
             self.layout_strips()
         return False
 
+    def layout_progress(self, controller):
+        if not controller.dock.isHidden():
+            controller.dock.setGeometry(controller.bounds())
+            controller.dock.raise_()
+        if controller.popup:
+            controller.target = controller.bounds()
+            controller.popup.content.setFixedSize(controller.target.size())
+            controller.animate(controller.progress)
+
     def register(self, dock, plugin_id, manager):
         self.controllers[plugin_id] = HiddenPanel(self, dock, plugin_id, manager)
 
@@ -771,6 +823,8 @@ class PanelHovers(QObject):
     def layout_strips(self):
         areas = {}
         for controller in self.controllers.values():
+            if controller.dock.property("progressPanel"):
+                self.layout_progress(controller)
             record = controller.manager.records.get(controller.plugin_id)
             hidden = controller.dock.isHidden() and record is not None and record.state == "enabled"
             controller.strip.setVisible(hidden and self.host.isVisible())

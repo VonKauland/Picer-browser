@@ -28,7 +28,7 @@ def example(tmp_path, directory):
 
 @pytest.fixture
 def window(qtbot, tmp_path):
-    window = MainWindow(plugin_root=tmp_path / "state")
+    window = MainWindow(load_examples=False, plugin_root=tmp_path / "state")
     qtbot.addWidget(window)
     window.show()
     yield window
@@ -91,7 +91,7 @@ def test_settings_apply_atomically_and_restore(window, tmp_path, qtbot, pictures
     assert plugin.tree.iconSize().width() == 40
     root = window.plugins.root
     window.plugins.shutdown()
-    restarted = MainWindow(plugin_root=root)
+    restarted = MainWindow(load_examples=False, plugin_root=root)
     qtbot.addWidget(restarted)
     browser = restarted.plugins.records["example.files"].instance
     assert browser.location.text() == str(pictures.resolve())
@@ -157,25 +157,23 @@ def test_progress_seek_navigation_rotation_and_slideshow(window, tmp_path, qtbot
     assert not plugin.timer.isActive()
 
 
-def test_preview_orientation_size_count_and_selection(window, tmp_path, qtbot, pictures):
+def test_preview_size_count_and_selection(window, tmp_path, qtbot, pictures):
     plugin = enable(window, tmp_path, "progress_panel")
     window.open_image(pictures / "1.jpg")
     context = window.plugins.records["example.progress"].context
     context.set_setting("thumbnail_size", 64)
     context.set_setting("thumbnail_count", 3)
     plugin.show_preview()
-    qtbot.waitUntil(lambda: plugin.preview.list.count() == 3)
-    assert plugin.preview.list.flow() == plugin.preview.list.Flow.LeftToRight
-    assert plugin.preview.list.iconSize().width() == 64
-    plugin.select_preview(plugin.preview.list.item(2))
+    qtbot.waitUntil(lambda: len(plugin.preview.items) == 3)
+    assert plugin.preview.thumbnail_size == 64
+    assert plugin.preview.width() == plugin.dock.width()
+    qtbot.mouseClick(
+        plugin.preview,
+        Qt.MouseButton.LeftButton,
+        pos=plugin.preview.tile_rect(2).center().toPoint(),
+    )
     assert window.current_path.name == "3.png"
-    window.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, plugin.dock)
-    assert plugin.slider.orientation() == Qt.Orientation.Vertical
-    plugin.show_preview()
-    qtbot.waitUntil(lambda: plugin.preview.list.count() == 3)
-    assert plugin.preview.list.flow() == plugin.preview.list.Flow.TopToBottom
-    assert plugin.preview.width() < plugin.preview.height()
-    plugin.preview.hide()
+    assert not plugin.preview.isVisible()
 
 
 def test_macos_host_skin_keeps_plugin_styles_and_icons(window, tmp_path, pictures):
@@ -307,10 +305,10 @@ def drag_to(qtbot, widget, destination, modifier=Qt.KeyboardModifier.NoModifier)
     )
 
 
-@pytest.mark.parametrize("area", list(DOCK_AREAS.values()))
+@pytest.mark.parametrize("area", [DOCK_AREAS["left"], DOCK_AREAS["right"]])
 def test_internal_grip_resizes_without_title_or_separator(window, tmp_path, qtbot, area):
-    plugin = enable(window, tmp_path, "progress_panel")
-    controller = window.panel_hovers.controllers["example.progress"]
+    plugin = enable(window, tmp_path, "file_browser")
+    controller = window.panel_hovers.controllers["example.files"]
     controller.move_to(area)
     qtbot.wait(50)
     dock, surface = plugin.dock, plugin.dock.widget()
@@ -331,15 +329,15 @@ def test_internal_grip_resizes_without_title_or_separator(window, tmp_path, qtbo
     after = dock.height() if area == DOCK_AREAS["bottom"] else dock.width()
     assert after >= before + 40
     assert controller.current_extent() == after
-    assert window.plugins.preferences["ui"]["panel_layouts"]["example.progress"]["area"] == next(
+    assert window.plugins.preferences["ui"]["panel_layouts"]["example.files"]["area"] == next(
         name for name, value in DOCK_AREAS.items() if value == area
     )
     window.plugins.shutdown()
-    restarted = MainWindow(plugin_root=window.plugins.root)
+    restarted = MainWindow(load_examples=False, plugin_root=window.plugins.root)
     qtbot.addWidget(restarted)
     restarted.show()
     qtbot.wait(50)
-    restored = restarted.plugins.panels["example.progress"]
+    restored = restarted.plugins.panels["example.files"]
     assert restarted.dockWidgetArea(restored) == area
     assert (restored.height() if area == DOCK_AREAS["bottom"] else restored.width()) == after
     restarted.plugins.shutdown()
@@ -366,11 +364,11 @@ def test_click_hidden_strip_pins_during_or_after_animation(window, tmp_path, qtb
     assert not plugin.dock.isHidden()  # No pending collapse may undo a pin.
 
 
-@pytest.mark.parametrize("area", ["right", "bottom", "left"])
+@pytest.mark.parametrize("area", ["right", "left"])
 def test_hidden_strip_drag_relocates_and_persists(window, tmp_path, qtbot, area):
-    plugin = enable(window, tmp_path, "progress_panel")
-    controller = window.panel_hovers.controllers["example.progress"]
-    controller.move_to(DOCK_AREAS["bottom" if area != "bottom" else "left"])
+    plugin = enable(window, tmp_path, "file_browser")
+    controller = window.panel_hovers.controllers["example.files"]
+    controller.move_to(DOCK_AREAS["left" if area == "right" else "right"])
     plugin.dock.close()
     controller.reveal()
     qtbot.wait(80)
@@ -386,19 +384,14 @@ def test_hidden_strip_drag_relocates_and_persists(window, tmp_path, qtbot, area)
     assert controller.popup is None and not window.panel_hovers.drop_hint.isVisible()
     assert controller.strip.width() == (84 if area == "bottom" else 5)
     assert controller.strip.height() == (5 if area == "bottom" else 84)
-    assert window.plugins.preferences["ui"]["panels"]["example.progress"] is False
-    assert plugin.vertical is (area != "bottom")
-    assert plugin.slider.orientation() == (
-        Qt.Orientation.Horizontal if area == "bottom" else Qt.Orientation.Vertical
-    )
+    assert window.plugins.preferences["ui"]["panels"]["example.files"] is False
     window.plugins.shutdown()
-    restarted = MainWindow(plugin_root=window.plugins.root)
+    restarted = MainWindow(load_examples=False, plugin_root=window.plugins.root)
     qtbot.addWidget(restarted)
     restarted.show()
-    restored = restarted.plugins.panels["example.progress"]
+    restored = restarted.plugins.panels["example.files"]
     assert restarted.dockWidgetArea(restored) == DOCK_AREAS[area]
     assert restored.isHidden()
-    assert restarted.plugins.records["example.progress"].instance.vertical is (area != "bottom")
     restarted.plugins.shutdown()
 
 

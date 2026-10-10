@@ -187,26 +187,24 @@ class ApplicationSettings(StyledDialog):
         layout.addWidget(card)
 
     def panels_page(self, layout):
-        card = Card("可见面板与停靠位置")
-        normal = self.manager.preferences["ui"].get("panels", {})
-        normal = normal if isinstance(normal, dict) else {}
+        card = Card("面板停靠位置")
         for plugin_id, controller in self.host.panel_hovers.controllers.items():
             row = QHBoxLayout()
             row.addWidget(QLabel(controller.dock.windowTitle()), 1)
             area = QComboBox()
             for key, label in (("left", "左侧"), ("right", "右侧"), ("bottom", "底部")):
-                area.addItem(label, DOCK_AREAS[key])
+                if controller.dock.allowedAreas() & DOCK_AREAS[key]:
+                    area.addItem(label, DOCK_AREAS[key])
             area.setCurrentIndex(area.findData(controller.area))
-            visible = Toggle()
-            visible.setChecked(normal.get(plugin_id, True) is not False)
-            visible.setAccessibleName(controller.dock.windowTitle() + " · 显示")
             row.addWidget(area)
-            row.addWidget(visible)
-            self.panel_editors[plugin_id] = (area, visible)
+            self.panel_editors[plugin_id] = area
             card.body.addLayout(row)
         if not self.panel_editors:
-            card.body.addWidget(QLabel("启用面板组件后，可在这里调整显示与位置。"))
-        note = QLabel("全屏自动隐藏面板；悬停细条展开，点击固定，拖动换边。")
+            card.body.addWidget(QLabel("启用面板组件后，可在这里调整停靠位置。"))
+        note = QLabel(
+            "固定 / 自动隐藏仅通过面板三点条与指示条切换。全屏默认隐藏；"
+            "侧边面板可左右换边，底部仅放进度面板。"
+        )
         note.setWordWrap(True)
         note.setObjectName("muted")
         card.body.addWidget(note)
@@ -294,10 +292,9 @@ class ApplicationSettings(StyledDialog):
     def reset_layout(self):
         self.layout_reset = True
         defaults = {"example.files": "left", "example.info": "right", "example.progress": "bottom"}
-        for key, (area, visible) in self.panel_editors.items():
+        for key, area in self.panel_editors.items():
             if key in defaults:
                 area.setCurrentIndex(area.findData(DOCK_AREAS[defaults[key]]))
-            visible.setChecked(True)
 
     def reset(self):
         for key, editor in self.editors.items():
@@ -352,7 +349,7 @@ class ApplicationSettings(StyledDialog):
         ui["application"], ui["shortcuts"] = values, shortcuts
         if not isinstance(ui.get("panels"), dict):
             ui["panels"] = {}
-        for key, (area, visible) in self.panel_editors.items():
+        for key, area in self.panel_editors.items():
             controller = self.host.panel_hovers.controllers.get(key)
             if not controller:
                 continue
@@ -361,8 +358,6 @@ class ApplicationSettings(StyledDialog):
                 controller.extents = {"width": 320, "height": 180}
                 controller.restore_size()
                 controller.remember_layout()
-            ui["panels"][key] = visible.isChecked()
-            controller.dock.setVisible(visible.isChecked() and not self.host.isFullScreen())
         self.manager._save()
         self.host.apply_preferences()
         self.accept()

@@ -1,13 +1,10 @@
 """Orientation-aware navigation and asynchronous bounded thumbnail previews."""
 
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QIcon, QImageReader, QPixmap, QTransform
+from PySide6.QtGui import QImageReader, QTransform
 from PySide6.QtWidgets import (
-    QBoxLayout,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -15,33 +12,31 @@ from PySide6.QtWidgets import (
 
 from picer.plugins import RoundedSlider, SettingField, ui_icon
 
-
-def make_preview(context, parent):
-    preview = context.frosted_surface(parent, popup=True)
-    layout = QVBoxLayout(preview)
-    layout.setContentsMargins(10, 10, 10, 10)
-    preview.list = QListWidget()
-    preview.list.setWrapping(False)
-    preview.list.setResizeMode(QListWidget.ResizeMode.Adjust)
-    preview.list.setSpacing(6)
-    layout.addWidget(preview.list)
-    return preview
+from .preview import PreviewStrip
 
 
 class Plugin:
     def activate(self, context):
         self.context = context
         self.fields = (
-            SettingField("thumbnail_size", "预览图片大小（像素）", "int", 96, 48, 200),
+            SettingField("thumbnail_size", "预览图片大小（像素）", "int", 80, 48, 200),
             SettingField("thumbnail_count", "预览图片数量", "int", 9, 3, 30),
             SettingField("interval", "幻灯片间隔（秒）", "int", 3, 1, 30),
         )
         context.add_settings(self.fields, self.apply_settings)
         self.panel = QWidget()
-        self.panel.setMinimumSize(170, 110)
+        self.panel.setMinimumWidth(200)
+        self.panel.setStyleSheet(
+            "QPushButton#progressButton { padding: 0; border: none;"
+            " border-radius: 10px; background: #38383B; }"
+            " QSlider { background: transparent; }"
+        )
         self.layout = QVBoxLayout(self.panel)
-        self.layout.setContentsMargins(12, 12, 12, 12)
+        self.layout.setContentsMargins(16, 3, 16, 6)
+        self.layout.setSpacing(2)
         self.buttons = QHBoxLayout()
+        self.buttons.setSpacing(8)
+        self.buttons.addStretch(1)
         self.controls = {}
         for key, icon, tip, callback in (
             ("previous", "left", "上一张", lambda: context.navigate(-1)),
@@ -52,8 +47,9 @@ class Plugin:
         ):
             button = QPushButton()
             button.setIcon(ui_icon(icon))
-            button.setObjectName("circleButton")
-            button.setFixedSize(32, 32)
+            button.setObjectName("progressButton")
+            button.setFixedSize(30, 28)
+            button.setIconSize(QSize(16, 16))
             button.setToolTip(tip)
             button.setAccessibleName(tip)
             button.clicked.connect(callback)
@@ -70,13 +66,11 @@ class Plugin:
         self.progress_row.addWidget(self.count)
         self.layout.addLayout(self.progress_row)
         self.dock = context.add_panel(self.panel, area="bottom")
-        self.dock.dockLocationChanged.connect(self.reorient)
-        self.preview = make_preview(context, self.panel)
-        self.preview.list.itemClicked.connect(self.select_preview)
+        self.preview = PreviewStrip(self)
         self.timer = QTimer(self.panel)
         self.timer.timeout.connect(lambda: context.navigate(1))
         self.preview_token = None
-        self.reorient(self.dock.parentWidget().dockWidgetArea(self.dock))
+        self.compact(False)
         context.subscribe("image.changed", self.on_image)
         self.apply_settings()
         self.update_progress()
@@ -92,28 +86,18 @@ class Plugin:
         if self.preview.isVisible():
             self.show_preview()
 
-    def reorient(self, area):
-        self.vertical = area in (
-            Qt.DockWidgetArea.LeftDockWidgetArea,
-            Qt.DockWidgetArea.RightDockWidgetArea,
-        )
-        self.slider.setOrientation(
-            Qt.Orientation.Vertical if self.vertical else Qt.Orientation.Horizontal
-        )
-        self.slider.setInvertedAppearance(self.vertical)
-        self.buttons.setDirection(
-            QBoxLayout.Direction.TopToBottom if self.vertical else QBoxLayout.Direction.LeftToRight
-        )
-        self.layout.setDirection(
-            QBoxLayout.Direction.LeftToRight if self.vertical else QBoxLayout.Direction.TopToBottom
-        )
-        self.progress_row.setDirection(
-            QBoxLayout.Direction.TopToBottom if self.vertical else QBoxLayout.Direction.LeftToRight
-        )
-        self.preview.list.setFlow(
-            QListWidget.Flow.TopToBottom if self.vertical else QListWidget.Flow.LeftToRight
-        )
-        self.preview.hide()
+    def compact(self, expanded):
+        for button in self.controls.values():
+            button.setFixedSize(30, 20 if expanded else 28)
+        self.controls["preview"].setIcon(ui_icon("grid", "#E8FF59" if expanded else "#F3F3F0"))
+        self.layout.setContentsMargins(16, 2 if expanded else 3, 16, 2 if expanded else 6)
+        self.layout.setSpacing(0 if expanded else 2)
+        self.slider.setFixedHeight(16 if expanded else 20)
+        self.panel.setFixedHeight(40 if expanded else 60)
+        self.dock.setFixedHeight(52 if expanded else 72)
+        self.dock.setProperty("compactHeight", 52 if expanded else 72)
+        host = self.dock.parentWidget()
+        host.panel_hovers.layout_strips()
 
     def on_image(self, event):
         self.update_progress()
@@ -162,21 +146,12 @@ class Plugin:
         start = max(0, min(index - count // 2, len(paths) - count))
         selected = tuple((i, paths[i]) for i in range(start, start + count))
         size = values["thumbnail_size"]
-        self.preview.list.clear()
-        self.preview.list.setIconSize(QSize(size, size))
-        self.preview.resize(
-            size + 70 if self.vertical else min(1000, count * (size + 26)),
-            min(700, count * (size + 28)) if self.vertical else size + 70,
-        )
-        origin = self.panel.mapToGlobal(self.panel.rect().topLeft())
-        screen = self.panel.screen().availableGeometry()
-        x = min(max(screen.left(), origin.x()), screen.right() - self.preview.width())
-        y = min(
-            max(screen.top(), origin.y() - self.preview.height()),
-            screen.bottom() - self.preview.height(),
-        )
-        self.preview.move(x, y)
+        self.preview.items = []
+        self.preview.thumbnail_size = size
+        self.preview.center_index = index
         self.preview.show()
+        # Expansion compresses the controls first; anchor to the resulting card.
+        self.preview.reposition()
 
         def work(token):
             thumbnails = []
@@ -193,17 +168,12 @@ class Plugin:
             return thumbnails
 
         def render(thumbnails):
-            for image_index, path, image in thumbnails:
-                item = QListWidgetItem(QIcon(QPixmap.fromImage(image)), str(image_index + 1))
-                item.setToolTip(path)
-                item.setData(Qt.ItemDataRole.UserRole, image_index)
-                self.preview.list.addItem(item)
+            if not self.preview.isVisible():
+                return
+            self.preview.items = thumbnails
+            self.preview.update()
 
         self.preview_token = self.context.run_task(work, render)
-
-    def select_preview(self, item):
-        self.context.jump_to(item.data(Qt.ItemDataRole.UserRole))
-        self.preview.hide()
 
     def deactivate(self):
         self.timer.stop()

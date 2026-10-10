@@ -48,6 +48,20 @@ def run(window, args, folder, done):
         exif[271] = "Picer Test Camera"
         exif[272] = "Frozen EXIF Test"
         Image.new("RGB", (80, 60), (51, 153, 204)).save(second, exif=exif)
+        if window.plugins.get_setting("example.negative", "opened_count", 0) == 0:
+            assert window.plugins.records["example.macos"].state == "disabled"
+            assert all(not dock.isHidden() for dock in window.plugins.panels.values())
+        assert all(
+            not action.text().startswith("显示：")
+            for action in window.components.menus["panel"].actions()
+        )
+        bottom = window.panel_hovers.controllers["example.progress"]
+        assert bottom.dock.width() == window.width() // 3
+        assert bottom.area == DOCK_AREAS["bottom"]
+        for key in ("example.files", "example.info"):
+            dock = window.plugins.panels[key]
+            assert not (dock.allowedAreas() & DOCK_AREAS["bottom"])
+            assert window.height() - 1 - dock.geometry().bottom() <= 1
         archives = (
             (args.plugin_archive, "example.negative"),
             (args.skin_archive, "example.macos"),
@@ -187,8 +201,19 @@ def run(window, args, folder, done):
             if window.plugins.jobs:
                 QTimer.singleShot(25, lambda: guarded(preview_ready))
                 return
-            assert progress.preview.list.count() == 2
-            assert progress.preview.list.iconSize().width() == 80
+            assert len(progress.preview.items) == 2, (
+                len(progress.preview.items),
+                progress.preview.isVisible(),
+                progress.dock.isHidden(),
+                progress.controls["previous"].height(),
+            )
+            assert progress.preview.thumbnail_size == 80
+            assert progress.preview.width() == progress.dock.width()
+            assert progress.controls["previous"].height() == 20
+            assert progress.dock.height() < 65
+            pixels = progress.preview.grab().toImage()
+            assert pixels.pixelColor(pixels.width() // 2, 0).alpha() == 0
+            assert pixels.pixelColor(0, pixels.height() // 2).alpha() == 0
             progress.preview.hide()
             invert()
 

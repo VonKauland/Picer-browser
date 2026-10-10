@@ -17,7 +17,7 @@ from picer.window import MainWindow
 
 @pytest.fixture
 def window(qtbot, tmp_path):
-    window = MainWindow(plugin_root=tmp_path / "data")
+    window = MainWindow(load_examples=False, plugin_root=tmp_path / "data")
     qtbot.addWidget(window)
     window.show()
     yield window
@@ -97,7 +97,7 @@ def test_skin_storage_switch_restart_and_default(window, tmp_path, qtbot):
     assert manager.records[plugin_id].state == "disabled"
     assert manager.records["test.other"].state == "enabled"
     manager.shutdown()
-    restarted = MainWindow(plugin_root=manager.root)
+    restarted = MainWindow(load_examples=False, plugin_root=manager.root)
     qtbot.addWidget(restarted)
     assert restarted.plugins.records["test.other"].state == "enabled"
     assert restarted.view.backgroundBrush().color() == QColor("#112233")
@@ -182,7 +182,7 @@ def test_function_menu_switch_slots_cleanup_and_persistence(window, tmp_path, qt
     manager.enable("test.component")
     assert buttons[4].defaultAction() is manager.commands["test.component:run"]
     manager.shutdown()
-    restarted = MainWindow(plugin_root=manager.root)
+    restarted = MainWindow(load_examples=False, plugin_root=manager.root)
     qtbot.addWidget(restarted)
     assert (
         restarted.title_bar.quick_slots[4].defaultAction()
@@ -191,7 +191,7 @@ def test_function_menu_switch_slots_cleanup_and_persistence(window, tmp_path, qt
     restarted.plugins.shutdown()
 
 
-@pytest.mark.parametrize("area", ["left", "right", "bottom"])
+@pytest.mark.parametrize("area", ["left", "right"])
 def test_panel_docking_hiding_fullscreen_and_cleanup(window, tmp_path, qtbot, area):
     manager = window.plugins
     manager.install(
@@ -215,7 +215,7 @@ def test_panel_docking_hiding_fullscreen_and_cleanup(window, tmp_path, qtbot, ar
     assert not dock.features() & QDockWidget.DockWidgetFeature.DockWidgetFloatable
     window.toggle_fullscreen()
     assert dock.isHidden()
-    dock.toggleViewAction().trigger()
+    window.panel_hovers.controllers["test.component"].pin()
     assert not dock.isHidden()  # Users may explicitly display a panel in fullscreen.
     window.exit_fullscreen()
     assert not dock.isHidden()
@@ -240,7 +240,7 @@ def test_panel_enabled_in_fullscreen_hidden_then_visible(window, tmp_path, qtbot
     assert not manager.panels["test.component"].isHidden()
     manager.panels["test.component"].close()
     manager.shutdown()
-    restarted = MainWindow(plugin_root=manager.root)
+    restarted = MainWindow(load_examples=False, plugin_root=manager.root)
     qtbot.addWidget(restarted)
     restarted.show()
     assert restarted.plugins.panels["test.component"].isHidden()
@@ -329,7 +329,7 @@ def test_old_builtin_disabled_preference_preserved(tmp_path, qtbot):
     (tmp_path / "config" / "plugins.json").write_text(
         json.dumps({"enabled": {"picer.transforms": False}, "settings": {}})
     )
-    window = MainWindow(plugin_root=tmp_path)
+    window = MainWindow(load_examples=False, plugin_root=tmp_path)
     qtbot.addWidget(window)
     assert all(record.state == "disabled" for record in window.plugins.records.values())
     window.plugins.shutdown()

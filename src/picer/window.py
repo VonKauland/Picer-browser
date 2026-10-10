@@ -96,7 +96,17 @@ class ImageView(QGraphicsView):
 class MainWindow(QMainWindow):
     """Browse supported images in the selected file's directory."""
 
-    def __init__(self, *, plugin_root: Path | None = None, load_external: bool = True) -> None:
+    def createPopupMenu(self):
+        # QMainWindow's native dock menu would duplicate fixed/auto-hide controls.
+        return None
+
+    def __init__(
+        self,
+        *,
+        plugin_root: Path | None = None,
+        load_external: bool = True,
+        load_examples: bool = True,
+    ) -> None:
         super().__init__()
         self.paths_layout = AppPaths.resolve(plugin_root)
         self.thumbnail_cache = ThumbnailCache(self.paths_layout.cache)
@@ -176,7 +186,9 @@ class MainWindow(QMainWindow):
         mark_host(self)
         self.glass = GlassBackdrop(self)
         self.panel_hovers = PanelHovers(self)
-        self.plugins = PluginManager(self, self.paths_layout.root, load_external=load_external)
+        self.plugins = PluginManager(
+            self, self.paths_layout.root, load_external=load_external, load_examples=load_examples
+        )
         self.plugins.changed.connect(self.panel_hovers.layout_strips)
         self.components = ComponentUI(self, plugin_menu)
         self.apply_preferences()
@@ -346,7 +358,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.8.1\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.9.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

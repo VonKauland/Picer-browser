@@ -11,13 +11,13 @@
 - Report only checks that actually ran; distinguish Linux checks, Windows CI, and manual desktop validation.
 
 - Keep public plugin SDK compatibility in `src/picer/plugins/api.py` and `docs/plugins.md`; API v1 plugins are trusted in-process Python, not sandboxed.
-- Never auto-enable newly installed external plugins. Revoke context, commands, subscriptions and tasks when disabling or failing a plugin.
+- Never auto-enable user-installed external plugins. The user-authorized shipped examples are provisioned by the trusted application catalog: panels/functions on, skins off; preserve later user choices and explicit uninstalls. Revoke context, commands, subscriptions and tasks when disabling or failing a plugin.
 - Plugin tests must use temporary data directories; never touch the developer's installed plugins or settings.
 - Preserve the packaged EXE smoke test that installs and executes the real external example ZIP.
 
 - Resolve resources from the application directory; never derive data paths from cwd. Keep plugins, cache, config and logs separate; preserve user settings during migrations and updates.
 
-- New components must declare type skin/function/panel. Skin packages are declarative resources in skins; functions register exactly one command; panels register exactly one widget and dock only left/right/bottom. Preserve explicit legacy API v1 migration support.
+- New components must declare type skin/function/panel. Skin packages are declarative resources in skins; functions register exactly one command; panels register exactly one widget and dock only left/right, except a declared progress role restricted to bottom; allow at most one bottom progress overlay. Preserve explicit legacy API v1 migration support.
 - Revoke quick-slot bindings and docks on cleanup. Keep exactly five top-bar slots and no bottom status bar. Test fullscreen/normal panel visibility transitions and persisted user choices.
 
 - Scope skins to host widgets only; preserve external plugin QIcon and content styles. All panel shells use shared glass backdrops; hover reveals must preserve hidden preferences and restore widget ownership on cleanup.
@@ -25,3 +25,5 @@
 - Keep default UI charcoal with a distinct lime accent. Default example panels have no settings buttons; edit component settings inline in Plugin Management. Application preferences belong in Edit → Settings.
 - Preserve panel motion: 420 ms OutBack (overshoot 0.55) expansion, 300 ms InOutCubic collapse, 220 ms leave delay and continuous reversal. Visual restyling must not change these animations.
 - Popup menus and comboboxes must have transparent rounded corners and no native white frame. Use RoundedSlider for default progress/settings sliders; render tests must check both orientations, inverted appearance and range endpoints while retaining Qt input behavior.
+
+- Bottom progress uses a centered one-third-width overlay and must not reserve a dock row. Side docks reach the bottom. Expose fixed/auto-hide only on grips and indicator strips. Transparent preview thumbnails retain configurable size/count, individual shadows, edge feathering and no scrollbar.

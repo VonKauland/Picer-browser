@@ -8,6 +8,7 @@ import tomllib
 import zipfile
 from pathlib import Path
 
+from picer.bundles import EXAMPLES, write_examples
 from scripts.prepare_assets import prepare_icons
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,18 +25,24 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
             (directory / ".keep").write_text("", encoding="utf-8")
     state = application / "config" / "plugins.json"
     if not state.exists():
-        state.write_text(json.dumps({"enabled": {}, "settings": {}}, indent=2), encoding="utf-8")
-    for source, name, files in (
-        ("file_browser", "file-browser.zip", ("manifest.json", "main.py")),
-        ("progress_panel", "progress-panel.zip", ("manifest.json", "main.py")),
-        ("macos_skin", "macos-skin.zip", ("manifest.json", "theme.json", "macos.qss")),
-        ("negative_plugin", "sdk/negative-plugin.zip", ("manifest.json", "main.py")),
-        ("info_panel", "info-panel.zip", ("manifest.json", "main.py")),
-    ):
-        (application / "examples" / name).parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(application / "examples" / name, "w", zipfile.ZIP_DEFLATED) as archive:
-            for file in files:
-                archive.write(ROOT / "examples" / source / file, file)
+        state.write_text(
+            json.dumps(
+                {
+                    "enabled": {plugin_id: enabled for _, _, plugin_id, enabled in EXAMPLES},
+                    "settings": {},
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+    write_examples(application / "examples")
+    for _, filename, plugin_id, _ in EXAMPLES:
+        destination = (
+            application / ("skins" if plugin_id == "example.macos" else "plugins") / plugin_id
+        )
+        destination.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(application / "examples" / filename) as archive:
+            archive.extractall(destination)
     shutil.copy2(ROOT / "docs" / "plugins.md", application / "docs" / "plugins.md")
     shutil.copy2(ROOT / "docs" / "distribution.md", application / "docs" / "distribution.md")
     shutil.copy2(ROOT / "docs" / "components.md", application / "docs" / "components.md")
@@ -45,12 +52,14 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
     (application / "README.txt").write_text(
         "揽映 Picer 图片浏览器\n\n"
         "请保留完整文件夹，双击 Picer.exe 启动，无需安装 Python。\n"
-        "plugins：功能与面板组件；skins：安装皮肤后创建；cache：可再生成的缓存；config：设置；logs：日志。\n"
+        "plugins：功能与面板组件；skins：已安装皮肤；cache：可再生成的缓存；config：设置；logs：日志。\n"
         "assets/icons：图标资源；_internal：必需运行库，请勿删除。\n"
-        "examples 提供文件浏览器、图片信息、浏览进度及 macOS 皮肤，请在插件管理中安装并启用。\n"
+        "examples 提供文件浏览器、图片信息、浏览进度及 macOS 皮肤。\n"
+        "启动时默认安装，面板与功能默认启用，皮肤默认关闭。\n"
         "顶栏 5 个快捷位可右键配置；毛玻璃面板隐藏后悬停边缘细条即可展开。\n"
-        "面板三点条拖动调宽/调高，右键自动隐藏，Shift 拖动换边。\n"
-        "点击隐藏细条靠边固定；拖动细条到左、右、底部换边并保持隐藏。\n"
+        "三点条右键自动隐藏，侧面板拖动调宽、Shift 拖动左右换边。\n"
+        "点击隐藏细条靠边固定；侧面板拖动细条左右换边并保持隐藏。\n"
+        "底部只允许一个进度面板，居中占窗口宽度约 1/3；缩略预览无底板、无滚动条。\n"
         "组件设置统一位于插件管理的设置页；三个默认示例面板不提供设置按钮。\n"
         "编辑 → 设置：常规、外观、图片浏览、面板布局、快捷键、缓存与存储。\n"
         "迁移软件时复制整个目录；更新时保留 plugins、skins 与 config。\n"
@@ -98,6 +107,8 @@ def main() -> None:
     version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
     assets = ROOT / "build" / "distribution-assets"
     prepare_icons(ROOT / "src" / "picer" / "assets" / "icons" / "picer.svg", assets / "icons")
+    bundles = assets.parent / "trusted-bundles"
+    write_examples(bundles)
     resource = assets.parent / "version-info.txt"
     resource.write_text(version_resource(version), encoding="utf-8")
     subprocess.run(
@@ -123,6 +134,8 @@ def main() -> None:
             "PySide6.QtQuick",
             "--exclude-module",
             "PySide6.QtNetwork",
+            "--add-data",
+            str(bundles) + ";picer/bundles",
             "--paths",
             "src",
             "scripts/entrypoint.py",

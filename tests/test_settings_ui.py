@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def window(qtbot, tmp_path):
-    host = MainWindow(plugin_root=tmp_path / "state")
+    host = MainWindow(load_examples=False, plugin_root=tmp_path / "state")
     qtbot.addWidget(host)
     host.show()
     yield host
@@ -80,7 +80,7 @@ def test_embedded_browser_settings_apply_cancel_and_restart(window, tmp_path, qt
     dialog.settings()
     assert dialog.settings_form.editors["icon_size"].value() == 48
     window.plugins.shutdown()
-    restarted = MainWindow(plugin_root=window.plugins.root)
+    restarted = MainWindow(load_examples=False, plugin_root=window.plugins.root)
     qtbot.addWidget(restarted)
     assert restarted.plugins.records[plugin_id].instance.tree.iconSize().width() == 48
     assert restarted.panel_hovers.controllers[plugin_id].area == DOCK_AREAS["right"]
@@ -139,7 +139,7 @@ def test_application_settings_save_restart_and_cancel(window, tmp_path, qtbot):
     state = json.loads(window.plugins.state_file.read_text(encoding="utf-8"))
     assert state["ui"]["application"]["wrap"] is False
     assert state["ui"]["last_image"] == str(path)
-    restarted = MainWindow(plugin_root=window.plugins.root)
+    restarted = MainWindow(load_examples=False, plugin_root=window.plugins.root)
     qtbot.addWidget(restarted)
     restarted.restore_startup()
     assert restarted.current_path == path
@@ -302,7 +302,7 @@ def test_plugin_using_freed_core_shortcut_survives_restart(window, tmp_path, qtb
     window.plugins.install(archive)
     window.plugins.enable("test.shortcut")
     window.plugins.shutdown()
-    restarted = MainWindow(plugin_root=window.plugins.root)
+    restarted = MainWindow(load_examples=False, plugin_root=window.plugins.root)
     qtbot.addWidget(restarted)
     assert restarted.open_action.shortcut() == QKeySequence("Ctrl+Alt+O")
     assert restarted.plugins.records["test.shortcut"].state == "enabled"

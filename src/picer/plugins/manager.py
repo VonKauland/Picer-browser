@@ -22,7 +22,7 @@ from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import QDockWidget, QWidget
 
 from picer.host_style import PLUGIN_STYLE
-from picer.panels import DOCK_AREAS, DockTitleSpacer, dock_surface, saved_layout
+from picer.panels import DOCK_AREAS, DockTitleSpacer, ProgressDock, dock_surface, saved_layout
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
 from picer.plugins.builtin.transforms import Plugin as Transforms
 from picer.plugins.manifest import Manifest
@@ -47,7 +47,9 @@ class PluginManager(QObject):
 
     changed = Signal()
 
-    def __init__(self, host, root: Path, *, load_external: bool = True) -> None:
+    def __init__(
+        self, host, root: Path, *, load_external: bool = True, load_examples: bool = True
+    ) -> None:
         super().__init__(host)
         self.host = host
         self.root = root.resolve()
@@ -114,6 +116,10 @@ class PluginManager(QObject):
             self.records[builtin.id] = PluginRecord(builtin)
         if load_external:
             self.discover()
+            if load_examples:
+                from picer.bundles import seed_examples
+
+                seed_examples(self)
         # Newly installed external plugins never execute until explicitly enabled.
         for plugin_id, record in list(self.records.items()):
             enabled = self.preferences["enabled"].get(plugin_id, record.directory is None)
@@ -438,15 +444,25 @@ class PluginManager(QObject):
             raise PluginError("面板必须为无父级的新 QWidget")
         if area not in DOCK_AREAS:
             raise PluginError("面板位置必须为 left、right 或 bottom")
+        progress = self.records[plugin_id].manifest.panel_role == "progress"
+        allowed = ("bottom",) if progress else ("left", "right")
+        if area not in allowed:
+            if progress:
+                raise PluginError("进度面板只能停靠底部")
+            raise PluginError("底部仅用于进度面板，其他面板只能停靠左侧或右侧")
+        if progress and any(dock.property("progressPanel") for dock in self.panels.values()):
+            raise PluginError("底部只能启用一个进度面板，请先停用当前进度面板")
         preferred = saved_layout(self, plugin_id).get("area")
-        if isinstance(preferred, str) and preferred in DOCK_AREAS:
+        if isinstance(preferred, str) and preferred in allowed:
             area = preferred
-        dock = QDockWidget(self.records[plugin_id].manifest.name, self.host)
+        dock = (ProgressDock if progress else QDockWidget)(
+            self.records[plugin_id].manifest.name, self.host
+        )
         dock.setObjectName("panel:" + plugin_id)
         dock.setAllowedAreas(
-            Qt.DockWidgetArea.LeftDockWidgetArea
-            | Qt.DockWidgetArea.RightDockWidgetArea
-            | Qt.DockWidgetArea.BottomDockWidgetArea
+            DOCK_AREAS["bottom"]
+            if progress
+            else Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
         )
         dock.setFeatures(
             QDockWidget.DockWidgetFeature.DockWidgetClosable
@@ -457,10 +473,12 @@ class PluginManager(QObject):
             PLUGIN_STYLE + "\nQDockWidget { border: none; background: transparent; }"
         )
         dock.setWidget(dock_surface(self.host, widget))
+        if progress:
+            dock.widget().radius = 16
         dock.setTitleBarWidget(DockTitleSpacer(dock))
-        dock.toggleViewAction().setText("显示：" + dock.windowTitle())
         self.panels[plugin_id] = dock
-        self.host.addDockWidget(DOCK_AREAS[area], dock)
+        if not progress:
+            self.host.addDockWidget(DOCK_AREAS[area], dock)
         visibility = self.preferences["ui"].get("panels", {})
         visible = visibility.get(plugin_id, True) if isinstance(visibility, dict) else True
         dock.setVisible(not self._fullscreen and visible is not False)

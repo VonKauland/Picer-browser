@@ -133,7 +133,7 @@ class Plugin:
 | image.read | `image_paths()` | 当前目录顺序的 Path 元组快照 |
 | image.read + tasks | `request_metadata(callback)` | 后台读取原图元数据，丢弃过期结果 |
 | ui.panels | `frosted_surface(parent, popup=False)` | 创建与面板相同的毛玻璃子界面或弹出窗 |
-| ui.panels | `add_panel(widget, area="right")` | 仅面板类，注册一个停靠面板；支持 left/right/bottom，停用时删除 |
+| ui.panels | `add_panel(widget, area="right")` | 仅面板类，注册一个停靠面板；普通面板支持 left/right；panel_role: progress 仅 bottom，停用时删除 |
 | ui.commands | `add_command(id, label, callback, shortcut="", requires_image=True, menu="插件")` | 注册单功能动作，可传入 icon=QIcon；停用时删除，宿主皮肤保留外部图标 |
 | image.read | `current_path()` | 返回当前 `Path`，未打开图片时为 `None` |
 | image.read | `image()` | 返回当前预览的独立 `QImage` 拷贝，包含当前显示变换 |

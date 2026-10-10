@@ -18,7 +18,7 @@ from picer.window import MainWindow
 
 @pytest.fixture
 def window(qtbot, tmp_path):
-    window = MainWindow(plugin_root=tmp_path / "state")
+    window = MainWindow(load_examples=False, plugin_root=tmp_path / "state")
     qtbot.addWidget(window)
     window.show()
     yield window
@@ -254,7 +254,7 @@ def test_settings_and_enabled_state_survive_restart(window, tmp_path, qtbot):
     received["values"].append(3)
     assert context.get_setting("options") == {"values": [1, 2]}
     manager.shutdown()
-    restarted = MainWindow(plugin_root=manager.root)
+    restarted = MainWindow(load_examples=False, plugin_root=manager.root)
     qtbot.addWidget(restarted)
     assert restarted.plugins.records["test.sample"].state == "enabled"
     assert restarted.plugins.records["test.sample"].context.get_setting("options") == {
@@ -384,7 +384,7 @@ def test_reload_relative_import_and_uninstall(window, tmp_path):
 
 def test_corrupt_preferences_do_not_break_startup(tmp_path, qtbot):
     (tmp_path / "plugins.json").write_text("[]")
-    window = MainWindow(plugin_root=tmp_path)
+    window = MainWindow(load_examples=False, plugin_root=tmp_path)
     qtbot.addWidget(window)
     assert window.plugins.records["picer.transforms"].state == "enabled"
     assert window.plugins.diagnostics
@@ -459,7 +459,7 @@ def test_safe_mode_skips_external_plugins_without_disabling_preferences(window, 
     manager.install(package(tmp_path))
     manager.enable("test.sample")
     manager.shutdown()
-    safe = MainWindow(plugin_root=manager.root, load_external=False)
+    safe = MainWindow(load_examples=False, plugin_root=manager.root, load_external=False)
     qtbot.addWidget(safe)
     assert "test.sample" not in safe.plugins.records
     assert safe.plugins.preferences["enabled"]["test.sample"] is True

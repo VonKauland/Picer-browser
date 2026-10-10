@@ -26,6 +26,7 @@ class Manifest:
     type: str = "function"
     theme: str = "theme.json"
     legacy: bool = False
+    panel_role: str = "side"
 
     @classmethod
     def read(cls, path: Path) -> "Manifest":
@@ -76,12 +77,16 @@ class Manifest:
                 raise PluginError("面板组件必须声明 ui.panels 权限")
             if kind != "panel" and "ui.panels" in data.get("permissions", []):
                 raise PluginError("只有面板组件可声明 ui.panels")
+            role = data.get("panel_role", "side")
+            if role not in ("side", "progress") or (kind != "panel" and "panel_role" in data):
+                raise PluginError("panel_role 仅用于面板，必须为 side 或 progress")
             return cls(
                 **{key: data[key] for key in ("id", "name", "version", "api_version")},
                 entrypoint=entrypoint,
                 type=kind,
                 theme=theme,
                 legacy="type" not in data,
+                panel_role=role,
                 description=data.get("description", ""),
                 author=data.get("author", ""),
                 permissions=tuple(data.get("permissions", [])),

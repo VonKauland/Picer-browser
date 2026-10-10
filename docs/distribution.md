@@ -7,8 +7,8 @@ Picer/
   Picer.exe                     启动程序，带应用图标与版本信息
   _internal/                    PyInstaller、Python、Qt 运行库
   assets/icons/                 picer.svg、picer.png、picer.ico
-  plugins/                      功能与面板组件，初始为空
-  skins/                        首次安装皮肤后创建，存储皮肤组件
+  plugins/                      功能与面板组件，随附示例已安装
+  skins/                        已安装皮肤组件，默认关闭
   cache/
     thumbnails/                 打开图片后自动生成，最多 256 个 PNG
     plugins/<plugin-id>/        插件独立缓存（声明 cache 权限后可使用）
