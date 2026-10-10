@@ -2,41 +2,23 @@
 
 import math
 
-from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QTextOption
+from PySide6.QtCore import QEvent, QPointF, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QScrollArea,
     QSizePolicy,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from picer.plugins import SettingField
 
-
-class DetailLabel(QLabel):
-    """Let long paths and metadata wrap rather than impose a minimum column width."""
-
-    def __init__(self, text=""):
-        super().__init__(text)
-        self.setTextFormat(Qt.TextFormat.PlainText)
-        self.setWordWrap(True)
-        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        policy.setHeightForWidth(True)
-        self.setSizePolicy(policy)
-
-    def minimumSizeHint(self):
-        return QSize(0, self.fontMetrics().height())
-
-    def sizeHint(self):
-        width = min(140, super().sizeHint().width())
-        return QSize(width, self.heightForWidth(width))
+from .exif_view import ExifView
+from .labels import DetailLabel
 
 
 def section(label):
@@ -161,12 +143,8 @@ class Plugin:
         layout.addWidget(self.scroll, 1)
         # A separate layout region, never a scroll child or overlay over other details.
         self.exif_box, exif_layout = section("相机 EXIF")
-        self.exif_box.setMaximumHeight(210)
-        self.exif_text = QTextEdit()
-        self.exif_text.setReadOnly(True)
-        self.exif_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.exif_text.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-        exif_layout.addWidget(self.exif_text)
+        self.exif_view = ExifView(self.panel)
+        exif_layout.addWidget(self.exif_view)
         layout.addWidget(self.exif_box, 0)
         self.exif_box.hide()
         self.dock = context.add_panel(self.panel, area="right")
@@ -201,6 +179,7 @@ class Plugin:
         path = self.context.current_path()
         self.title.setText(path.name if path else "打开图片后查看信息")
         self.exif_box.hide()
+        self.exif_view.clear()
         self.metadata = None
         self.warning.setText("正在读取元数据…" if path else "")
         for table in self.tables.values():
@@ -231,9 +210,7 @@ class Plugin:
         self.sample_label.setText(
             "采样尺寸：" + " × ".join(str(v) for v in data.get("sample_size", ()))
         )
-        self.exif_text.setPlainText(
-            "\n".join(f"{key}: {value}" for key, value in data["exif"].items())
-        )
+        self.exif_view.set_data(data.get("exif_sections", {}))
         self.exif_box.setVisible(bool(data["exif"]))
         self.warning.setText("\n".join(data["warnings"]))
         ratings = self.context.get_setting("ratings", {})

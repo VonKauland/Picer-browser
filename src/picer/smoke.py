@@ -173,8 +173,26 @@ def verify_browser(window, browser, folder):
     )
 
 
+def verify_held_keys(window):
+    previous = window.current_path
+    window.activateWindow()
+    window.view.setFocus()
+    wait_for(window.isActiveWindow)
+    QTest.keyPress(window.view, Qt.Key.Key_Right)
+    try:
+        assert window.loader.rapid and window.current_path != previous
+        wait_for(lambda: window.current_path == previous)
+    finally:
+        QTest.keyRelease(window.view, Qt.Key.Key_Right)
+    assert not window.navigation_keys.timer.isActive() and not window.loader.rapid
+    QTest.qWait(window.app_preferences["key_repeat_ms"] + 40)
+    assert window.current_path == previous
+    print("Packaged held-key millisecond interval, release and saved repeat setting passed")
+
+
 def verify_media(window):
     """Exercise wheel-packaged LibRaw/Pillow plus actual animated panel controls."""
+    verify_held_keys(window)
     directory = window.paths_layout.cache / "smoke-media"
     directory.mkdir(parents=True, exist_ok=True)
     previous = window.current_path
@@ -198,6 +216,13 @@ def verify_media(window):
         window.panel_hovers.layout_strips()
         assert controller.strip.isVisible() and controller.strip.width() == RING_SIZE
         assert abs(controller.strip.geometry().center().x() - window.rect().center().x()) <= 1
+        assert f"/{len(window.paths)}" in controller.strip.toolTip()
+        old_top = controller.strip.y()
+        controller.reveal()
+        controller.animation.setCurrentTime(controller.OPEN_MS)
+        assert controller.strip.y() < old_top
+        assert controller.strip.geometry().bottom() < controller.popup.geometry().top()
+        controller.collapse(immediate=True)
         pixels = controller.strip.grab().toImage()
         assert pixels.pixelColor(12, 12).alpha() == 0
         assert pixels.pixelColor(12, 6).blue() > 150
@@ -256,6 +281,13 @@ def verify_media(window):
         )
         raise
     wait_for(lambda: window.view.image_item.pixmap().width() == 256, timeout=10_000)
+    info = window.plugins.records["example.info"].instance
+    wait_for(
+        lambda: info.metadata is not None and info.metadata["path"] == str(raw), timeout=10_000
+    )
+    assert info.metadata["exif_sections"]["基础信息"]["相机制造商"] == "Picer RAW Camera"
+    assert not info.exif_box.isHidden() and "Picer RAW Camera" in info.exif_view.text()
+    print("Packaged RAW EXIF camera table passed")
     assert window.open_image(previous)
     print(
         "Packaged LibRaw DNG decode, GIF/WebP playback/seek/pause and animated playback row passed"
@@ -347,13 +379,16 @@ def run(window, args, folder, done):
             if count_before:
                 assert window.app_preferences["zoom_step"] == 30
                 assert window.app_preferences["accent_color"] == "#FFA591"
+                assert window.app_preferences["key_repeat_ms"] == 160
             application_settings = ApplicationSettings(window)
             assert application_settings.pages.count() == 6
             assert isinstance(application_settings.editors["glass_strength"], RoundedSlider)
             application_settings.editors["zoom_step"].setValue(30)
+            application_settings.editors["key_repeat_ms"].setValue(160)
             application_settings.editors["accent_color"].setValue("#ffa591")
             application_settings.save()
             assert window.view.zoom_step == 30
+            assert window.app_preferences["key_repeat_ms"] == 160
             assert window.skin_colors["accent"] == "#FFA591"
             assert colors_for(browser.tree)["accent"] == "#FFA591"
             assert window.skin_colors["background"] != colors_for(browser.tree)["background"]
@@ -458,14 +493,22 @@ def run(window, args, folder, done):
                     return
                 assert info.metadata is not None
                 assert info.metadata["dimensions"]["宽度"] == "80"
-                assert "Picer Test Camera" in info.exif_text.toPlainText()
+                assert "Picer Test Camera" in info.exif_view.text()
                 assert not info.exif_box.isHidden()
                 assert len(info.histogram.channels) == 3
+                assert not info.exif_view.details.isVisible()
+                before_height = info.exif_view.height()
+                info.exif_view.button.click()
+                wait_for(lambda: info.exif_view.fraction == 1)
+                assert info.exif_view.height() > before_height
+                assert "相机制造商" in info.exif_view.text()
+                info.exif_view.button.click()
+                wait_for(lambda: info.exif_view.fraction == 0)
                 window.panel_hovers.controllers["example.info"].resize_extent(220)
                 QTest.qWait(50)
                 assert info.scroll.widget().width() <= info.scroll.viewport().width()
                 assert info.scroll.horizontalScrollBar().maximum() == 0
-                assert info.exif_text.horizontalScrollBar().maximum() == 0
+                assert info.exif_view.scroll.horizontalScrollBar().maximum() == 0
             if args.file_panel_archive:
                 index = browser.model.index(str(first))
                 browser.model.data(index, Qt.ItemDataRole.DecorationRole)

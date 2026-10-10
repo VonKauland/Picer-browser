@@ -33,6 +33,7 @@ from picer.components import ComponentUI
 from picer.host_style import HostStyleFilter, mark_host, scope_style
 from picer.imaging import supported_suffixes
 from picer.loading import ImageLoader
+from picer.navigation import NavigationKeys
 from picer.panels import GlassBackdrop, PanelHovers
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
@@ -206,6 +207,7 @@ class MainWindow(QMainWindow):
         self.plugins.changed.connect(self.panel_hovers.layout_strips)
         self.components = ComponentUI(self, plugin_menu)
         self.apply_preferences()
+        self.navigation_keys = NavigationKeys(self)
         self.update_actions()
         self.title_bar.arrange()
 
@@ -259,6 +261,8 @@ class MainWindow(QMainWindow):
         for surface in tuple(self.glass.surfaces):
             surface.update()
         self.title_bar.arrange()
+        if hasattr(self, "navigation_keys") and self.navigation_keys.timer.isActive():
+            self.navigation_keys.timer.setInterval(self.app_preferences["key_repeat_ms"])
         self.plugins.emit_appearance()
         self.panel_hovers.update_progress_ring()
         self.update()
@@ -364,6 +368,7 @@ class MainWindow(QMainWindow):
         if self.current_path:
             ui["last_image"] = str(self.current_path)
         self.plugins._save()
+        self.navigation_keys.dispose()
         self.loader.shutdown()
         self.animation.shutdown()
         self.plugins.shutdown()
@@ -397,7 +402,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.12.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.13.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -547,6 +552,7 @@ class MainWindow(QMainWindow):
         if self.current_path is None or len(self.paths) < 2:
             return
         self.loader.folder_candidates.clear()
+        self.loader.direction = 1 if offset > 0 else -1
         self.continue_navigation(offset, len(self.paths) - 1)
 
     def continue_navigation(self, offset, budget):

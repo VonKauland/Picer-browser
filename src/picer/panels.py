@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QGraphicsBlurEffect,
     QMenu,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -366,6 +367,10 @@ class HiddenStrip(QWidget):
     def enterEvent(self, event):
         if self.origin is None:
             self.controller.reveal()
+            if self.controller.dock.property("progressPanel"):
+                QToolTip.showText(
+                    QCursor.pos() + QPoint(12, -30), self.toolTip(), self.controller.host
+                )
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -693,7 +698,11 @@ class HiddenPanel(QObject):
     def start_animation(self, expanding):
         self.animation.stop()
         if not expanding and self.progress == 1.0:
-            self.morph_origin = QRect(self.strip.geometry())
+            self.morph_origin = (
+                self.collection.progress_ring_rect(self, resting=True)
+                if self.dock.property("progressPanel")
+                else QRect(self.strip.geometry())
+            )
         self.expanding = expanding
         self.animation.setStartValue(self.progress)
         self.animation.setEndValue(1.0 if expanding else 0.0)
@@ -729,6 +738,8 @@ class HiddenPanel(QObject):
         shape.addRoundedRect(self.popup.rect(), radius, radius)
         self.popup.setMask(QRegion(shape.toFillPolygon().toPolygon()))
         self.popup.update()
+        if self.dock.property("progressPanel"):
+            self.collection.layout_strips()
 
     def schedule_collapse(self):
         if self.popup and self.expanding and not self.moving:
@@ -872,9 +883,39 @@ class PanelHovers(QObject):
     def update_progress_ring(self):
         for controller in self.controllers.values():
             if controller.dock.property("progressPanel"):
+                host = self.host
+                index = host.path_positions.get(host.current_path, -1)
+                position = f"{index + 1 if index >= 0 else 0}/{len(host.paths)}"
+                controller.strip.setToolTip(f"当前图片 {position} · 悬停展开，点击固定")
                 controller.strip.update()
 
+    def progress_ring_rect(self, controller, *, resting=False):
+        preview = controller.dock.property("previewGeometry")
+        if isinstance(preview, QRect) and not preview.isEmpty():
+            center = preview.center().y()
+            if resting:
+                center = self.host.height() - 8 - preview.height() + (preview.height() - 1) // 2
+            return QRect(
+                max(0, preview.left() - RING_SIZE - 8),
+                center - (RING_SIZE - 1) // 2,
+                RING_SIZE,
+                RING_SIZE,
+            )
+        bottom = self.host.height() - RING_SIZE - 6
+        if controller.popup and not resting:
+            bottom -= round((controller.current_extent() + 8) * controller.progress)
+        return QRect((self.host.width() - RING_SIZE) // 2, bottom, RING_SIZE, RING_SIZE)
+
     def layout_strips(self):
+        if getattr(self, "laying_out", False):
+            return
+        self.laying_out = True
+        try:
+            self._layout_strips()
+        finally:
+            self.laying_out = False
+
+    def _layout_strips(self):
         areas = {}
         for controller in self.controllers.values():
             if controller.dock.property("progressPanel"):
@@ -888,21 +929,7 @@ class PanelHovers(QObject):
             for index, controller in enumerate(controllers):
                 offset = (index - (len(controllers) - 1) / 2) * 96
                 if controller.dock.property("progressPanel"):
-                    preview = controller.dock.property("previewGeometry")
-                    if isinstance(preview, QRect) and not preview.isEmpty():
-                        rect = QRect(
-                            max(0, preview.left() - RING_SIZE - 8),
-                            preview.center().y() - (RING_SIZE - 1) // 2,
-                            RING_SIZE,
-                            RING_SIZE,
-                        )
-                    else:
-                        rect = QRect(
-                            (self.host.width() - RING_SIZE) // 2,
-                            self.host.height() - RING_SIZE - 6,
-                            RING_SIZE,
-                            RING_SIZE,
-                        )
+                    rect = self.progress_ring_rect(controller)
                 elif area == Qt.DockWidgetArea.BottomDockWidgetArea:
                     rect = QRect(
                         round(self.host.width() / 2 - 42 + offset), self.host.height() - 9, 84, 5
@@ -911,6 +938,4 @@ class PanelHovers(QObject):
                     x = 4 if area == Qt.DockWidgetArea.LeftDockWidgetArea else self.host.width() - 9
                     rect = QRect(x, round(self.host.height() / 2 - 42 + offset), 5, 84)
                 controller.strip.setGeometry(rect)
-                if controller.popup and controller.progress == 1.0:
-                    controller.morph_origin = QRect(rect)
                 controller.strip.raise_()

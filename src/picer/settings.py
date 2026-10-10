@@ -184,6 +184,14 @@ class ApplicationSettings(StyledDialog):
         card = Card("导航")
         self.preference(card, "browse_folder", "浏览当前文件夹")
         self.preference(card, "wrap", "到末尾循环浏览")
+        repeat = self.preference(card, "key_repeat_ms", "长按方向键切换间隔")
+        repeat.setSuffix(" ms")
+        note = QLabel(
+            "30–2000 毫秒，默认 120 毫秒。值越大切换越慢；长按期间暂停原图精修，松开后恢复。"
+        )
+        note.setWordWrap(True)
+        note.setObjectName("muted")
+        card.body.addWidget(note)
         layout.addWidget(card)
         card = Card("缩放")
         self.preference(card, "zoom_step", "滚轮缩放步长")

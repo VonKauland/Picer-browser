@@ -219,3 +219,7 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 - `subscribe("appearance.changed", callback)` 需要 `events.subscribe`，应用外观设置保存后回调参数为 `{"accent": "#RRGGBB"}`；停用 / 出错自动撤销。插件应在激活时读取 `accent_color()` 初始化，并在回调中更新自行绘制的选中状态。
 - 宿主共享控件随用户设置更新，外部插件原始 QSS 与自有 QIcon 不被改写；示例浏览器与进度条主动订阅外观变化。皮肤仍只影响宿主。
 - 固定面板外壳不透明，自动隐藏弹出才使用玻璃；`frosted_surface` 的子界面在固定面板中同样不透明，独立弹出窗仍可使用玻璃。
+
+### 结构化 EXIF（0.13）
+
+`request_metadata` 保留原 `exif` 字典，并增加 `exif_sections`：`基础信息` 为标签 / 值映射，`详细信息` 为分组 / 标签 / 值映射。无相机标签的图片不显示 EXIF 区域，缺少个别字段显示 `未记录`。RAW 标签解析独立于像素解码，无法生成直方图时仍可返回相机信息与警告。

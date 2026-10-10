@@ -9,16 +9,19 @@ from PySide6.QtGui import QImageReader
 
 from picer.animation import animation_source
 from picer.imaging import RAW_SUFFIXES, read_image
-from picer.plugins.tasks import Worker
+from picer.plugins.tasks import TaskCancelled, Worker
 
 
 class ImageLoader(QObject):
     def __init__(self, host):
         super().__init__(host)
         self.host = host
-        self.pools = {name: QThreadPool(self) for name in ("preview", "full", "index")}
+        self.pools = {name: QThreadPool(self) for name in ("preview", "prefetch", "full", "index")}
         for pool in self.pools.values():
             pool.setMaxThreadCount(1)
+        self.pools["preview"].setMaxThreadCount(2)
+        self.rapid = False
+        self.direction = 1
         self.jobs = {}
         self.generation = 0
         self.closed = False
@@ -46,6 +49,24 @@ class ImageLoader(QObject):
         self.pending_thumbnail = None
         self.requested = None
         self.options = True
+
+    def set_rapid(self, active):
+        if self.closed or self.rapid == active:
+            return
+        self.rapid = active
+        self.refine.stop()
+        if active:
+            for worker, lane, _ in self.jobs.values():
+                if lane == "full":
+                    worker.token.cancel()
+        elif self.requested == self.host.current_path:
+            self.refine.start()
+            self.prefetch_timer.start()
+
+    def settle(self):
+        if not self.rapid:
+            self.refine.start()
+        self.prefetch_timer.start(20 if self.rapid else 80)
 
     def submit(self, lane, work, done, *, foreground=False):
         worker = Worker(work)
@@ -168,9 +189,10 @@ class ImageLoader(QObject):
                 raise ValueError(reader.errorString())
             options = self.host.app_preferences["auto_orient"]
             self.options = options
-            full_key, preview_key = self.key(path, 0), self.key(path, 1600)
+            edge = 960 if self.rapid else 1600
+            full_key, preview_key = self.key(path, 0), self.key(path, edge)
             full = self.cached(full_key)
-            preview = self.cached(preview_key)
+            preview = self.cached(self.key(path, 1600)) or self.cached(preview_key)
             size = reader.size()
             animated_format = bytes(reader.format()).lower() in {b"gif", b"webp"}
             small = (
@@ -179,6 +201,8 @@ class ImageLoader(QObject):
                 and path.stat().st_size < 2 * 1048576
                 and 0 < size.width() * size.height() <= 2_000_000
             )
+            if self.rapid and not small:
+                full = None  # Avoid uploading a cached full-resolution image on every repeat.
             if full is None and small:
                 full = read_image(path, auto_orient=options)
         except Exception as error:
@@ -207,12 +231,11 @@ class ImageLoader(QObject):
         if preview is not None:
             self.folder_candidates.clear()
             self.host.present_image(path, preview, paths=paths, preview=True)
-            self.refine.start()
-            self.prefetch_timer.start()
+            self.settle()
             return True
 
         def work(token):
-            image = read_image(path, edge=1600, auto_orient=options, token=token)
+            image = read_image(path, edge=edge, auto_orient=options, token=token)
             source = animation_source(path, token)
             # Worker has a final cancellation checkpoint; close readers on races.
             if token.cancelled:
@@ -243,8 +266,7 @@ class ImageLoader(QObject):
             if source:
                 self.host.animation.start(source)
             else:
-                self.refine.start()
-                self.prefetch_timer.start()
+                self.settle()
 
         self.submit("preview", work, finish, foreground=True)
         return True
@@ -271,7 +293,7 @@ class ImageLoader(QObject):
 
     def load_full(self):
         path, generation, options = self.requested, self.generation, self.options
-        if not path or self.host.animation.state.active:
+        if not path or self.rapid or self.host.animation.state.active:
             return
         try:
             key = self.key(path, 0)
@@ -283,7 +305,7 @@ class ImageLoader(QObject):
             return
 
         def finish(image, error):
-            if generation != self.generation:
+            if generation != self.generation or isinstance(error, TaskCancelled) or self.rapid:
                 return
             if error:
                 self.host.last_error = f"原图无法读取 {path.name}：{error}"
@@ -300,11 +322,12 @@ class ImageLoader(QObject):
 
     def prefetch(self):
         paths = self.host.paths
-        if self.requested not in paths or len(paths) < 2:
+        if self.requested not in self.host.path_positions or len(paths) < 2:
             return
         index = self.host.path_positions[self.requested]
         options = self.options
-        for offset in (1, -1):
+        edge = 960 if self.rapid else 1600
+        for offset in (self.direction, -self.direction):
             target = index + offset
             if not self.host.app_preferences["wrap"] and not 0 <= target < len(paths):
                 continue
@@ -312,7 +335,7 @@ class ImageLoader(QObject):
             if bytes(QImageReader(str(path)).format()).lower() in {b"gif", b"webp"}:
                 continue
             try:
-                key = self.key(path, 1600)
+                key = self.key(path, edge)
             except OSError:
                 continue
             if key in self.cache:
@@ -323,9 +346,9 @@ class ImageLoader(QObject):
                     self.remember(key, image)
 
             self.submit(
-                "preview",
-                lambda token, path=path: read_image(
-                    path, edge=1600, auto_orient=options, token=token
+                "prefetch",
+                lambda token, path=path, edge=edge: read_image(
+                    path, edge=edge, auto_orient=options, token=token
                 ),
                 finish,
             )

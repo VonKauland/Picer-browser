@@ -34,3 +34,6 @@
 - File browser locations: Picer-only favorites and recent folders persist separately from session back/forward navigation, each bounded to 64 entries. Drive roots go up to the virtual disk list. Returning to a parent selects the exited directory and scrolls to the top. Keep folder-specific sort overrides bounded to 128 entries; normal/image-containing folder defaults are separate plugin settings, classified asynchronously without recursive scans.
 
 - Hidden bottom progress uses a tiny transparent 24px ring (20px outer diameter); image position is the accent outer ring, animated frame position a silver inner ring. With independent thumbnails open, anchor it to their left; preserve hover/click pin controls and all motion timings.
+
+- Held image navigation uses the saved millisecond interval, ignores OS repeats and stops on release/deactivation or editing focus. Rapid mode pauses full refinement and prefers 960px previews; use a separate bounded neighbour prefetch pool and keep stale-result/cancellation rules.
+- EXIF tables stay bottom-anchored with wrapping columns and upward details expansion. Preserve original metadata SDK fields; parse RAW camera tags independently of pixel/histogram decoding and never invent missing camera/lens values.

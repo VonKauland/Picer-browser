@@ -112,7 +112,7 @@ def test_image_metadata_exif_histogram_and_visibility(window, tmp_path, qtbot, p
     qtbot.waitUntil(lambda: plugin.metadata is not None)
     assert plugin.metadata["dimensions"]["宽度"] == "80"
     assert sum(plugin.histogram.channels[0]) == 80 * 60
-    assert "Test Camera" in plugin.exif_text.toPlainText()
+    assert "Test Camera" in plugin.exif_view.text()
     assert not plugin.exif_box.isHidden()
     assert plugin.exif_box.parent() is plugin.panel
     context = window.plugins.records["example.info"].context
@@ -558,7 +558,7 @@ def test_information_resizes_long_fields_without_horizontal_overflow(
     viewport = plugin.scroll.viewport()
     assert plugin.scroll.widget().width() <= viewport.width()
     assert plugin.scroll.horizontalScrollBar().maximum() == 0
-    assert plugin.exif_text.horizontalScrollBar().maximum() == 0
+    assert plugin.exif_view.scroll.horizontalScrollBar().maximum() == 0
     for table in plugin.tables.values():
         expected = (
             QFormLayout.RowWrapPolicy.WrapAllRows

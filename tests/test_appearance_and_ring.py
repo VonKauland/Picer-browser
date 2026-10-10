@@ -103,9 +103,10 @@ def test_progress_morph_returns_to_ring_after_preview_moves_it(window, qtbot, tm
     qtbot.waitUntil(lambda: progress.expansion == 1)
     ring = controller.strip.geometry()
     assert ring.right() < progress.preview.geometry().left()
+    resting = window.panel_hovers.progress_ring_rect(controller, resting=True)
     controller.collapse()
     controller.animation.setCurrentTime(controller.CLOSE_MS - 1)
-    assert controller.popup.geometry() == ring
+    assert controller.popup.geometry() == resting
     controller.animation.setCurrentTime(controller.CLOSE_MS)
     assert controller.popup is None and progress.preview.isVisible()
 

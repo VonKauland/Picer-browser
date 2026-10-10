@@ -47,7 +47,10 @@ def make_dng(path):
     tag(33422, 1, 4, bytes([0, 1, 1, 2]))
     tag(50706, 1, 4, bytes([1, 4, 0, 0]))
     tag(50707, 1, 4, bytes([1, 1, 0, 0]))
+    manufacturer = b"Picer RAW Camera\0"
+    tag(271, 2, len(manufacturer), manufacturer)
     model = b"PicerCamera\0"
+    tag(272, 2, len(model), model)
     tag(50708, 2, len(model), model)
     tag(50710, 1, 3, bytes([0, 1, 2]))
     tag(50714, 5, 1, struct.pack("<II", 0, 1))

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import ExifTags, Image, ImageStat
 
+from picer.exif import sections
 from picer.imaging import RAW_SUFFIXES, read_image
 
 
@@ -65,9 +66,12 @@ def inspect_image(path: Path, token=None) -> dict:
             icc = source.info.get("icc_profile")
             result["color"]["ICC 配置"] = describe(icc) if icc else "未嵌入"
             exif = source.getexif()
+            camera_tags = {}
             for tag, value in exif.items():
                 if tag not in (34665, 34853, 40965):
-                    result["exif"][ExifTags.TAGS.get(tag, f"Tag {tag}")] = describe(value)
+                    name = ExifTags.TAGS.get(tag, f"Tag {tag}")
+                    result["exif"][name] = describe(value)
+                    camera_tags[name] = value
             for pointer, prefix, names in (
                 (34665, "相机", ExifTags.TAGS),
                 (34853, "GPS", ExifTags.GPSTAGS),
@@ -76,11 +80,12 @@ def inspect_image(path: Path, token=None) -> dict:
                 if pointer in exif:
                     try:
                         for tag, value in exif.get_ifd(pointer).items():
-                            result["exif"][f"{prefix} · {names.get(tag, f'Tag {tag}')}"] = describe(
-                                value
-                            )
+                            name = names.get(tag, f"Tag {tag}")
+                            result["exif"][f"{prefix} · {name}"] = describe(value)
+                            camera_tags[name] = value
                     except (OSError, ValueError, TypeError, KeyError) as error:
                         result["warnings"].append(f"{prefix} EXIF：{error}")
+            result["exif_sections"] = sections(camera_tags)
             result["embedded_rating"] = (
                 int(exif.get(18246, 0)) if str(exif.get(18246, 0)).isdigit() else 0
             )
@@ -108,6 +113,14 @@ def inspect_raw(path, result, token):
     import exifread
     import rawpy
 
+    # Parse camera tags independently: a decoder/histogram failure must not hide EXIF.
+    try:
+        with path.open("rb") as handle:
+            tags = exifread.process_file(handle, details=False, extract_thumbnail=False)
+        result["exif"] = {str(key): describe(value) for key, value in tags.items()}
+        result["exif_sections"] = sections(tags)
+    except (OSError, ValueError, TypeError, KeyError) as error:
+        result["warnings"].append(f"RAW EXIF 无法读取：{error}")
     try:
         if token:
             token.checkpoint()
@@ -125,9 +138,6 @@ def inspect_raw(path, result, token):
                 "传感器白电平": str(raw.white_level),
                 "传感器黑电平": describe(raw.black_level_per_channel),
             }
-        with path.open("rb") as handle:
-            tags = exifread.process_file(handle, details=False, extract_thumbnail=False)
-        result["exif"] = {str(key): describe(value) for key, value in tags.items()}
         if token:
             token.checkpoint()
         image = read_image(path, edge=1024, token=token)
@@ -140,7 +150,7 @@ def inspect_raw(path, result, token):
         result["color"]["平均 RGB（预览采样）"] = ", ".join(
             f"{v:.1f}" for v in ImageStat.Stat(sample).mean
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, RuntimeError, rawpy.LibRawError) as error:
         result["warnings"].append(f"部分 RAW 元数据无法读取：{error}")
     if token:
         token.checkpoint()

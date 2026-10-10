@@ -10,6 +10,7 @@ DEFAULTS = {
     "browse_folder": True,
     "wrap": True,
     "zoom_step": 25,
+    "key_repeat_ms": 120,
     "double_click": "toggle",
     "glass": True,
     "glass_strength": 70,
@@ -23,7 +24,12 @@ CHOICES = {
     "double_click": {"toggle", "fit", "actual"},
     "density": {"standard", "compact"},
 }
-RANGES = {"zoom_step": (5, 100), "glass_strength": (0, 100), "cache_mb": (16, 16384)}
+RANGES = {
+    "key_repeat_ms": (30, 2000),
+    "zoom_step": (5, 100),
+    "glass_strength": (0, 100),
+    "cache_mb": (16, 16384),
+}
 
 
 def read_preferences(manager):
