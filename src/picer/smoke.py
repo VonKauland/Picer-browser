@@ -195,11 +195,22 @@ def run(window, args, folder, done):
 
         def metadata_ready():
             if window.plugins.jobs:
+                print(
+                    "Waiting for tasks",
+                    [(job.plugin_id, job.token.cancelled) for job in window.plugins.jobs.values()],
+                    flush=True,
+                )
                 QTimer.singleShot(25, lambda: guarded(metadata_ready))
                 return
             if args.panel_archive:
                 info = window.plugins.records["example.info"].instance
                 if info.metadata is None:
+                    print(
+                        "Waiting for image metadata",
+                        window.plugins.records["example.info"].state,
+                        info.read_timer.isActive(),
+                        flush=True,
+                    )
                     QTimer.singleShot(25, lambda: guarded(metadata_ready))
                     return
                 assert info.metadata is not None
@@ -216,6 +227,15 @@ def run(window, args, folder, done):
                 index = browser.model.index(str(first))
                 browser.model.data(index, Qt.ItemDataRole.DecorationRole)
                 if not any(key[0] == str(first) for key in browser.model.cache):
+                    print(
+                        "Waiting for file thumbnail",
+                        str(first),
+                        index.isValid(),
+                        browser.model.busy,
+                        tuple(browser.model.pending),
+                        tuple(browser.model.cache),
+                        flush=True,
+                    )
                     QTimer.singleShot(25, lambda: guarded(metadata_ready))
                     return
                 thumbnail = (

@@ -33,6 +33,10 @@ def run_smoke(application: Path, working_directory: Path, images: Path) -> None:
     except subprocess.TimeoutExpired:
         subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=False)
         raise RuntimeError("Packaged application smoke test timed out") from None
+    for name in ("smoke.log", "plugins.log"):
+        log = application / "logs" / name
+        if log.is_file() and (code != 0 or name == "smoke.log"):
+            print(log.read_text(encoding="utf-8", errors="replace"), flush=True)
     if code != 0:
         raise RuntimeError(f"Packaged application smoke test failed: {code}")
 

@@ -3,6 +3,7 @@
 import argparse
 import sys
 import tempfile
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from PySide6.QtCore import QTimer
@@ -61,7 +62,16 @@ def main() -> int:
     elif args.image:
         window.open_image(Path(args.image))
 
-    result = app.exec()
+    if smoke_test and getattr(sys, "frozen", False):
+        # A --windowed EXE has no stdout/stderr. Keep actual smoke diagnostics
+        # in the copied distribution so its parent CI process can report failures.
+        with (window.plugins.paths.logs / "smoke.log").open(
+            "w", encoding="utf-8", buffering=1
+        ) as log:
+            with redirect_stdout(log), redirect_stderr(log):
+                result = app.exec()
+    else:
+        result = app.exec()
     window.plugins.shutdown()
     if temporary_plugins:
         temporary_plugins.cleanup()
