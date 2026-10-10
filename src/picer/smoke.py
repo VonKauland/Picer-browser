@@ -2,6 +2,7 @@
 
 import traceback
 from pathlib import Path
+from time import sleep
 
 from PIL import Image
 from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, Qt, QTimer
@@ -21,6 +22,10 @@ def wait_for(predicate, timeout=3000):
     deadline.start()
     while not predicate() and deadline.elapsed() < timeout:
         QTest.qWait(20)
+        # Native Qt waits can repeatedly retain/reacquire Python's GIL on
+        # Windows. Yield explicitly so cold decoder imports and Python worker
+        # callbacks can progress while this nested smoke loop polls the GUI.
+        sleep(0.001)
     assert predicate()
 
 
@@ -200,6 +205,9 @@ def verify_media(window):
     try:
         wait_for(lambda: window.current_path == raw, timeout=10_000)
     except AssertionError:
+        import faulthandler
+
+        faulthandler.dump_traceback()
         print(
             "RAW load diagnostics",
             {
