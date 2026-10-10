@@ -514,7 +514,9 @@ def test_preview_remains_until_button_toggle_and_docks_down(window, tmp_path, qt
     assert preview.isVisible() and controller.popup is not None
     assert abs(preview.geometry().bottom() - (controller.popup.geometry().top() - 9)) <= 1
     controller.collapse()
-    qtbot.wait(330)
+    qtbot.waitUntil(
+        lambda: controller.popup is None and preview.geometry().bottom() == window.height() - 9
+    )
     assert preview.isVisible() and preview.geometry().bottom() == window.height() - 9
     window.resize(1300, 840)
     qtbot.waitUntil(lambda: preview.width() == window.width() // 3)

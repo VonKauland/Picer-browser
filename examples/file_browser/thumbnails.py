@@ -1,6 +1,7 @@
 """Lazy, bounded filesystem thumbnails and frame-free view painting."""
 
 from collections import OrderedDict
+from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap
@@ -30,7 +31,9 @@ class PhotoModel(QFileSystemModel):
             and index.column() == 0
             and not self.isDir(index)
         ):
-            path = self.filePath(index)
+            # QFileSystemModel uses forward slashes on Windows, while the
+            # application and persisted filesystem paths use native separators.
+            path = str(Path(self.filePath(index)))
             info = self.fileInfo(index)
             key = (path, info.lastModified().toMSecsSinceEpoch(), info.size())
             if key in self.cache:
