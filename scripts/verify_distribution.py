@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -88,7 +89,18 @@ def verify(application: Path) -> None:
         if preferences["ui"]["quick_slots"][4] != "example.negative:negative":
             raise RuntimeError("Quick slot assignment was not persisted")
         moved = root / "迁移后的 Picer"
-        first.rename(moved)
+        # Windows can briefly keep the just-executed DLL/EXE open (including
+        # Defender scanning) after the process exits. Still require a real rename;
+        # a persistent sharing/permission failure must fail the migration check.
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                first.rename(moved)
+                break
+            except PermissionError as error:
+                if getattr(error, "winerror", None) not in {5, 32} or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.1)
         run_smoke(moved, unrelated, images)
         preferences = json.loads((moved / "config" / "plugins.json").read_text(encoding="utf-8"))
         if preferences["settings"]["example.negative"]["opened_count"] != 8:
