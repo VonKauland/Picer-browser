@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QStyleOptionSlid
 from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.settings import ApplicationSettings
+from picer.smoke_samples import make_animation, make_dng
 from picer.ui import RoundedSlider
 
 
@@ -131,6 +132,43 @@ def verify_browser(window, browser, folder):
     print(
         "Browser glass folders, directory ordering, double-click/side-key/Backspace, "
         "breadcrumbs and Ctrl-wheel checks passed"
+    )
+
+
+def verify_media(window):
+    """Exercise wheel-packaged LibRaw/Pillow plus actual animated panel controls."""
+    directory = window.paths_layout.cache / "smoke-media"
+    directory.mkdir(parents=True, exist_ok=True)
+    previous = window.current_path
+    progress = window.plugins.records["example.progress"].instance
+    for extension in ("gif", "webp"):
+        path = directory / f"motion.{extension}"
+        make_animation(path)
+        assert window.open_image(path)
+        wait_for(lambda: window.animation.state.active)
+        assert window.animation.state.count == 3
+        wait_for(lambda: window.animation.state.frame > 0)
+        window.animation.toggle(False)
+        progress.playback_slider.setValue(2)
+        wait_for(lambda: window.animation.state.duration == 190)
+        assert window.view.image_item.pixmap().toImage().pixelColor(30, 30).blue() > 240
+        wait_for(lambda: progress.playback_expansion == 1)
+        assert not progress.playback.isHidden() and progress.dock.height() == 100
+        progress.playback_button.click()
+        assert window.animation.state.playing
+        progress.playback_button.click()
+        assert not window.animation.state.playing
+        assert window.open_image(previous)
+        wait_for(lambda: progress.playback_expansion == 0)
+        assert progress.playback.isHidden()
+    raw = directory / "synthetic.dng"
+    make_dng(raw)
+    assert window.open_image(raw)
+    wait_for(lambda: window.current_path == raw, timeout=10_000)
+    wait_for(lambda: window.view.image_item.pixmap().width() == 256, timeout=10_000)
+    assert window.open_image(previous)
+    print(
+        "Packaged LibRaw DNG decode, GIF/WebP playback/seek/pause and animated playback row passed"
     )
 
 
@@ -280,7 +318,7 @@ def run(window, args, folder, done):
         assert window.title_bar.caption.text() == second.name
         assert not window.windowIcon().isNull()
         assert window.plugins.state_file.is_file() and window.plugins.log_file.is_file()
-        assert any(window.thumbnail_cache.directory.glob("*.png"))
+        wait_for(lambda: any(window.thumbnail_cache.directory.glob("*.png")))
         assert len(window.title_bar.quick_slots) == 5
         window.toggle_fullscreen()
         assert all(dock.isHidden() for dock in window.plugins.panels.values())
@@ -418,6 +456,7 @@ def run(window, args, folder, done):
 
         def hover():
             if not args.file_panel_archive:
+                verify_media(window)
                 done(0)
                 return
             controller = window.panel_hovers.controllers["example.files"]
@@ -469,6 +508,7 @@ def run(window, args, folder, done):
                 "macOS isolation, glass, hover morph, "
                 "hidden-strip drag/pin and grips passed"
             )
+            verify_media(window)
             done(0)
 
         QTimer.singleShot(25, lambda: guarded(metadata_ready))

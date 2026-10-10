@@ -89,7 +89,7 @@ class Plugin:
         self.token = None
         self.read_timer = QTimer()
         self.read_timer.setSingleShot(True)
-        self.read_timer.setInterval(30)
+        self.read_timer.setInterval(180)
         self.read_timer.timeout.connect(self.read_metadata)
         self.fields = tuple(
             SettingField(key, label, "bool", True)

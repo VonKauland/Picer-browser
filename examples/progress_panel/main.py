@@ -1,8 +1,8 @@
 """Live navigation with a persistent, independently docked thumbnail strip."""
 
 from PySide6.QtCore import QEasingCurve, QSize, Qt, QTimer, QVariantAnimation
-from PySide6.QtGui import QImageReader, QTransform
 from PySide6.QtWidgets import (
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.imaging import read_image
 from picer.plugins import RoundedSlider, SettingField, ui_icon
 
 from .preview import PreviewStrip
@@ -65,6 +66,31 @@ class Plugin:
         self.progress_row.addWidget(self.slider, 1)
         self.progress_row.addWidget(self.count)
         self.layout.addLayout(self.progress_row)
+        self.playback = QWidget(self.panel)
+        playback_row = QHBoxLayout(self.playback)
+        playback_row.setContentsMargins(0, 0, 0, 0)
+        playback_row.setSpacing(8)
+        self.playback_slider = RoundedSlider(Qt.Orientation.Horizontal)
+        self.playback_slider.setTracking(True)
+        self.playback_slider.valueChanged.connect(context.seek_animation)
+        self.playback_count = QLabel("0/0")
+        self.playback_button = QPushButton()
+        self.playback_button.setObjectName("progressButton")
+        self.playback_button.setFixedSize(24, 24)
+        self.playback_button.setIconSize(QSize(14, 14))
+        self.playback_button.clicked.connect(context.toggle_animation)
+        playback_row.addWidget(self.playback_slider, 1)
+        playback_row.addWidget(self.playback_count)
+        playback_row.addWidget(self.playback_button)
+        self.layout.addWidget(self.playback)
+        self.playback_opacity = QGraphicsOpacityEffect(self.playback)
+        self.playback.setGraphicsEffect(self.playback_opacity)
+        self.playback_expansion = 0.0
+        self.playback_target = False
+        self.playback_motion = QVariantAnimation(self.panel)
+        self.playback_motion.valueChanged.connect(self.set_playback_expansion)
+        self.playback_motion.finished.connect(self.finish_playback_motion)
+        self.playback.hide()
         self.dock = context.add_panel(self.panel, area="bottom")
         self.preview = PreviewStrip(self)
         self.preview_open = False
@@ -81,6 +107,8 @@ class Plugin:
         self.refresh_timer.timeout.connect(self.refresh_preview)
         self.compact(False, animate=False)
         context.subscribe("image.changed", self.on_image)
+        context.subscribe("animation.changed", self.on_animation)
+        self.on_animation(context.animation_state())
         self.apply_settings()
         self.update_progress()
 
@@ -126,15 +154,60 @@ class Plugin:
         )
         self.layout.setSpacing(round(2 - 2 * self.expansion))
         self.slider.setFixedHeight(round(20 - 4 * self.expansion))
-        self.panel.setFixedHeight(round(60 - 20 * self.expansion))
-        height = round(72 - 20 * self.expansion)
-        self.dock.setFixedHeight(height)
-        self.dock.setProperty("compactHeight", height)
-        host = self.dock.parentWidget()
-        host.panel_hovers.layout_strips()
+        self.apply_height()
         self.preview.reveal = self.expansion
         self.preview.reposition()
         self.preview.update()
+
+    def apply_height(self):
+        extra = round(28 * self.playback_expansion)
+        self.playback.setFixedHeight(extra)
+        self.panel.setFixedHeight(round(60 - 20 * self.expansion) + extra)
+        height = round(72 - 20 * self.expansion) + extra
+        self.dock.setFixedHeight(height)
+        self.dock.setProperty("compactHeight", height)
+        self.dock.parentWidget().panel_hovers.layout_strips()
+        self.preview.reposition()
+
+    def on_animation(self, state):
+        self.playback_slider.blockSignals(True)
+        self.playback_slider.setRange(0, max(0, state.count - 1))
+        self.playback_slider.setValue(state.frame)
+        self.playback_slider.blockSignals(False)
+        self.playback_slider.setEnabled(state.active)
+        self.playback_button.setEnabled(state.active)
+        self.playback_button.setIcon(ui_icon("pause" if state.playing else "play"))
+        tip = "暂停动画" if state.playing else "播放动画"
+        self.playback_button.setToolTip(tip)
+        self.playback_button.setAccessibleName(tip)
+        self.playback_count.setText(f"{state.frame + 1 if state.active else 0}/{state.count}")
+        if state.active == self.playback_target:
+            return
+        self.playback_target = state.active
+        target = 1.0 if state.active else 0.0
+        self.playback_motion.stop()
+        self.playback.show()
+        self.playback_motion.blockSignals(True)
+        self.playback_motion.setDuration(
+            max(80, round((280 if state.active else 220) * abs(target - self.playback_expansion)))
+        )
+        self.playback_motion.setEasingCurve(
+            QEasingCurve.Type.OutCubic if state.active else QEasingCurve.Type.InOutCubic
+        )
+        self.playback_motion.setStartValue(self.playback_expansion)
+        self.playback_motion.setEndValue(target)
+        self.playback_motion.setCurrentTime(0)
+        self.playback_motion.blockSignals(False)
+        self.playback_motion.start()
+
+    def set_playback_expansion(self, value):
+        self.playback_expansion = float(value)
+        self.playback_opacity.setOpacity(self.playback_expansion)
+        self.apply_height()
+
+    def finish_playback_motion(self):
+        if not self.playback_target:
+            self.playback.hide()
 
     def finish_motion(self):
         if not self.preview_open:
@@ -177,7 +250,7 @@ class Plugin:
 
     def rotate(self):
         if self.context.current_path():
-            self.context.replace_image(self.context.image().transformed(QTransform().rotate(90)))
+            self.context.rotate_image()
 
     def toggle_slideshow(self):
         if self.timer.isActive():
@@ -224,14 +297,11 @@ class Plugin:
             thumbnails = []
             for image_index, path in selected:
                 token.checkpoint()
-                reader = QImageReader(str(path))
-                reader.setAutoTransform(True)
-                original = reader.size()
-                if original.isValid():
-                    reader.setScaledSize(
-                        original.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatio)
-                    )
-                thumbnails.append((image_index, str(path), reader.read()))
+                try:
+                    image = read_image(path, edge=size, token=token)
+                except (OSError, ValueError, RuntimeError):
+                    continue
+                thumbnails.append((image_index, str(path), image))
             return thumbnails
 
         def render(thumbnails):
@@ -244,6 +314,7 @@ class Plugin:
 
     def deactivate(self):
         self.motion.stop()
+        self.playback_motion.stop()
         self.preview_open = False
         self.timer.stop()
         self.refresh_timer.stop()

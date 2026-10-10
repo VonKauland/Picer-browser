@@ -49,6 +49,7 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
     shutil.copy2(
         ROOT / "docs" / "example-components.md", application / "docs" / "example-components.md"
     )
+    shutil.copy2(ROOT / "docs" / "media.md", application / "docs" / "media.md")
     (application / "README.txt").write_text(
         "揽映 Picer 图片浏览器\n\n"
         "请保留完整文件夹，双击 Picer.exe 启动，无需安装 Python。\n"
@@ -66,6 +67,8 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
         "编辑 → 设置：常规、外观、图片浏览、面板布局、快捷键、缓存与存储。\n"
         "迁移软件时复制整个目录；更新时保留 plugins、skins 与 config。\n"
         "目录不可写时用户数据退回 LocalAppData/Picer，可从帮助菜单查看位置。\n"
+        "支持 LibRaw 相机 RAW、GIF/WebP 动画；动画帧进度位于图片进度条下方。\n"
+        "大图使用后台预览和原图替换，完整格式与性能边界见 docs/media.md。\n"
         "启动排障：Picer.exe --safe-mode。详细指南见 docs。\n",
         encoding="utf-8",
     )
@@ -136,6 +139,12 @@ def main() -> None:
             "PySide6.QtQuick",
             "--exclude-module",
             "PySide6.QtNetwork",
+            "--copy-metadata",
+            "rawpy",
+            "--copy-metadata",
+            "numpy",
+            "--copy-metadata",
+            "ExifRead",
             "--add-data",
             str(bundles) + ";picer/bundles",
             "--paths",

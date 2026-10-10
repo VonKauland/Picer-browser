@@ -7,6 +7,8 @@ from pathlib import Path
 from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer
 from PySide6.QtGui import QImageReader
 
+from picer.imaging import RAW_SUFFIXES, supported_suffixes
+
 from .icons import folder_icon
 
 
@@ -58,7 +60,7 @@ class FolderContents(QObject):
 
         def work(token):
             results = []
-            suffixes = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".ico"}
+            suffixes = supported_suffixes()
             for path, generation in batch:
                 found = False
                 try:
@@ -68,7 +70,7 @@ class FolderContents(QObject):
                             if (
                                 Path(entry.name).suffix.lower() in suffixes
                                 and entry.is_file()
-                                and QImageReader(entry.path).canRead()
+                                and self.can_read(entry.path, token)
                             ):
                                 found = True
                                 break
@@ -97,6 +99,20 @@ class FolderContents(QObject):
                 self.timer.start(0)
 
         self.token = self.context.run_task(work, render, image_bound=False)
+
+    @staticmethod
+    def can_read(path, token):
+        if Path(path).suffix.lower() not in RAW_SUFFIXES:
+            return QImageReader(path).canRead()
+        try:
+            import rawpy
+
+            token.checkpoint()
+            with rawpy.RawPy() as raw:
+                raw.open_file(path)
+                return raw.sizes.width > 0
+        except (OSError, ValueError, RuntimeError):
+            return False
 
     def stop(self):
         self.stopped = True

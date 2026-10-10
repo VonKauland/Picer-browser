@@ -1,0 +1,83 @@
+"""Small generated media used by source tests and the real packaged EXE check."""
+
+import struct
+
+from PIL import Image
+
+
+def make_animation(path):
+    frames = [Image.new("RGBA", (96, 64), color) for color in ("red", "green", "blue")]
+    frames[0].save(
+        path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=[80, 130, 190],
+        loop=0,
+        lossless=True,
+    )
+
+
+def make_dng(path):
+    """An original synthetic Bayer DNG, with no third-party camera sample."""
+    tags = []
+
+    def tag(number, kind, count, payload):
+        tags.append((number, kind, count, payload))
+
+    for number, value in (
+        (256, 256),
+        (257, 256),
+        (273, 0),
+        (278, 256),
+        (279, 256 * 256 * 2),
+        (50717, 65535),
+    ):
+        tag(number, 4, 1, struct.pack("<I", value))
+    for number, value in (
+        (258, 16),
+        (259, 1),
+        (262, 32803),
+        (274, 1),
+        (277, 1),
+        (50711, 1),
+        (50778, 21),
+    ):
+        tag(number, 3, 1, struct.pack("<H", value))
+    tag(33421, 3, 2, struct.pack("<HH", 2, 2))
+    tag(33422, 1, 4, bytes([0, 1, 1, 2]))
+    tag(50706, 1, 4, bytes([1, 4, 0, 0]))
+    tag(50707, 1, 4, bytes([1, 1, 0, 0]))
+    model = b"PicerCamera\0"
+    tag(50708, 2, len(model), model)
+    tag(50710, 1, 3, bytes([0, 1, 2]))
+    tag(50714, 5, 1, struct.pack("<II", 0, 1))
+    tag(50721, 10, 9, b"".join(struct.pack("<ii", int(i % 4 == 0), 1) for i in range(9)))
+    tag(50728, 5, 3, struct.pack("<IIIIII", 1, 1, 1, 1, 1, 1))
+    tags.sort()
+    offset = 8 + 2 + 12 * len(tags) + 4
+    entries, extra = [], b""
+    for number, kind, count, payload in tags:
+        if len(payload) > 4:
+            entry = struct.pack("<I", offset + len(extra))
+            extra += payload
+            if len(extra) % 2:
+                extra += b"\0"
+        else:
+            entry = payload.ljust(4, b"\0")
+        entries.append((number, kind, count, entry))
+    pixel_offset = offset + len(extra)
+    table = b"".join(
+        struct.pack("<HHI", number, kind, count)
+        + (struct.pack("<I", pixel_offset) if number == 273 else data)
+        for number, kind, count, data in entries
+    )
+    pixels = b"".join(struct.pack("<H", (x + y) * 100) for y in range(256) for x in range(256))
+    path.write_bytes(
+        b"II*\0"
+        + struct.pack("<I", 8)
+        + struct.pack("<H", len(tags))
+        + table
+        + struct.pack("<I", 0)
+        + extra
+        + pixels
+    )

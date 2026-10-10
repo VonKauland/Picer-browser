@@ -529,7 +529,12 @@ class PluginManager(QObject):
         if self._dispatching:
             return  # Mutations inside an event listener do not recursively dispatch events.
         image = self.host.view.image_item.pixmap()
-        event = ImageEvent(self.host.current_path, image.width(), image.height(), reason)
+        width, height = self.host.source_size
+        if self.host.image_rotation % 180:
+            width, height = height, width
+        event = ImageEvent(
+            self.host.current_path, width or image.width(), height or image.height(), reason
+        )
         self._dispatching = True
         try:
             for name in (
@@ -539,6 +544,10 @@ class PluginManager(QObject):
                     self._invoke(plugin_id, callback, event)
         finally:
             self._dispatching = False
+
+    def emit_animation(self, state):
+        for plugin_id, callback in list(self.subscribers.get("animation.changed", [])):
+            self._invoke(plugin_id, callback, state)
 
     def run_task(self, context, work, on_result, image_bound):
         if not callable(work) or not callable(on_result):

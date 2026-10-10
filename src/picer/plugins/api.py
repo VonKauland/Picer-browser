@@ -9,6 +9,7 @@ from PySide6.QtCore import QThread
 from PySide6.QtGui import QIcon, QImage
 from PySide6.QtWidgets import QWidget
 
+from picer.media_types import AnimationState
 from picer.metadata import inspect_image
 
 if TYPE_CHECKING:
@@ -141,11 +142,34 @@ class PluginContext:
             raise PluginError("尚未打开图片")
         self._manager.host.replace_image(image)
 
-    def subscribe(self, event: str, callback: Callable[[ImageEvent], None]) -> None:
+    def rotate_image(self) -> None:
+        """Rotate the viewer while preserving refinement and animated playback."""
+        self._check("image.modify")
+        self._manager.host.rotate_image()
+
+    def subscribe(
+        self, event: str, callback: Callable[[ImageEvent | AnimationState], None]
+    ) -> None:
         self._check("events.subscribe")
-        if event not in {"image.opened", "image.changed"}:
+        if event not in {"image.opened", "image.changed", "animation.changed"}:
             raise PluginError(f"未知事件：{event}")
         self._manager.subscribe(self.plugin_id, event, callback)
+
+    def animation_state(self) -> AnimationState:
+        """Immutable GIF/WebP playback snapshot; inactive for still images."""
+        self._check("image.read")
+        return self._manager.host.animation.state
+
+    def seek_animation(self, frame: int) -> None:
+        self._check("image.navigate")
+        state = self._manager.host.animation.state
+        if type(frame) is not int or not state.active or not 0 <= frame < state.count:
+            raise PluginError("动画帧位置超出范围")
+        self._manager.host.animation.seek(frame)
+
+    def toggle_animation(self) -> None:
+        self._check("image.navigate")
+        self._manager.host.animation.toggle()
 
     def get_setting(self, key: str, default: Any = None) -> Any:
         self._check("settings")

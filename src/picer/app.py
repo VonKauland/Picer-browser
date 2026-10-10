@@ -6,7 +6,7 @@ import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from picer.smoke import run as run_smoke
@@ -58,7 +58,7 @@ def main() -> int:
     if smoke_test:
         folder = Path(temporary_images.name) if temporary_images else args.smoke_images
         QTimer.singleShot(0, lambda: run_smoke(window, args, folder, app.exit))
-        QTimer.singleShot(20_000, lambda: app.exit(2))
+        QTimer.singleShot(40_000, lambda: app.exit(2))
     elif args.image:
         window.open_image(Path(args.image))
 
@@ -72,7 +72,11 @@ def main() -> int:
                 result = app.exec()
     else:
         result = app.exec()
+    window.loader.shutdown()
+    window.animation.shutdown()
     window.plugins.shutdown()
+    # Keep Qt signal owners alive until cooperative plugin tasks finish.
+    QThreadPool.globalInstance().waitForDone()
     if temporary_plugins:
         temporary_plugins.cleanup()
     if temporary_images:

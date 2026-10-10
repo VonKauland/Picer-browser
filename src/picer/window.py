@@ -9,9 +9,9 @@ from PySide6.QtGui import (
     QDesktopServices,
     QIcon,
     QImage,
-    QImageReader,
     QKeySequence,
     QPixmap,
+    QTransform,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -26,10 +26,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.animation import AnimationPlayer
 from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
 from picer.host_style import HostStyleFilter, mark_host, scope_style
+from picer.imaging import supported_suffixes
+from picer.loading import ImageLoader
 from picer.panels import GlassBackdrop, PanelHovers
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
@@ -51,6 +54,7 @@ class ImageView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setBackgroundBrush(QColor(COLORS["background"]))
         self.fit_mode = True
+        self.native_width = 0
         self.zoom_step = 25
         self.double_click = "toggle"
 
@@ -126,7 +130,11 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(scope_style(STYLE))
         self.setAcceptDrops(True)
         self.paths: list[Path] = []
+        self.path_positions = {}
         self.current_path: Path | None = None
+        self.source_size = (0, 0)
+        self.image_rotation = 0
+        self.navigation_request = None
         self.last_error = ""
         self.view = ImageView()
         self.title_bar = TitleBar(self)
@@ -142,9 +150,12 @@ class MainWindow(QMainWindow):
         self.empty_label.setObjectName("empty")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.supported_suffixes = {
-            f".{bytes(fmt).decode().lower()}" for fmt in QImageReader.supportedImageFormats()
-        }
+        self.supported_suffixes = supported_suffixes()
+        self.animation = AnimationPlayer(self)
+        self.loader = ImageLoader(self)
+        self.animation.pixels.connect(self.animation_frame)
+        self.animation.changed.connect(self.animation_changed)
+        self.animation.failed.connect(lambda error: setattr(self, "last_error", error))
         file_menu = self.title_bar.menu.addMenu("文件")
         edit_menu = self.title_bar.menu.addMenu("编辑")
         view_menu = self.title_bar.menu.addMenu("视图")
@@ -281,15 +292,7 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "打开文件夹")
         if not folder:
             return
-        try:
-            paths = sorted(Path(folder).iterdir(), key=lambda p: (p.name.casefold(), p.name))
-            for path in paths:
-                if path.is_file() and path.suffix.lower() in self.supported_suffixes:
-                    if self.open_image(path):
-                        return
-        except OSError as error:
-            self.last_error = str(error)
-        QMessageBox.information(self, "揽映", "该文件夹中没有可读取的图片。")
+        self.loader.open_folder(Path(folder).resolve())
 
     def copy_path(self) -> None:
         if self.current_path:
@@ -300,11 +303,31 @@ class MainWindow(QMainWindow):
         return self.plugins.commands.get("picer.transforms:rotate")
 
     def replace_image(self, image) -> None:
+        self.loader.generation += 1
+        self.loader.refine.stop()
+        self.animation.stop()
+        self.image_rotation = 0
+        self.source_size = (image.width(), image.height())
+        self.view.native_width = image.width()
+        self.view.image_item.setScale(1)
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
-        self.view.scene.setSceneRect(self.view.image_item.boundingRect())
+        self.view.scene.setSceneRect(self.view.image_item.sceneBoundingRect())
         self.view.fit_image()
         self.image_revision += 1
         self.plugins.emit_image("edited")
+
+    def rotate_image(self):
+        if self.current_path is None:
+            return
+        self.image_rotation = (self.image_rotation + 90) % 360
+        image = self.view.image_item.pixmap().toImage().transformed(QTransform().rotate(90))
+        self.view.native_width = self.source_size[1 if self.image_rotation % 180 else 0]
+        self.view.image_item.setPixmap(QPixmap.fromImage(image))
+        self.view.image_item.setScale(self.view.native_width / image.width())
+        self.view.scene.setSceneRect(self.view.image_item.sceneBoundingRect())
+        self.view.fit_image()
+        self.image_revision += 1
+        self.plugins.emit_image("rotated")
 
     def plugin_notification(self, message: str) -> None:
         QMessageBox.information(self, "揽映 · 插件", str(message))
@@ -328,6 +351,8 @@ class MainWindow(QMainWindow):
         if self.current_path:
             ui["last_image"] = str(self.current_path)
         self.plugins._save()
+        self.loader.shutdown()
+        self.animation.shutdown()
         self.plugins.shutdown()
         super().closeEvent(event)
 
@@ -350,6 +375,7 @@ class MainWindow(QMainWindow):
 
     def clear_thumbnail_cache(self) -> None:
         try:
+            self.loader.clear_cache()
             self.thumbnail_cache.clear()
         except OSError as error:
             QMessageBox.warning(self, "清理缓存失败", str(error))
@@ -358,7 +384,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.9.3\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.10.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -407,34 +433,47 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "无法打开图片", self.last_error)
 
     def open_image(self, path: Path) -> bool:
-        """Decode before updating state so failed files leave the current image intact."""
-        path = path.resolve()
-        reader = QImageReader(str(path))
-        reader.setAutoTransform(self.app_preferences["auto_orient"])
-        image = reader.read()
-        if image.isNull():
-            self.last_error = f"无法打开 {path.name}：{reader.errorString()}"
-            return False
-        try:
-            paths = sorted(
-                (
-                    p
-                    for p in path.parent.iterdir()
-                    if p.is_file() and p.suffix.lower() in self.supported_suffixes
-                ),
-                key=lambda p: (p.name.casefold(), p.name),
-            )
-        except OSError:
-            paths = []
-        if path not in paths:
-            paths.append(path)
+        """Accept a request; large images/RAW/animation finish in the background."""
+        self.navigation_request = None
+        self.loader.folder_candidates.clear()
+        return self.loader.open(path)
+
+    def set_image_paths(self, paths):
+        paths = list(paths)
+        if self.current_path and self.current_path not in paths:
+            paths.append(self.current_path)
+        self.paths = paths
+        self.path_positions = {path: index for index, path in enumerate(paths)}
+        self.update_actions()
+        self.plugins.emit_image("indexed")
+
+    def present_image(self, path, image, *, paths=None, preview=False):
+        self.animation.stop()
+        self.current_path = path
+        self.navigation_request = None
         if not self.app_preferences["browse_folder"]:
             paths = [path]
-        self.paths = paths
-        self.current_path = path
-        self.current_thumbnail = self.thumbnail_cache.thumbnail(path, image)
+        elif paths is None:
+            paths = self.paths if self.paths and self.paths[0].parent == path.parent else [path]
+        self.paths = list(paths)
+        if path not in self.paths:
+            self.paths.append(path)
+        self.path_positions = {item: index for index, item in enumerate(self.paths)}
+        self.current_thumbnail = image.scaled(
+            min(256, image.width()),
+            min(256, image.height()),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.image_rotation = 0
+        self.source_size = (
+            int(image.text("picer.native_width") or image.width()),
+            int(image.text("picer.native_height") or image.height()),
+        )
+        self.view.native_width = self.source_size[0]
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
-        self.view.scene.setSceneRect(self.view.image_item.boundingRect())
+        self.view.image_item.setScale(self.view.native_width / image.width())
+        self.view.scene.setSceneRect(self.view.image_item.sceneBoundingRect())
         if self.app_preferences["default_scale"] == "fit":
             self.view.fit_image()
         else:
@@ -448,20 +487,63 @@ class MainWindow(QMainWindow):
         self.plugins.emit_image("opened")
         if self.app_preferences["focus_image"]:
             self.view.setFocus(Qt.FocusReason.OtherFocusReason)
-        return True
+
+    def refine_image(self, image):
+        # Preview and original occupy the same logical source-pixel rectangle.
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        if self.image_rotation:
+            image = image.transformed(QTransform().rotate(self.image_rotation))
+        self.view.image_item.setPixmap(QPixmap.fromImage(image))
+        self.view.image_item.setScale(self.view.native_width / image.width())
+        self.view.scene.setSceneRect(self.view.image_item.sceneBoundingRect())
+        if self.view.fit_mode:
+            self.view.fit_image()
+        else:
+            self.view.centerOn(center)
+
+    def animation_frame(self, image):
+        self.refine_image(image)
+
+    def animation_changed(self, state):
+        if hasattr(self, "plugins"):
+            self.plugins.emit_animation(state)
+
+    def loading_failed(self, path, error):
+        self.last_error = f"无法打开 {path.name}：{error}"
+        request, self.navigation_request = self.navigation_request, None
+        if request and request[0] == path and request[2] > 0:
+            self.loader.requested = path
+            self.continue_navigation(request[1], request[2])
+            return
+        self.loader.requested = self.current_path
+        # Keep the last good image and expose a nonmodal failure on the caption.
+        self.title_bar.caption.setToolTip(self.last_error)
+        if self.current_path is None:
+            self.empty_label.setText(self.last_error)
+            self.empty_label.show()
 
     def navigate(self, offset: int) -> None:
         """Skip unreadable images and wrap around at folder boundaries."""
         if self.current_path is None or len(self.paths) < 2:
             return
-        paths = self.paths.copy()
-        index = paths.index(self.current_path)
-        for step in range(1, len(paths)):
+        self.loader.folder_candidates.clear()
+        self.continue_navigation(offset, len(self.paths) - 1)
+
+    def continue_navigation(self, offset, budget):
+        paths = self.paths
+        requested = self.loader.requested or self.current_path
+        index = self.path_positions.get(requested, self.path_positions.get(self.current_path, 0))
+        for step in range(1, budget + 1):
             target = index + offset * step
             if not self.app_preferences["wrap"] and not 0 <= target < len(paths):
                 return
-            if self.open_image(paths[target % len(paths)]):
+            path = paths[target % len(paths)]
+            if self.loader.open(path):
+                self.navigation_request = (
+                    None if self.current_path == path else (path, offset, budget - step)
+                )
                 return
+        self.loader.requested = self.current_path
 
     def update_actions(self) -> None:
         self.previous_action.setEnabled(len(self.paths) > 1)

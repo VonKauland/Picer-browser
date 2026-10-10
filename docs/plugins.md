@@ -200,3 +200,15 @@ SettingField 支持 bool、int、choice、path、text；字段包括 key、label
 `show_settings()` 定位到插件管理中当前组件的设置页；默认面板不要增加设置按钮。`from picer.plugins import ui_icon` 可获取宿主随附的静态细线图标（`folder`、`home`、`up`、`left`、`right`、`grid`、`rotate`、`play`、`pause` 等），颜色默认为白色，保持独立于宿主皮肤。API v1 生命周期与权限契约不变。
 
 Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider 子类，采用透明背景、4px 圆头轨道与圆形滑块，保留 Qt 原有的范围、拖动、tracking、键盘与无障碍行为；支持横向、竖向、反向显示。插件面板中的控件配色独立于宿主皮肤。原有 QSlider 和 API v1 插件仍可使用。
+
+## Picer 0.10.0 媒体扩展（API v1 兼容新增）
+
+- `open_image(path)` 对 RAW、大图和动画返回是否接受读取请求；接受不代表后台解码已经成功。`image.opened` 在首个画面到达后发送。较小普通图片继续同步返回结果。
+- `image_paths()` 在超大目录首次索引完成前可能只有当前图片；目录更新后会发送 `image.changed`，reason 为 `indexed`。
+- `image()` 返回当前显示的像素快照，渐进读取期间可能是低分辨率预览。用 `rotate_image()`（image.modify）旋转可保留后续原图替换和动画播放；`replace_image()` 将当前显示转为静态图并取消替换。
+- `animation_state()`（image.read）返回不可变 `AnimationState(active, playing, frame, count, duration)`，frame 从 0 开始，duration 为当前帧延时毫秒，静态图片 active 为 False。
+- `seek_animation(frame)` 与 `toggle_animation()` 需要 image.navigate；拖动保持当前播放/暂停状态，越界参数抛出 PluginError。
+- `subscribe("animation.changed", callback)` 需要 events.subscribe，回调参数为 AnimationState。帧更新不重复发送 image.opened/image.changed，也不取消普通元数据任务。
+- `AnimationState` 可从 `picer.plugins` 导入；仍沿用 API_VERSION=1，原插件无需新增权限或修改代码。旋转的 image.changed reason 为 `rotated`。
+
+格式、渐进解码与资源上限见 [媒体与性能说明](media.md)。

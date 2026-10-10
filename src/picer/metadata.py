@@ -6,6 +6,8 @@ from pathlib import Path
 
 from PIL import ExifTags, Image, ImageStat
 
+from picer.imaging import RAW_SUFFIXES, read_image
+
 
 def describe(value):
     if isinstance(value, bytes):
@@ -35,6 +37,8 @@ def inspect_image(path: Path, token=None) -> dict:
         "extra": {},
         "warnings": [],
     }
+    if path.suffix.lower() in RAW_SUFFIXES:
+        return inspect_raw(path, result, token)
     try:
         with Image.open(path) as source:
             result["dimensions"] = {
@@ -84,8 +88,9 @@ def inspect_image(path: Path, token=None) -> dict:
                 if key not in {"exif", "icc_profile"}:
                     result["extra"][str(key)] = describe(value)
             checkpoint()
+            source.draft("RGB", (1024, 1024))
+            source.thumbnail((1024, 1024))
             sample = source.copy()
-            sample.thumbnail((1024, 1024))
             sample = sample.convert("RGB")
             histogram = sample.histogram()
             result["histogram"] = [histogram[i : i + 256] for i in (0, 256, 512)]
@@ -96,4 +101,47 @@ def inspect_image(path: Path, token=None) -> dict:
     except (OSError, ValueError, Image.DecompressionBombError) as error:
         result["warnings"].append(f"部分元数据无法读取：{error}")
     checkpoint()
+    return result
+
+
+def inspect_raw(path, result, token):
+    import exifread
+    import rawpy
+
+    try:
+        if token:
+            token.checkpoint()
+        with rawpy.RawPy() as raw:
+            raw.open_file(str(path))
+            result["dimensions"] = {
+                "宽度": str(raw.sizes.width),
+                "高度": str(raw.sizes.height),
+                "格式": path.suffix[1:].upper() + " / LibRaw",
+                "帧数": "1",
+            }
+            result["color"] = {
+                "色彩模式": "相机 RAW → sRGB",
+                "显示位深": "8 位 / 通道",
+                "传感器白电平": str(raw.white_level),
+                "传感器黑电平": describe(raw.black_level_per_channel),
+            }
+        with path.open("rb") as handle:
+            tags = exifread.process_file(handle, details=False, extract_thumbnail=False)
+        result["exif"] = {str(key): describe(value) for key, value in tags.items()}
+        if token:
+            token.checkpoint()
+        image = read_image(path, edge=1024, token=token)
+        image = image.convertToFormat(image.Format.Format_RGBA8888)
+        sample = Image.frombytes("RGBA", (image.width(), image.height()), bytes(image.constBits()))
+        sample = sample.convert("RGB")
+        histogram = sample.histogram()
+        result["histogram"] = [histogram[i : i + 256] for i in (0, 256, 512)]
+        result["sample_size"] = sample.size
+        result["color"]["平均 RGB（预览采样）"] = ", ".join(
+            f"{v:.1f}" for v in ImageStat.Stat(sample).mean
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        result["warnings"].append(f"部分 RAW 元数据无法读取：{error}")
+    if token:
+        token.checkpoint()
     return result

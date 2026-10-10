@@ -9,7 +9,7 @@ def test_application_smoke_test():
         [sys.executable, "-m", "picer", "--smoke-test"],
         capture_output=True,
         text=True,
-        timeout=30,
+        timeout=60,
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr

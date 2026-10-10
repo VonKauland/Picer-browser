@@ -1,7 +1,6 @@
 """Core editing functionality implemented against the public plugin SDK."""
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QTransform
+from PySide6.QtGui import QImage
 
 from picer.plugins.api import PluginContext
 
@@ -20,11 +19,7 @@ class Plugin:
             context.add_command("grayscale", "灰度预览", self.grayscale, menu="编辑")
 
     def rotate(self) -> None:
-        self.context.replace_image(
-            self.context.image().transformed(
-                QTransform().rotate(90), Qt.TransformationMode.SmoothTransformation
-            )
-        )
+        self.context.rotate_image()
 
     def mirror(self) -> None:
         self.context.replace_image(self.context.image().mirrored(True, False))

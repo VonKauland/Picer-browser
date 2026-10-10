@@ -4,7 +4,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import QPersistentModelIndex, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPalette, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFileSystemModel,
     QStyle,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QTreeView,
 )
 
+from picer.imaging import read_image
 from picer.plugins import ui_icon
 
 from .folders import FolderContents
@@ -92,12 +93,13 @@ class PhotoModel(QFileSystemModel):
             images = []
             for key in keys:
                 token.checkpoint()
-                reader = QImageReader(key[0])
-                reader.setAutoTransform(True)
-                size = reader.size()
-                if size.isValid():
-                    reader.setScaledSize(size.scaled(128, 128, Qt.AspectRatioMode.KeepAspectRatio))
-                images.append((key, reader.read()))
+                try:
+                    image = read_image(key[0], edge=128, token=token)
+                except (OSError, ValueError, RuntimeError):
+                    from PySide6.QtGui import QImage
+
+                    image = QImage()
+                images.append((key, image))
             return images
 
         def render(images):

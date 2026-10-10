@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from picer.imaging import supported_suffixes
 from picer.plugins import SettingField, ui_icon
 
 from .address import AddressBar
@@ -91,9 +92,7 @@ class Plugin:
         self.model.files.setFilter(
             QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot
         )
-        self.model.files.setNameFilters(
-            ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.webp", "*.tif", "*.tiff", "*.ico"]
-        )
+        self.model.files.setNameFilters([f"*{suffix}" for suffix in sorted(supported_suffixes())])
         self.model.files.setNameFilterDisables(False)
         self.tree = PhotoTree()
         self.tree.setModel(self.model)
