@@ -157,9 +157,14 @@ def test_index_reused_for_twenty_thousand_files_and_invalidation(
     host.open_image(first)
     qtbot.waitUntil(lambda: len(host.paths) == 20_000)
     initial = len(calls)
+    positions = host.path_positions
+    snapshot = host.image_path_snapshot
     for _ in range(30):
         assert host.open_image(first)
     assert len(calls) == initial
+    assert host.path_positions is positions and host.image_path_snapshot is snapshot
+    context = host.plugins.records["example.progress"].context
+    assert context.image_paths() is snapshot and context.image_index() == 0
     assert len(host.loader.jobs) <= 5
     host.loader.invalidate_directory(str(directory))
     qtbot.waitUntil(lambda: len(calls) > initial)

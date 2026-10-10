@@ -217,20 +217,18 @@ class Plugin:
         self.update_progress()
         if self.preview_open:
             paths = self.context.image_paths()
-            path = self.context.current_path()
             self.preview.items = [
                 item
                 for item in self.preview.items
                 if 0 <= item[0] < len(paths) and str(paths[item[0]]) == item[1]
             ]
-            self.preview.center_index = paths.index(path) if path in paths else 0
+            self.preview.center_index = max(0, self.context.image_index())
             self.preview.update()
             self.refresh_timer.start()
 
     def update_progress(self):
         paths = self.context.image_paths()
-        path = self.context.current_path()
-        index = paths.index(path) if path in paths else -1
+        index = self.context.image_index()
         self.slider.blockSignals(True)
         self.slider.setRange(0, max(0, len(paths) - 1))
         self.slider.setValue(max(0, index))
@@ -283,7 +281,7 @@ class Plugin:
         if self.preview_token:
             self.preview_token.cancel()
         values = self.values()
-        index = paths.index(self.context.current_path())
+        index = self.context.image_index()
         count = min(len(paths), values["thumbnail_count"])
         start = max(0, min(index - count // 2, len(paths) - count))
         selected = tuple((i, paths[i]) for i in range(start, start + count))

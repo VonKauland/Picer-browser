@@ -204,7 +204,7 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 ## Picer 0.10.0 媒体扩展（API v1 兼容新增）
 
 - `open_image(path)` 对 RAW、大图和动画返回是否接受读取请求；接受不代表后台解码已经成功。`image.opened` 在首个画面到达后发送。较小普通图片继续同步返回结果。
-- `image_paths()` 在超大目录首次索引完成前可能只有当前图片；目录更新后会发送 `image.changed`，reason 为 `indexed`。
+- `image_paths()` 返回可复用的不可变路径快照，`image_index()`（image.read）通过位置映射返回当前图片的零起始索引，无图片时为 -1。在超大目录首次索引完成前可能只有当前图片；目录更新后会发送 `image.changed`，reason 为 `indexed`。
 - `image()` 返回当前显示的像素快照，渐进读取期间可能是低分辨率预览。用 `rotate_image()`（image.modify）旋转可保留后续原图替换和动画播放；`replace_image()` 将当前显示转为静态图并取消替换。
 - `animation_state()`（image.read）返回不可变 `AnimationState(active, playing, frame, count, duration)`，frame 从 0 开始，duration 为当前帧延时毫秒，静态图片 active 为 False。
 - `seek_animation(frame)` 与 `toggle_animation()` 需要 image.navigate；拖动保持当前播放/暂停状态，越界参数抛出 PluginError。

@@ -131,6 +131,8 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         self.paths: list[Path] = []
         self.path_positions = {}
+        self.path_source = None
+        self.image_path_snapshot = ()
         self.current_path: Path | None = None
         self.source_size = (0, 0)
         self.image_rotation = 0
@@ -439,11 +441,13 @@ class MainWindow(QMainWindow):
         return self.loader.open(path)
 
     def set_image_paths(self, paths):
+        self.path_source = paths
         paths = list(paths)
         if self.current_path and self.current_path not in paths:
             paths.append(self.current_path)
         self.paths = paths
         self.path_positions = {path: index for index, path in enumerate(paths)}
+        self.image_path_snapshot = tuple(paths)
         self.update_actions()
         self.plugins.emit_image("indexed")
 
@@ -455,10 +459,13 @@ class MainWindow(QMainWindow):
             paths = [path]
         elif paths is None:
             paths = self.paths if self.paths and self.paths[0].parent == path.parent else [path]
-        self.paths = list(paths)
-        if path not in self.paths:
-            self.paths.append(path)
-        self.path_positions = {item: index for index, item in enumerate(self.paths)}
+        if not ((paths is self.path_source or paths is self.paths) and path in self.path_positions):
+            self.path_source = paths
+            self.paths = list(paths)
+            if path not in self.paths:
+                self.paths.append(path)
+            self.path_positions = {item: index for index, item in enumerate(self.paths)}
+            self.image_path_snapshot = tuple(self.paths)
         self.current_thumbnail = image.scaled(
             min(256, image.width()),
             min(256, image.height()),

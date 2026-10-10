@@ -156,6 +156,8 @@ class AnimationPlayer(QObject):
                 self.timer.start(duration)
                 # Decode the next composited frame while this one is displayed.
                 next_index = (index + 1) % source.count
+                if image.sizeInBytes() > 64 * 1048576:
+                    return
                 self.submit(
                     lambda token: source.frame(next_index, token),
                     lambda result, error: None,

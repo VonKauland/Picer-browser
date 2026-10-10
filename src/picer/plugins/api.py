@@ -99,7 +99,13 @@ class PluginContext:
 
     def image_paths(self) -> tuple[Path, ...]:
         self._check("image.read")
-        return tuple(self._manager.host.paths)
+        return self._manager.host.image_path_snapshot
+
+    def image_index(self) -> int:
+        """Current zero-based folder index, or -1 before an image is shown."""
+        self._check("image.read")
+        host = self._manager.host
+        return host.path_positions.get(host.current_path, -1)
 
     def open_image(self, path: Path) -> bool:
         self._check("image.navigate")
