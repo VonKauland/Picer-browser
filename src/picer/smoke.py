@@ -38,7 +38,9 @@ def verify_popups(window, browser):
 
 def run(window, args, folder, done):
     try:
-        folder = Path(folder)
+        # Windows TEMP can contain 8.3 aliases (RUNNER~1); the Qt model and
+        # viewer use resolved paths, so compare the same canonical directory.
+        folder = Path(folder).resolve()
         folder.mkdir(parents=True, exist_ok=True)
         first, second = folder / "1.png", folder / "2.jpg"
         image = QImage(80, 60, QImage.Format.Format_RGB32)
@@ -226,7 +228,7 @@ def run(window, args, folder, done):
             if args.file_panel_archive:
                 index = browser.model.index(str(first))
                 browser.model.data(index, Qt.ItemDataRole.DecorationRole)
-                if not any(key[0] == str(first) for key in browser.model.cache):
+                if not any(Path(key[0]) == first for key in browser.model.cache):
                     print(
                         "Waiting for file thumbnail",
                         str(first),

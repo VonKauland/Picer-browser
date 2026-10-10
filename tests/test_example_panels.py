@@ -452,7 +452,7 @@ def test_browser_photo_previews_and_frame_free_selection(window, tmp_path, qtbot
     view.setFocus()
     # Request and inspect the actual decoded decoration, rather than a generic file icon.
     plugin.model.data(index, Qt.ItemDataRole.DecorationRole)
-    qtbot.waitUntil(lambda: any(key[0] == str(pictures / "1.jpg") for key in plugin.model.cache))
+    qtbot.waitUntil(lambda: any(Path(key[0]) == pictures / "1.jpg" for key in plugin.model.cache))
     image = plugin.model.data(index, Qt.ItemDataRole.DecorationRole).pixmap(32, 32).toImage()
     color = image.pixelColor(image.width() // 2, image.height() // 2)
     assert color.red() > 200 and color.green() < 50 and color.blue() < 50

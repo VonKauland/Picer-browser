@@ -36,7 +36,10 @@ def run_smoke(application: Path, working_directory: Path, images: Path) -> None:
     for name in ("smoke.log", "plugins.log"):
         log = application / "logs" / name
         if log.is_file() and (code != 0 or name == "smoke.log"):
-            print(log.read_text(encoding="utf-8", errors="replace"), flush=True)
+            # Windows CI may expose a cp1252 console; preserve Chinese paths
+            # as escaped text instead of losing the underlying EXE diagnostics.
+            content = log.read_text(encoding="utf-8", errors="replace")
+            print(content.encode("ascii", errors="backslashreplace").decode("ascii"), flush=True)
     if code != 0:
         raise RuntimeError(f"Packaged application smoke test failed: {code}")
 
@@ -64,7 +67,7 @@ def verify(application: Path) -> None:
         if not (application / relative).exists():
             raise RuntimeError(f"Missing distribution entry: {relative}")
     with tempfile.TemporaryDirectory(prefix="picer-folder-check-") as temporary:
-        root = Path(temporary)
+        root = Path(temporary).resolve()
         first = root / "揽映 首次运行"
         unrelated = root / "unrelated-cwd"
         unrelated.mkdir()
