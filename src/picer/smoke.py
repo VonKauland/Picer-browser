@@ -163,8 +163,30 @@ def verify_media(window):
         assert progress.playback.isHidden()
     raw = directory / "synthetic.dng"
     make_dng(raw)
+    raw = raw.resolve()
     assert window.open_image(raw)
-    wait_for(lambda: window.current_path == raw, timeout=10_000)
+    try:
+        wait_for(lambda: window.current_path == raw, timeout=10_000)
+    except AssertionError:
+        print(
+            "RAW load diagnostics",
+            {
+                "expected": str(raw),
+                "current": str(window.current_path),
+                "requested": str(window.loader.requested),
+                "error": window.last_error,
+                "generation": window.loader.generation,
+                "jobs": [
+                    (lane, worker.token.cancelled)
+                    for worker, lane, _ in window.loader.jobs.values()
+                ],
+                "threads": {
+                    name: pool.activeThreadCount() for name, pool in window.loader.pools.items()
+                },
+            },
+            flush=True,
+        )
+        raise
     wait_for(lambda: window.view.image_item.pixmap().width() == 256, timeout=10_000)
     assert window.open_image(previous)
     print(
