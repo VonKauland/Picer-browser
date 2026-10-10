@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSlider,
     QSpinBox,
     QStackedWidget,
     QVBoxLayout,
@@ -23,7 +22,7 @@ from picer.host_style import mark_host
 from picer.panels import DOCK_AREAS
 from picer.plugins.api import PluginError
 from picer.preferences import DEFAULTS, read_preferences
-from picer.ui import Card, StyledDialog, Toggle, form_row, ui_icon
+from picer.ui import Card, RoundedSlider, StyledDialog, Toggle, form_row, ui_icon
 
 
 class ApplicationSettings(StyledDialog):
@@ -148,7 +147,7 @@ class ApplicationSettings(StyledDialog):
         card = Card("界面")
         self.preference(card, "density", "界面密度", (("standard", "标准"), ("compact", "紧凑")))
         self.preference(card, "glass", "使用面板毛玻璃")
-        slider = QSlider(Qt.Orientation.Horizontal)
+        slider = RoundedSlider(Qt.Orientation.Horizontal)
         slider.setRange(0, 100)
         slider.setValue(self.values["glass_strength"])
         slider.setMinimumWidth(200)

@@ -12,6 +12,28 @@ from PySide6.QtWidgets import QPushButton
 from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.settings import ApplicationSettings
+from picer.ui import RoundedSlider
+
+
+def verify_popups(window, browser):
+    """Inspect actual popup windows in the frozen Windows application."""
+    for menu in (window.main_menus[3], window.components.menus["function"]):
+        menu.popup(window.mapToGlobal(QPoint(100, 100)))
+        QTest.qWait(20)
+        assert menu.isVisible()
+        pixels = menu.grab().toImage()
+        assert pixels.pixelColor(0, 0).alpha() == 0
+        assert pixels.pixelColor(pixels.width() - 1, pixels.height() - 1).alpha() == 0
+        assert menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        menu.hide()
+    browser.sort.showPopup()
+    QTest.qWait(20)
+    popup = browser.sort.view().window()
+    pixels = popup.grab().toImage()
+    assert pixels.pixelColor(0, 0).alpha() == 0
+    assert pixels.pixelColor(pixels.width() - 1, pixels.height() - 1).alpha() == 0
+    QTest.keyClick(browser.sort.view(), Qt.Key.Key_Escape)
+    assert not popup.isVisible()
 
 
 def run(window, args, folder, done):
@@ -77,10 +99,12 @@ def run(window, args, folder, done):
                 assert window.app_preferences["zoom_step"] == 30
             application_settings = ApplicationSettings(window)
             assert application_settings.pages.count() == 6
+            assert isinstance(application_settings.editors["glass_strength"], RoundedSlider)
             application_settings.editors["zoom_step"].setValue(30)
             application_settings.save()
             assert window.view.zoom_step == 30
             application_settings.deleteLater()
+            verify_popups(window, browser)
         progress = (
             window.plugins.records["example.progress"].instance
             if args.progress_panel_archive
@@ -88,6 +112,7 @@ def run(window, args, folder, done):
         )
         assert window.open_image(first)
         if progress:
+            assert isinstance(progress.slider, RoundedSlider)
             progress.controls["next"].click()
         else:
             window.next_action.trigger()
@@ -243,7 +268,8 @@ def run(window, args, folder, done):
             assert not window.glass.image.isNull()
             print(
                 "Packaged examples: file tree, settings, metadata/EXIF, histogram, progress, "
-                "thumbnails, embedded/app settings, macOS isolation, glass, hover morph, "
+                "thumbnails, embedded/app settings, transparent popups/rounded sliders, "
+                "macOS isolation, glass, hover morph, "
                 "hidden-strip drag/pin and grips passed"
             )
             done(0)

@@ -140,6 +140,7 @@ class MainWindow(QMainWindow):
         view_menu = self.title_bar.menu.addMenu("视图")
         plugin_menu = self.title_bar.menu.addMenu("插件")
         help_menu = self.title_bar.menu.addMenu("帮助")
+        self.main_menus = (file_menu, edit_menu, view_menu, plugin_menu, help_menu)
         run_menu = plugin_menu.addMenu("调用功能")
         self.plugin_menus = {"编辑": edit_menu, "视图": view_menu, "插件": run_menu}
         self.open_action = self.add_action(file_menu, "打开图片…", "Ctrl+O", self.choose_image)
@@ -345,7 +346,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.8.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.8.1\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

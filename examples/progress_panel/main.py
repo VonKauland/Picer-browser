@@ -9,12 +9,11 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QSlider,
     QVBoxLayout,
     QWidget,
 )
 
-from picer.plugins import SettingField, ui_icon
+from picer.plugins import RoundedSlider, SettingField, ui_icon
 
 
 def make_preview(context, parent):
@@ -63,7 +62,7 @@ class Plugin:
         self.layout.addLayout(self.buttons)
         self.buttons.addStretch(1)
         self.progress_row = QHBoxLayout()
-        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider = RoundedSlider(Qt.Orientation.Horizontal)
         self.slider.setTracking(False)
         self.slider.valueChanged.connect(self.seek)
         self.count = QLabel("0/0")

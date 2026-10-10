@@ -33,11 +33,17 @@ min-height: 20px; color: #F3F3F0; selection-background-color: #E8FF59;
 selection-color: #242426; }
 QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QKeySequenceEdit:focus {
 border: 1px solid #A2A2A6; }
+QComboBox { combobox-popup: 0; }
 QComboBox::drop-down { border: none; width: 22px; }
 QSpinBox::up-button, QSpinBox::down-button { width: 18px; border: none; }
 QAbstractItemView { background: transparent; border: none; outline: none; }
-QComboBox QAbstractItemView { background: #38383B; border: 1px solid #454549;
+QFrame#picerComboPopup { background: transparent; border: none; }
+QComboBox QAbstractItemView { background: #303032; border: none;
+border-radius: 12px; padding: 6px; outline: none;
 selection-background-color: #414145; selection-color: #F3F3F0; }
+QComboBox QAbstractItemView QWidget { background: transparent; }
+QComboBox QAbstractItemView::item { min-height: 22px; padding: 6px 12px; border-radius: 6px; }
+QComboBox QAbstractItemView::item:selected { background: #414145; color: #F3F3F0; }
 QTreeView::item, QListWidget::item { padding: 6px; border-radius: 8px; }
 QTreeView::item:selected, QListWidget::item:selected {
 background: #414145; color: #F3F3F0; border-left: 3px solid #E8FF59; }
@@ -48,17 +54,13 @@ QTextEdit, QScrollArea { background: transparent; border: none; }
 QSlider { background: transparent; border: none; padding: 0; }
 QSlider::groove:horizontal { background: #454549; border: none;
 height: 4px; border-radius: 2px; }
-QSlider::sub-page:horizontal { background: #E8FF59; border: none; border-radius: 2px; }
-QSlider::add-page:horizontal { background: #454549; border: none; border-radius: 2px; }
 QSlider::handle:horizontal { background: #E8FF59; width: 14px;
 border: none; margin: -5px 0; border-radius: 7px; }
 QSlider::groove:vertical { background: #454549; border: none;
 width: 4px; border-radius: 2px; }
-QSlider::sub-page:vertical { background: #E8FF59; border: none; border-radius: 2px; }
-QSlider::add-page:vertical { background: #454549; border: none; border-radius: 2px; }
 QSlider::handle:vertical { background: #E8FF59; height: 14px;
 border: none; margin: 0 -5px; border-radius: 7px; }
-QSlider:disabled::handle { background: #67676D; }
+QSlider::handle:disabled { background: #67676D; }
 QScrollBar { background: transparent; width: 8px; height: 8px; }
 QScrollBar::handle { background: #454549; border-radius: 4px;
 min-height: 24px; min-width: 24px; }
@@ -69,6 +71,12 @@ border-bottom: 2px solid transparent; }
 QTabBar::tab:selected { color: #F3F3F0; border-bottom: 2px solid #E8FF59; }
 QTabBar::tab:hover { background: #38383B; border-radius: 8px; }
 QToolTip { color: #F3F3F0; background: #38383B; border: 1px solid #454549; padding: 6px; }
+QMenu { background: #303032; color: #F3F3F0; border: none;
+border-radius: 12px; padding: 6px; }
+QMenu::item { padding: 9px 32px 9px 16px; border-radius: 6px; }
+QMenu::item:selected { background: #414145; }
+QMenu::item:disabled { color: #67676D; }
+QMenu::separator { height: 1px; background: #454549; margin: 6px 10px; }
 """
 
 STYLE = (
@@ -78,6 +86,7 @@ font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
 QWidget#titleBar { background: #242426; }
 QWidget#titleLeft, QWidget#titleRight, QWidget#windowControls, QLabel {
 background: transparent; }
+QDialog, QWidget#dialogHeader { background: transparent; }
 QLabel#brand { font-size: 15px; font-weight: 600; }
 QLabel#dialogHeading { font-size: 24px; font-weight: 600; }
 QLabel#sectionHeading { font-size: 15px; font-weight: 600; }
@@ -90,11 +99,6 @@ QWidget#componentRow { background: transparent; }
 QMenuBar { background: transparent; padding: 0; }
 QMenuBar::item { padding: 8px 10px; background: transparent; }
 QMenuBar::item:selected { background: #38383B; border-radius: 8px; }
-QMenu { background: #303032; border: 1px solid #454549; border-radius: 12px; padding: 6px; }
-QMenu::item { padding: 9px 32px 9px 16px; border-radius: 6px; }
-QMenu::item:selected { background: #414145; }
-QMenu::item:disabled { color: #67676D; }
-QMenu::separator { height: 1px; background: #454549; margin: 6px 10px; }
 QGraphicsView { border: none; background: #171719; }
 QToolButton#quickSlot { border: none; border-radius: 14px; padding: 0;
 background: transparent; color: #A2A2A6; font-size: 16px; }

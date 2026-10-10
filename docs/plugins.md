@@ -198,3 +198,5 @@ v1 是可信 Python 插件系统，运行在宿主进程中。权限声明只控
 SettingField 支持 bool、int、choice、path、text；字段包括 key、label、kind、default、minimum、maximum、choices。`add_settings` 只注册一次，清理上下文时移除表单。完整实例与参数范围见 [示例组件说明](example-components.md)。
 
 `show_settings()` 定位到插件管理中当前组件的设置页；默认面板不要增加设置按钮。`from picer.plugins import ui_icon` 可获取宿主随附的静态细线图标（`folder`、`home`、`up`、`left`、`right`、`grid`、`rotate`、`play`、`pause` 等），颜色默认为白色，保持独立于宿主皮肤。API v1 生命周期与权限契约不变。
+
+Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider 子类，采用透明背景、4px 圆头轨道与圆形滑块，保留 Qt 原有的范围、拖动、tracking、键盘与无障碍行为；支持横向、竖向、反向显示。插件面板中的控件配色独立于宿主皮肤。原有 QSlider 和 API v1 插件仍可使用。

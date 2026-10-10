@@ -2,7 +2,7 @@ QWidget { font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; font-size: 1
 QMainWindow { border: 1px solid #ceced6; border-radius: 12px; }
 QMenuBar::item { padding: 8px 9px; border-radius: 6px; }
 QMenuBar::item:selected { background: #d9d9e2; }
-QMenu { background: #f6f6f8; border: 1px solid #d4d4dc; border-radius: 10px; padding: 6px; }
+QMenu { background: #f6f6f8; border: none; border-radius: 10px; padding: 6px; }
 QMenu::item { border-radius: 5px; padding: 7px 28px 7px 12px; }
 QMenu::item:selected { background: #3478f6; color: white; }
 QMenu::item:disabled { color: #9a9aa5; }

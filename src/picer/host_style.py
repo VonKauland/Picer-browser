@@ -2,8 +2,8 @@
 
 import re
 
-from PySide6.QtCore import QEvent, QObject
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtWidgets import QComboBox, QMenu, QStyledItemDelegate, QWidget
 
 from picer.theme import CONTROLS
 
@@ -17,13 +17,32 @@ QLabel { background: transparent; }
 )
 
 
+def prepare_popup(widget):
+    """Configure alpha before a native popup window is created or shown."""
+    if isinstance(widget, QMenu) or widget.metaObject().className() == "QComboBoxPrivateContainer":
+        widget.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        widget.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint)
+        widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        widget.setAutoFillBackground(False)
+        if not isinstance(widget, QMenu):
+            widget.setObjectName("picerComboPopup")
+
+
 def mark_host(widget: QWidget) -> None:
     for child in (widget, *widget.findChildren(QWidget)):
+        prepare_popup(child)
         if child.property("picerHost") is not True:
             child.setProperty("picerHost", True)
             # Dynamic QSS properties set after parenting require an explicit repolish.
             child.style().unpolish(child)
             child.style().polish(child)
+        if isinstance(child, QComboBox):
+            # Qt measures the first popup before its Show event. Style its lazy
+            # view now so row sizes and rounded selection geometry are measured once.
+            view = child.view()
+            if not isinstance(view.itemDelegate(), QStyledItemDelegate):
+                view.setItemDelegate(QStyledItemDelegate(view))
+            mark_host(view.window())
 
 
 def scope_style(style: str) -> str:
@@ -51,13 +70,17 @@ class HostStyleFilter(QObject):
         self.window = window
 
     def eventFilter(self, obj, event):
-        if event.type() not in {QEvent.Type.Show, QEvent.Type.ToolTip} or not isinstance(
-            obj, QWidget
-        ):
+        if event.type() not in {
+            QEvent.Type.Polish,
+            QEvent.Type.Show,
+            QEvent.Type.ToolTip,
+        } or not isinstance(obj, QWidget):
             return False
         ancestor = obj
         while ancestor is not None:
             if ancestor.property("pluginSurface"):
+                if event.type() == QEvent.Type.Polish:
+                    prepare_popup(obj)
                 return False
             if ancestor is self.window:
                 if event.type() == QEvent.Type.ToolTip:

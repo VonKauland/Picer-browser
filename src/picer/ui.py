@@ -1,7 +1,7 @@
 """Shared, static desktop controls and monochrome icons for the charcoal UI."""
 
 from PySide6.QtCore import QByteArray, QRectF, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -10,11 +10,15 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
+    QStyle,
+    QStyleOptionSlider,
     QVBoxLayout,
     QWidget,
 )
 
 from picer.host_style import mark_host
+from picer.theme import COLORS
 
 ACCENT = "#E8FF59"
 ICON_PATHS = {
@@ -91,10 +95,60 @@ def ui_icon(name, color="#F3F3F0"):
 def colors_for(widget):
     ancestor = widget
     while ancestor is not None:
+        if ancestor.property("pluginSurface"):
+            return dict(COLORS)
         if hasattr(ancestor, "skin_colors"):
             return ancestor.skin_colors
         ancestor = ancestor.parentWidget()
-    return {"accent": ACCENT, "border": "#454549", "title": "#242426", "text": "#F3F3F0"}
+    return dict(COLORS)
+
+
+class RoundedSlider(QSlider):
+    """Paint a transparent, round-capped track using Qt's native handle geometry.
+
+    Mouse dragging, tracking, keyboard input, range and accessibility stay in QSlider.
+    Qt's stylesheet sub-page renderer can fill the whole widget height on Windows;
+    painting the track explicitly avoids both that block and squared endpoints.
+    """
+
+    def __init__(self, orientation=Qt.Orientation.Horizontal, parent=None):
+        super().__init__(orientation, parent)
+        self.setMinimumSize(24, 24)
+
+    def handle_rect(self, option):
+        return QRectF(
+            self.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider, option, QStyle.SubControl.SC_SliderHandle, self
+            )
+        )
+
+    def paintEvent(self, event):
+        option = QStyleOptionSlider()
+        self.initStyleOption(option)
+        handle = self.handle_rect(option)
+        endpoints = QStyleOptionSlider(option)
+        endpoints.minimum, endpoints.maximum = 0, 100
+        endpoints.sliderPosition = endpoints.sliderValue = 0
+        start = self.handle_rect(endpoints).center()
+        endpoints.sliderPosition = endpoints.sliderValue = 100
+        end = self.handle_rect(endpoints).center()
+        colors = colors_for(self)
+        accent = QColor(colors["accent"] if self.isEnabled() else colors["muted"])
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(
+            QPen(QColor(colors["border"]), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        )
+        painter.drawLine(start, end)
+        painter.setPen(QPen(accent, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+        painter.drawLine(start, handle.center())
+        if self.hasFocus():
+            painter.setPen(QPen(QColor(colors["muted"]), 1))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(handle.adjusted(-2, -2, 2, 2))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(accent)
+        painter.drawEllipse(handle)
 
 
 class Toggle(QCheckBox):
@@ -148,6 +202,7 @@ def form_row(label, editor):
 class DialogHeader(QWidget):
     def __init__(self, dialog, title, subtitle):
         super().__init__(dialog)
+        self.setObjectName("dialogHeader")
         self.dialog, self.origin = dialog, None
         layout = QHBoxLayout(self)
         layout.setContentsMargins(24, 20, 20, 12)
