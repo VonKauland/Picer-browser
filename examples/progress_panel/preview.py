@@ -51,6 +51,9 @@ class PreviewStrip(QWidget):
                 width,
                 height,
             )
+            if self.owner.dock.property("previewGeometry") != target:
+                self.owner.dock.setProperty("previewGeometry", target)
+                controller.collection.layout_strips()
             if target != self.geometry():
                 self.setGeometry(target)
                 self.raise_()
@@ -102,7 +105,7 @@ class PreviewStrip(QWidget):
             painter.restore()
             if image_index == self.center_index:
                 painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.setPen(QColor("#E8FF59"))
+                painter.setPen(QColor(self.owner.context.accent_color()))
                 painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 6, 6)
         fade = QLinearGradient(1, 0, self.width() - 1, 0)
         for stop, alpha in ((0, 0), (0.08, 255), (0.92, 255), (1, 0)):
@@ -158,6 +161,12 @@ class PreviewStrip(QWidget):
         super().showEvent(event)
 
     def hideEvent(self, event):
+        self.owner.dock.setProperty("previewGeometry", None)
+        controller = self.owner.dock.parentWidget().panel_hovers.controllers.get(
+            self.owner.context.plugin_id
+        )
+        if controller:
+            controller.collection.layout_strips()
         self.anchor_timer.stop()
         self.layout_timer.stop()
         if not self.owner.preview_open:

@@ -246,11 +246,16 @@ def test_hidden_strip_morph_reverses_and_cleans_up(window, tmp_path, qtbot, area
 def test_glass_backdrop_cached_and_fullscreen_hover_restored(window, tmp_path, qtbot, pictures):
     plugin = enable(window, tmp_path, "file_browser")
     window.open_image(pictures / "1.jpg")
+    controller = window.panel_hovers.controllers["example.files"]
+    assert not plugin.dock.widget().uses_glass()
+    controller.dock.close()
+    controller.reveal()
     qtbot.waitUntil(lambda: not window.glass.image.isNull())
     assert window.glass.image.size() == window.size()
     signature = window.glass.captured_signature
     window.glass.invalidate()
     assert not window.glass.timer.isActive()
+    controller.pin()
     window.toggle_fullscreen()
     controller = window.panel_hovers.controllers["example.files"]
     assert plugin.dock.isHidden()

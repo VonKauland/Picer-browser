@@ -1,7 +1,7 @@
 {
   "id": "example.files",
   "name": "文件浏览器",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",
@@ -11,6 +11,7 @@
     "image.read",
     "image.navigate",
     "settings",
-    "tasks"
+    "tasks",
+    "events.subscribe"
   ]
 }

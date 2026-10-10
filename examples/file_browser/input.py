@@ -12,12 +12,16 @@ class ParentEntry(QPushButton):
         self.setObjectName("parentEntry")
         self.setCheckable(True)
         self.setFixedHeight(38)
-        self.setStyleSheet("""
+        self.base_style = """
 QPushButton#parentEntry { text-align: left; background: transparent; padding: 6px;
 border: 1px solid transparent; border-radius: 9px; }
 QPushButton#parentEntry:hover { background: #343437; }
 QPushButton#parentEntry:checked { background: #414145; border-color: #E8FF59; }
-""")
+"""
+        self.set_accent("#E8FF59")
+
+    def set_accent(self, color):
+        self.setStyleSheet(self.base_style.replace("#E8FF59", color))
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:

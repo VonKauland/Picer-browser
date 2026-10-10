@@ -109,3 +109,18 @@ QLabel#empty { color: #A2A2A6; font-size: 15px; background: transparent; }
 """
     + CONTROLS
 )
+
+
+def accent_style(style, original, custom):
+    """Replace only theme accent tokens; unrelated skin/plugin colors stay intact."""
+    if not custom:
+        return style
+    import re
+
+    from PySide6.QtGui import QColor
+
+    hover = QColor(custom).lighter(120).name()
+    replacements = {original.lower(): custom, "#f0ff8a": hover}
+    style = re.sub(r"#[0-9a-fA-F]{6}", lambda m: replacements.get(m[0].lower(), m[0]), style)
+    foreground = "#242426" if QColor(custom).lightnessF() > 0.5 else "#F3F3F0"
+    return style + f"\nQPushButton#primaryButton {{ color: {foreground}; }}"

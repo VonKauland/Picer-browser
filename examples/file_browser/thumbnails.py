@@ -15,11 +15,12 @@ from PySide6.QtWidgets import (
 
 from picer.imaging import read_image
 from picer.plugins import ui_icon
+from picer.ui import colors_for
 
 from .folders import FolderContents
 
 
-def paint_item(painter, rect, state):
+def paint_item(painter, rect, state, accent):
     selected = bool(state & QStyle.StateFlag.State_Selected)
     hovered = bool(state & QStyle.StateFlag.State_MouseOver)
     if not (selected or hovered):
@@ -27,7 +28,7 @@ def paint_item(painter, rect, state):
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setBrush(QColor("#414145" if selected else "#343437"))
-    painter.setPen(QPen(QColor("#E8FF59"), 1.2) if selected else QPen(Qt.PenStyle.NoPen))
+    painter.setPen(QPen(QColor(accent), 1.2) if selected else QPen(Qt.PenStyle.NoPen))
     painter.drawRoundedRect(QRectF(rect).adjusted(1.5, 1.5, -1.5, -1.5), 9, 9)
     painter.restore()
 
@@ -144,7 +145,7 @@ class PhotoDelegate(QStyledItemDelegate):
 
     def paint(self, painter, option, index):
         if not isinstance(self.parent(), QTreeView):
-            paint_item(painter, option.rect, option.state)
+            paint_item(painter, option.rect, option.state, colors_for(self.parent())["accent"])
         copy = QStyleOptionViewItem(option)
         copy.state &= ~(
             QStyle.StateFlag.State_Selected
@@ -176,7 +177,7 @@ class PhotoTree(QTreeView):
             state |= QStyle.StateFlag.State_Selected
         if self.hover_index == index:
             state |= QStyle.StateFlag.State_MouseOver
-        paint_item(painter, option.rect, state)
+        paint_item(painter, option.rect, state, colors_for(self)["accent"])
         copy = QStyleOptionViewItem(option)
         copy.state &= ~(QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_MouseOver)
         super().drawRow(painter, copy, index)

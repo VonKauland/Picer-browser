@@ -98,11 +98,17 @@ def ui_icon(name, color="#F3F3F0"):
 
 def colors_for(widget):
     ancestor = widget
+    plugin = False
     while ancestor is not None:
-        if ancestor.property("pluginSurface"):
-            return dict(COLORS)
+        plugin |= bool(ancestor.property("pluginSurface"))
         if hasattr(ancestor, "skin_colors"):
-            return ancestor.skin_colors
+            if not plugin:
+                return ancestor.skin_colors
+            colors = dict(COLORS)
+            custom = ancestor.app_preferences.get("accent_color", "")
+            if custom:
+                colors["accent"] = custom
+            return colors
         ancestor = ancestor.parentWidget()
     return dict(COLORS)
 

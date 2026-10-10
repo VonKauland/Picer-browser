@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.color_editor import ColorEditor
 from picer.host_style import mark_host
 from picer.panels import DOCK_AREAS
 from picer.plugins.api import PluginError
@@ -144,9 +145,20 @@ class ApplicationSettings(StyledDialog):
         button.clicked.connect(self.host.show_plugins)
         card.body.addWidget(button)
         layout.addWidget(card)
+        card = Card("强调色")
+        accent = ColorEditor(self.values["accent_color"])
+        self.editors["accent_color"] = accent
+        card.body.addLayout(form_row("界面强调色", accent))
+        note = QLabel(
+            "输入 #RRGGBB 或选择颜色，留空跟随皮肤。保存后应用；恢复默认可清除自定义颜色。"
+        )
+        note.setWordWrap(True)
+        note.setObjectName("muted")
+        card.body.addWidget(note)
+        layout.addWidget(card)
         card = Card("界面")
         self.preference(card, "density", "界面密度", (("standard", "标准"), ("compact", "紧凑")))
-        self.preference(card, "glass", "使用面板毛玻璃")
+        self.preference(card, "glass", "自动隐藏面板使用毛玻璃")
         slider = RoundedSlider(Qt.Orientation.Horizontal)
         slider.setRange(0, 100)
         slider.setValue(self.values["glass_strength"])
@@ -325,6 +337,19 @@ class ApplicationSettings(StyledDialog):
             if value and value in used:
                 QMessageBox.warning(self, "设置未保存", f"快捷键已被组件使用：{action.text()}")
                 return
+        try:
+            values = {}
+            for key, editor in self.editors.items():
+                values[key] = (
+                    editor.isChecked()
+                    if isinstance(editor, Toggle)
+                    else editor.currentData()
+                    if isinstance(editor, QComboBox)
+                    else editor.value()
+                )
+        except ValueError as error:
+            QMessageBox.warning(self, "设置未保存", str(error))
+            return
         skin = self.skin.currentData()
         try:
             if skin:
@@ -336,15 +361,6 @@ class ApplicationSettings(StyledDialog):
         except PluginError as error:
             QMessageBox.warning(self, "设置未保存", str(error))
             return
-        values = {}
-        for key, editor in self.editors.items():
-            values[key] = (
-                editor.isChecked()
-                if isinstance(editor, Toggle)
-                else editor.currentData()
-                if isinstance(editor, QComboBox)
-                else editor.value()
-            )
         ui = self.manager.preferences["ui"]
         ui["application"], ui["shortcuts"] = values, shortcuts
         if not isinstance(ui.get("panels"), dict):

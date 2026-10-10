@@ -28,6 +28,9 @@ from PySide6.QtWidgets import (
 )
 
 from picer.host_style import PLUGIN_STYLE
+from picer.progress_ring import RING_SIZE, paint_progress
+from picer.theme import COLORS, accent_style
+from picer.ui import colors_for
 
 DOCK_AREAS = {
     "left": Qt.DockWidgetArea.LeftDockWidgetArea,
@@ -79,14 +82,23 @@ class GlassBackdrop(QObject):
             self.host.skin_colors["background"],
         )
 
+    def active(self):
+        for surface in tuple(self.surfaces):
+            try:
+                if surface.isVisible() and surface.render_backdrop and surface.uses_glass():
+                    return True
+            except RuntimeError:
+                pass
+        return False
+
     def invalidate(self):
-        if not self.surfaces or self.signature() == self.captured_signature:
+        if not self.active() or self.signature() == self.captured_signature:
             return
         if not self.timer.isActive():
             self.timer.start()
 
     def capture(self):
-        if not self.host.isVisible():
+        if not self.host.isVisible() or not self.active():
             return
         self.capturing = True
         try:
@@ -147,9 +159,24 @@ class GlassSurface(QWidget):
         super().__init__(parent, Qt.WindowType.Popup if popup else Qt.WindowType.Widget)
         self.backdrop, self.radius = backdrop, radius
         self.render_backdrop = True
+        self.frosted = True
         self.setProperty("pluginSurface", True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         backdrop.surfaces.add(self)
+
+    def uses_glass(self):
+        if not self.frosted or not self.backdrop.host.app_preferences.get("glass", True):
+            return False
+        parent = self.parentWidget()
+        while parent is not None:
+            if isinstance(parent, DockSurface):
+                return not parent.render_backdrop
+            parent = parent.parentWidget()
+        return True
+
+    def showEvent(self, event):
+        self.backdrop.invalidate()
+        super().showEvent(event)
 
     def paintEvent(self, event):
         if not self.render_backdrop:
@@ -159,11 +186,11 @@ class GlassSurface(QWidget):
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()), self.radius, self.radius)
         painter.setClipPath(path)
-        if not self.backdrop.image.isNull():
+        enabled = self.uses_glass()
+        if enabled and not self.backdrop.image.isNull():
             origin = self.mapTo(self.backdrop.host, QPoint())
             painter.drawImage(self.rect(), self.backdrop.image, QRect(origin, self.size()))
         strength = getattr(self.backdrop.host, "app_preferences", {}).get("glass_strength", 70)
-        enabled = getattr(self.backdrop.host, "app_preferences", {}).get("glass", True)
         painter.fillPath(path, QColor(48, 48, 50, round(255 - strength * 0.5) if enabled else 255))
 
 
@@ -183,7 +210,7 @@ class PanelGrip(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#E8FF59" if self.underMouse() else "#A2A2A6"))
+        painter.setBrush(QColor(colors_for(self)["accent"] if self.underMouse() else "#A2A2A6"))
         center = QPointF(self.rect().center())
         for offset in (-6, 0, 6):
             delta = QPointF(offset, 0) if self.surface.horizontal else QPointF(0, offset)
@@ -238,6 +265,7 @@ class PanelGrip(QWidget):
 class DockSurface(GlassSurface):
     def __init__(self, host, content):
         super().__init__(host.glass)
+        self.frosted = False
         self.horizontal = False
         self.area = DOCK_AREAS["left"]
         layout = QVBoxLayout(self)
@@ -272,9 +300,10 @@ class DockSurface(GlassSurface):
 def dock_surface(host, content):
     content.setProperty("pluginSurface", True)
     original_style = content.styleSheet()
+    content.setProperty("picerPanelOriginalStyle", original_style)
     content.setProperty("picerPanelContent", True)
     content.setStyleSheet(
-        PLUGIN_STYLE
+        accent_style(PLUGIN_STYLE, COLORS["accent"], host.app_preferences["accent_color"])
         + "\n"
         + original_style
         + '\nQWidget[picerPanelContent="true"] { background: transparent; }'
@@ -380,7 +409,15 @@ class HiddenStrip(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        color = QColor("#E8FF59" if self.underMouse() else "#A2A2A6")
+        if self.controller.dock.property("progressPanel"):
+            host = self.controller.host
+            index = host.path_positions.get(host.current_path, -1)
+            fraction = (index + 1) / len(host.paths) if host.paths and index >= 0 else 0
+            state = host.animation.state
+            inner = (state.frame + 1) / state.count if state.active and state.count else None
+            paint_progress(painter, fraction, inner, colors_for(self)["accent"])
+            return
+        color = QColor(colors_for(self)["accent"] if self.underMouse() else "#A2A2A6")
         color.setAlpha(200 if self.underMouse() else 115)
         painter.setBrush(color)
         painter.drawRoundedRect(self.rect(), 3, 3)
@@ -390,7 +427,11 @@ class MorphPopup(GlassSurface):
     def __init__(self, controller, surface):
         super().__init__(controller.host.glass, controller.host, radius=18)
         self.controller = controller
-        self.setStyleSheet(PLUGIN_STYLE)
+        self.setStyleSheet(
+            accent_style(
+                PLUGIN_STYLE, COLORS["accent"], controller.host.app_preferences["accent_color"]
+            )
+        )
         self.content = QWidget(self)
         layout = QVBoxLayout(self.content)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -575,7 +616,9 @@ class HiddenPanel(QObject):
 
     def show_menu(self, position):
         menu = QMenu(self.strip)
-        menu.setStyleSheet(PLUGIN_STYLE)
+        menu.setStyleSheet(
+            accent_style(PLUGIN_STYLE, COLORS["accent"], self.host.app_preferences["accent_color"])
+        )
         hidden = self.dock.isHidden()
         menu.addAction(
             "靠边固定" if hidden else "自动隐藏", self.pin if hidden else self.dock.close
@@ -631,11 +674,13 @@ class HiddenPanel(QObject):
             return
         self.leave_timer.stop()
         if self.popup is None:
+            self.collection.layout_strips()
             self.surface = self.dock.widget()
             self.surface.render_backdrop = False
             self.surface.setParent(None)
             self.dock.setWidget(None)
             self.popup = MorphPopup(self, self.surface)
+            self.morph_origin = QRect(self.strip.geometry())
             self.target = self.bounds()
             self.popup.content.setFixedSize(self.target.size())
             self.popup.setGeometry(self.strip.geometry())
@@ -647,6 +692,8 @@ class HiddenPanel(QObject):
 
     def start_animation(self, expanding):
         self.animation.stop()
+        if not expanding and self.progress == 1.0:
+            self.morph_origin = QRect(self.strip.geometry())
         self.expanding = expanding
         self.animation.setStartValue(self.progress)
         self.animation.setEndValue(1.0 if expanding else 0.0)
@@ -663,7 +710,7 @@ class HiddenPanel(QObject):
         if self.popup is None:
             return
         self.progress = float(value)
-        start = self.strip.geometry()
+        start = self.morph_origin
         end = self.target
         values = [
             round(a + (b - a) * value) for a, b in zip(start.getRect(), end.getRect(), strict=True)
@@ -756,7 +803,9 @@ class DockDropHint(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(232, 255, 89, 145))
+        color = QColor(colors_for(self)["accent"])
+        color.setAlpha(145)
+        painter.setBrush(color)
         painter.drawRoundedRect(self.rect(), 4, 4)
 
 
@@ -820,6 +869,11 @@ class PanelHovers(QObject):
         self.drop_hint.show()
         self.drop_hint.raise_()
 
+    def update_progress_ring(self):
+        for controller in self.controllers.values():
+            if controller.dock.property("progressPanel"):
+                controller.strip.update()
+
     def layout_strips(self):
         areas = {}
         for controller in self.controllers.values():
@@ -833,7 +887,23 @@ class PanelHovers(QObject):
         for area, controllers in areas.items():
             for index, controller in enumerate(controllers):
                 offset = (index - (len(controllers) - 1) / 2) * 96
-                if area == Qt.DockWidgetArea.BottomDockWidgetArea:
+                if controller.dock.property("progressPanel"):
+                    preview = controller.dock.property("previewGeometry")
+                    if isinstance(preview, QRect) and not preview.isEmpty():
+                        rect = QRect(
+                            max(0, preview.left() - RING_SIZE - 8),
+                            preview.center().y() - (RING_SIZE - 1) // 2,
+                            RING_SIZE,
+                            RING_SIZE,
+                        )
+                    else:
+                        rect = QRect(
+                            (self.host.width() - RING_SIZE) // 2,
+                            self.host.height() - RING_SIZE - 6,
+                            RING_SIZE,
+                            RING_SIZE,
+                        )
+                elif area == Qt.DockWidgetArea.BottomDockWidgetArea:
                     rect = QRect(
                         round(self.host.width() / 2 - 42 + offset), self.host.height() - 9, 84, 5
                     )
@@ -841,4 +911,6 @@ class PanelHovers(QObject):
                     x = 4 if area == Qt.DockWidgetArea.LeftDockWidgetArea else self.host.width() - 9
                     rect = QRect(x, round(self.host.height() / 2 - 42 + offset), 5, 84)
                 controller.strip.setGeometry(rect)
+                if controller.popup and controller.progress == 1.0:
+                    controller.morph_origin = QRect(rect)
                 controller.strip.raise_()

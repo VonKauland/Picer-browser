@@ -106,11 +106,19 @@ class Plugin:
         self.refresh_timer.setInterval(30)
         self.refresh_timer.timeout.connect(self.refresh_preview)
         self.compact(False, animate=False)
+        context.subscribe("appearance.changed", self.on_appearance)
         context.subscribe("image.changed", self.on_image)
         context.subscribe("animation.changed", self.on_animation)
         self.on_animation(context.animation_state())
         self.apply_settings()
         self.update_progress()
+
+    def on_appearance(self, event):
+        self.controls["preview"].setIcon(
+            ui_icon("grid", event["accent"] if self.preview_open else "#F3F3F0")
+        )
+        self.preview.update()
+        self.panel.update()
 
     def values(self):
         return {
@@ -125,7 +133,9 @@ class Plugin:
 
     def compact(self, expanded, *, animate=True):
         target = 1.0 if expanded else 0.0
-        self.controls["preview"].setIcon(ui_icon("grid", "#E8FF59" if expanded else "#F3F3F0"))
+        self.controls["preview"].setIcon(
+            ui_icon("grid", self.context.accent_color() if expanded else "#F3F3F0")
+        )
         self.motion.stop()
         if not animate:
             self.set_expansion(target)

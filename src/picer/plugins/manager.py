@@ -29,6 +29,7 @@ from picer.plugins.manifest import Manifest
 from picer.plugins.settings import SettingField
 from picer.plugins.skins import COLORS, load_skin
 from picer.plugins.tasks import TaskCancelled, Worker
+from picer.theme import accent_style
 
 
 @dataclass
@@ -470,7 +471,8 @@ class PluginManager(QObject):
         )
         dock.setProperty("pluginSurface", True)
         dock.setStyleSheet(
-            PLUGIN_STYLE + "\nQDockWidget { border: none; background: transparent; }"
+            accent_style(PLUGIN_STYLE, COLORS["accent"], self.host.app_preferences["accent_color"])
+            + "\nQDockWidget { border: none; background: transparent; }"
         )
         dock.setWidget(dock_surface(self.host, widget))
         if progress:
@@ -544,6 +546,30 @@ class PluginManager(QObject):
                     self._invoke(plugin_id, callback, event)
         finally:
             self._dispatching = False
+
+    def emit_appearance(self):
+        accent = self.host.app_preferences.get("accent_color", "")
+        shared = accent_style(PLUGIN_STYLE, COLORS["accent"], accent)
+        for dock in self.panels.values():
+            dock.setStyleSheet(shared + "\nQDockWidget { border: none; background: transparent; }")
+            surface = dock.widget()
+            if surface is None:
+                controller = self.host.panel_hovers.controllers.get(dock.objectName()[6:])
+                surface = controller.surface if controller else None
+                if controller and controller.popup:
+                    controller.popup.setStyleSheet(shared)
+            if surface:
+                for widget in surface.findChildren(QWidget):
+                    if widget.property("picerPanelContent"):
+                        widget.setStyleSheet(
+                            shared
+                            + "\n"
+                            + (widget.property("picerPanelOriginalStyle") or "")
+                            + '\nQWidget[picerPanelContent="true"] { background: transparent; }'
+                        )
+                        widget.update()
+        for plugin_id, callback in list(self.subscribers.get("appearance.changed", [])):
+            self._invoke(plugin_id, callback, {"accent": accent or COLORS["accent"]})
 
     def emit_animation(self, state):
         for plugin_id, callback in list(self.subscribers.get("animation.changed", [])):

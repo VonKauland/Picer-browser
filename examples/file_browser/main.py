@@ -155,9 +155,17 @@ class Plugin:
         self.return_timer = QTimer(self.panel)
         self.return_timer.setInterval(30)
         self.return_timer.timeout.connect(self.restore_return_selection)
+        context.subscribe("appearance.changed", self.on_appearance)
+        self.on_appearance({"accent": context.accent_color()})
         self.apply_settings()
         self.favorites.reload()
         self.recent.reload()
+
+    def on_appearance(self, event):
+        self.parent_entry.set_accent(event["accent"])
+        self.tabs.set_accent(event["accent"])
+        for view in (self.tree, self.tiles, self.favorites, self.recent):
+            view.viewport().update()
 
     def values(self):
         return {

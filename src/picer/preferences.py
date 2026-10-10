@@ -14,6 +14,7 @@ DEFAULTS = {
     "glass": True,
     "glass_strength": 70,
     "density": "standard",
+    "accent_color": "",
     "cache_mb": 512,
 }
 CHOICES = {
@@ -29,9 +30,13 @@ def read_preferences(manager):
     stored = manager.preferences["ui"].get("application", {})
     stored = stored if isinstance(stored, dict) else {}
     result = dict(DEFAULTS)
+    from picer.color_editor import valid_accent
+
     for key, default in DEFAULTS.items():
         value = stored.get(key, default)
-        if type(default) is bool:
+        if key == "accent_color":
+            result[key] = value.upper() if valid_accent(value) else default
+        elif type(default) is bool:
             result[key] = value if type(value) is bool else default
         elif key in CHOICES:
             result[key] = value if isinstance(value, str) and value in CHOICES[key] else default

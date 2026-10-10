@@ -12,9 +12,10 @@ from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QStyleOptionSlid
 
 from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
+from picer.progress_ring import RING_SIZE
 from picer.settings import ApplicationSettings
 from picer.smoke_samples import make_animation, make_dng
-from picer.ui import RoundedSlider
+from picer.ui import RoundedSlider, colors_for
 
 
 def wait_for(predicate, timeout=3000):
@@ -191,6 +192,26 @@ def verify_media(window):
         assert window.view.image_item.pixmap().toImage().pixelColor(30, 30).blue() > 240
         wait_for(lambda: progress.playback_expansion == 1)
         assert not progress.playback.isHidden() and progress.dock.height() == 100
+        controller = window.panel_hovers.controllers["example.progress"]
+        assert not controller.dock.widget().uses_glass()
+        controller.dock.close()
+        window.panel_hovers.layout_strips()
+        assert controller.strip.isVisible() and controller.strip.width() == RING_SIZE
+        assert abs(controller.strip.geometry().center().x() - window.rect().center().x()) <= 1
+        pixels = controller.strip.grab().toImage()
+        assert pixels.pixelColor(12, 12).alpha() == 0
+        assert pixels.pixelColor(12, 6).blue() > 150
+        progress.show_preview()
+        wait_for(lambda: progress.expansion == 1)
+        assert progress.preview.isVisible()
+        assert controller.strip.geometry().right() < progress.preview.geometry().left()
+        assert (
+            abs(controller.strip.geometry().center().y() - progress.preview.geometry().center().y())
+            <= 1
+        )
+        progress.show_preview()
+        wait_for(lambda: not progress.preview.isVisible())
+        controller.pin()
         progress.playback_button.click()
         assert window.animation.state.playing
         progress.playback_button.click()
@@ -198,6 +219,13 @@ def verify_media(window):
         assert window.open_image(previous)
         wait_for(lambda: progress.playback_expansion == 0)
         assert progress.playback.isHidden()
+        controller.dock.close()
+        window.panel_hovers.layout_strips()
+        assert controller.strip.grab().toImage().pixelColor(12, 6).alpha() == 0
+        controller.pin()
+    print(
+        "Packaged tiny image/frame rings, thumbnail anchoring and static inner-ring removal passed"
+    )
     raw = directory / "synthetic.dng"
     make_dng(raw)
     raw = raw.resolve()
@@ -318,12 +346,19 @@ def run(window, args, folder, done):
             assert browser.tree.iconSize().width() == 40
             if count_before:
                 assert window.app_preferences["zoom_step"] == 30
+                assert window.app_preferences["accent_color"] == "#FFA591"
             application_settings = ApplicationSettings(window)
             assert application_settings.pages.count() == 6
             assert isinstance(application_settings.editors["glass_strength"], RoundedSlider)
             application_settings.editors["zoom_step"].setValue(30)
+            application_settings.editors["accent_color"].setValue("#ffa591")
             application_settings.save()
             assert window.view.zoom_step == 30
+            assert window.skin_colors["accent"] == "#FFA591"
+            assert colors_for(browser.tree)["accent"] == "#FFA591"
+            assert window.skin_colors["background"] != colors_for(browser.tree)["background"]
+            assert "#FFA591" in browser.parent_entry.styleSheet()
+            print("Packaged custom accent save/restart and macOS plugin isolation passed")
             application_settings.deleteLater()
             verify_popups(window, browser)
             verify_browser(window, browser, folder)
@@ -538,6 +573,7 @@ def run(window, args, folder, done):
 
         def expanded(controller):
             assert controller.popup is not None and controller.progress >= 0.99
+            assert controller.popup.uses_glass() and window.glass.active()
             assert controller.dock.isHidden()
             controller.collapse()
             QTimer.singleShot(400, lambda: guarded(lambda: collapsed(controller)))
@@ -571,6 +607,8 @@ def run(window, args, folder, done):
                 window.plugins.preferences["ui"]["panel_layouts"]["example.files"]["area"] == "left"
             )
             assert not window.glass.image.isNull()
+            assert not controller.dock.widget().uses_glass()
+            assert not window.glass.active()
             print(
                 "Packaged examples: file tree, settings, metadata/EXIF, histogram, progress, "
                 "thumbnails, embedded/app settings, transparent popups/rounded sliders, "

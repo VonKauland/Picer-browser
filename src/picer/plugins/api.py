@@ -89,6 +89,13 @@ class PluginContext:
         surface.setStyleSheet(PLUGIN_STYLE)
         return surface
 
+    def accent_color(self) -> str:
+        """User accent for opt-in panel UI, independent of the active skin."""
+        self._check("ui.panels")
+        from picer.theme import COLORS
+
+        return self._manager.host.app_preferences.get("accent_color") or COLORS["accent"]
+
     def add_settings(self, fields, on_apply: Callable[[], None]) -> None:
         self._check("settings")
         self._manager.add_settings(self.plugin_id, fields, on_apply)
@@ -154,10 +161,15 @@ class PluginContext:
         self._manager.host.rotate_image()
 
     def subscribe(
-        self, event: str, callback: Callable[[ImageEvent | AnimationState], None]
+        self, event: str, callback: Callable[[ImageEvent | AnimationState | dict[str, str]], None]
     ) -> None:
         self._check("events.subscribe")
-        if event not in {"image.opened", "image.changed", "animation.changed"}:
+        if event not in {
+            "image.opened",
+            "image.changed",
+            "animation.changed",
+            "appearance.changed",
+        }:
             raise PluginError(f"未知事件：{event}")
         self._manager.subscribe(self.plugin_id, event, callback)
 

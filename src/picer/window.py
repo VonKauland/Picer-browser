@@ -120,6 +120,7 @@ class MainWindow(QMainWindow):
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setMinimumSize(800, 420)
         self.resize(1200, 800)
+        self._base_skin_colors = dict(COLORS)
         self.skin_colors = dict(COLORS)
         self.app_preferences = dict(DEFAULTS)
         self._skin_style = STYLE
@@ -225,6 +226,7 @@ class MainWindow(QMainWindow):
         return action
 
     def apply_skin(self, style: str | None, colors: dict[str, str], *, chrome="standard") -> None:
+        self._base_skin_colors = dict(colors)
         self.skin_colors = dict(colors)
         self.chrome_style = chrome
         self._skin_style = STYLE if style is None else style
@@ -235,7 +237,13 @@ class MainWindow(QMainWindow):
             self.components.refresh_slots()
 
     def apply_host_style(self):
-        style = self._skin_style
+        from picer.theme import accent_style
+
+        self.skin_colors = dict(self._base_skin_colors)
+        custom = self.app_preferences["accent_color"]
+        if custom:
+            self.skin_colors["accent"] = custom
+        style = accent_style(self._skin_style, self._base_skin_colors["accent"], custom)
         if self.app_preferences["density"] == "compact":
             style += "\nQWidget { font-size: 12px; } QMenu::item { padding: 6px 24px 6px 12px; }"
         self.setStyleSheet(scope_style(style))
@@ -251,6 +259,9 @@ class MainWindow(QMainWindow):
         for surface in tuple(self.glass.surfaces):
             surface.update()
         self.title_bar.arrange()
+        self.plugins.emit_appearance()
+        self.panel_hovers.update_progress_ring()
+        self.update()
 
     def restore_shortcuts(self, shortcuts):
         if isinstance(shortcuts, dict):
@@ -386,7 +397,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.11.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.12.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -512,6 +523,8 @@ class MainWindow(QMainWindow):
         self.refine_image(image)
 
     def animation_changed(self, state):
+        if hasattr(self, "panel_hovers"):
+            self.panel_hovers.update_progress_ring()
         if hasattr(self, "plugins"):
             self.plugins.emit_animation(state)
 
@@ -565,3 +578,4 @@ class MainWindow(QMainWindow):
             action.setEnabled(self.current_path is not None)
 
         self.plugins.update_commands()
+        self.panel_hovers.update_progress_ring()

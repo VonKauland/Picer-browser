@@ -5,7 +5,7 @@ import zipfile
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QColor, QImage
+from PySide6.QtGui import QColor, QCursor, QImage
 from PySide6.QtWidgets import QComboBox
 
 from picer.bundles import EXAMPLES
@@ -91,7 +91,7 @@ def test_old_progress_upgrade_preserves_settings_and_migrates_side_location(tmp_
     qtbot.wait(30)
     manager = upgraded.plugins
     record = manager.records["example.progress"]
-    assert record.state == "enabled" and record.manifest.version == "1.6.0"
+    assert record.state == "enabled" and record.manifest.version == "1.7.0"
     assert manager.get_setting("example.progress", "thumbnail_size", 0) == 144
     assert manager.panels["example.progress"].isHidden()
     assert upgraded.panel_hovers.controllers["example.progress"].area == DOCK_AREAS["bottom"]
@@ -274,6 +274,7 @@ def test_preview_inside_autohide_reveal_and_cleanup(window, qtbot, tmp_path):
     controller.dock.close()
     controller.reveal()
     qtbot.wait(450)
+    QCursor.setPos(window.mapToGlobal(controller.bounds().center()))
     progress.controls["preview"].click()
     qtbot.waitUntil(lambda: len(progress.preview.items) == 4)
     qtbot.waitUntil(lambda: progress.expansion == 1)

@@ -132,7 +132,7 @@ class Plugin:
 | image.navigate | `open_image(path)` / `navigate(offset)` / `jump_to(index)` | 打开或按当前目录顺序导航、按零起始位置跳转 |
 | image.read | `image_paths()` | 当前目录顺序的 Path 元组快照 |
 | image.read + tasks | `request_metadata(callback)` | 后台读取原图元数据，丢弃过期结果 |
-| ui.panels | `frosted_surface(parent, popup=False)` | 创建与面板相同的毛玻璃子界面或弹出窗 |
+| ui.panels | `frosted_surface(parent, popup=False)` | 创建共享玻璃界面；嵌在固定面板内时不透明，自动隐藏或弹出窗时使用毛玻璃 |
 | ui.panels | `add_panel(widget, area="right")` | 仅面板类，注册一个停靠面板；普通面板支持 left/right；panel_role: progress 仅 bottom，停用时删除 |
 | ui.commands | `add_command(id, label, callback, shortcut="", requires_image=True, menu="插件")` | 注册单功能动作，可传入 icon=QIcon；停用时删除，宿主皮肤保留外部图标 |
 | image.read | `current_path()` | 返回当前 `Path`，未打开图片时为 `None` |
@@ -140,7 +140,7 @@ class Plugin:
 | image.read | `thumbnail()` | 返回当前原图的独立缩略图拷贝，不含插件预览变换 |
 | cache | `cache_directory()` | 返回 `cache/plugins/<plugin-id>` 独立目录，插件自行控制容量 |
 | image.modify | `replace_image(image)` | 更新显示并适应窗口，发出图片变更事件；不写原文件 |
-| events.subscribe | `subscribe(name, callback)` | 订阅图片事件，停用时自动撤销 |
+| events.subscribe | `subscribe(name, callback)` | 订阅图片、动画或外观事件，停用时自动撤销 |
 | settings | `get_setting(key, default=None)` / `set_setting(key, value)` | 插件命名空间下的 JSON 设置；读取返回副本，单值最多 64 KiB 序列化 JSON |
 | tasks | `run_task(work, on_result, image_bound=True)` | 后台计算，结果在 GUI 线程交付，返回取消令牌 |
 | 无额外声明 | `notify(message)` | 显示信息对话框 |
@@ -212,3 +212,10 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 - `AnimationState` 可从 `picer.plugins` 导入；仍沿用 API_VERSION=1，原插件无需新增权限或修改代码。旋转的 image.changed reason 为 `rotated`。
 
 格式、渐进解码与资源上限见 [媒体与性能说明](media.md)。
+
+### 自定义强调色（0.12，仍兼容 API v1）
+
+- `context.accent_color()` 需要 `ui.panels`：返回用户显式指定的强调色，未指定时返回插件默认黄绿 `#E8FF59`，不会读取宿主皮肤的强调色。
+- `subscribe("appearance.changed", callback)` 需要 `events.subscribe`，应用外观设置保存后回调参数为 `{"accent": "#RRGGBB"}`；停用 / 出错自动撤销。插件应在激活时读取 `accent_color()` 初始化，并在回调中更新自行绘制的选中状态。
+- 宿主共享控件随用户设置更新，外部插件原始 QSS 与自有 QIcon 不被改写；示例浏览器与进度条主动订阅外观变化。皮肤仍只影响宿主。
+- 固定面板外壳不透明，自动隐藏弹出才使用玻璃；`frosted_surface` 的子界面在固定面板中同样不透明，独立弹出窗仍可使用玻璃。

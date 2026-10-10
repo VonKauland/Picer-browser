@@ -88,6 +88,11 @@ class NavigationTabs(QTabBar):
             self.setAccessibleTabName(index, label)
         self.setStyleSheet("QTabBar { background: transparent; border: none; }")
 
+    def set_accent(self, color):
+        for index, symbol in enumerate(("folder", "star", "history")):
+            self.icons[index] = (self.icons[index][0], ui_icon(symbol, color))
+        self.update()
+
     def tabSizeHint(self, index):
         return QSize(36, 40)
 
