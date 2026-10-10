@@ -14,6 +14,7 @@ class PreviewStrip(QWidget):
         self.items = []
         self.thumbnail_size = 80
         self.center_index = 0
+        self.reveal = 0.0
         self.setProperty("pluginSurface", True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet("background: transparent; border: none;")
@@ -45,7 +46,10 @@ class PreviewStrip(QWidget):
             else:
                 top = self.parentWidget().height()
             target = QRect(
-                (self.parentWidget().width() - width) // 2, top - height - 8, width, height
+                (self.parentWidget().width() - width) // 2,
+                top - height - 8 + round(12 * (1 - self.reveal)),
+                width,
+                height,
             )
             if target != self.geometry():
                 self.setGeometry(target)
@@ -63,6 +67,7 @@ class PreviewStrip(QWidget):
         selected = self.items[position][0] == self.center_index
         index = next((i for i, item in enumerate(self.items) if item[0] == self.center_index), 0)
         size = self.thumbnail_size if selected else round(self.thumbnail_size * 0.88)
+        size *= 0.94 + 0.06 * self.reveal
         center = self.width() / 2 + (position - index) * (self.thumbnail_size + 8)
         return QRectF(center - size / 2, (self.height() - size) / 2, size, size)
 
@@ -106,6 +111,7 @@ class PreviewStrip(QWidget):
         painter.fillRect(layer.rect(), fade)
         painter.end()
         output = QPainter(self)
+        output.setOpacity(self.reveal)
         output.drawPixmap(0, 0, layer)
 
     def mouseReleaseEvent(self, event):
@@ -148,12 +154,12 @@ class PreviewStrip(QWidget):
             super().keyPressEvent(event)
 
     def showEvent(self, event):
-        self.owner.compact(True)
         self.anchor_timer.start()
         super().showEvent(event)
 
     def hideEvent(self, event):
         self.anchor_timer.stop()
         self.layout_timer.stop()
-        self.owner.compact(False)
+        if not self.owner.preview_open:
+            self.owner.compact(False, animate=False)
         super().hideEvent(event)

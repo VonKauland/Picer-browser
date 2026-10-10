@@ -4,7 +4,7 @@ import traceback
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QPoint, QPointF, Qt, QTimer
+from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, Qt, QTimer
 from PySide6.QtGui import QCursor, QImage, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QStyleOptionSlider
@@ -13,6 +13,14 @@ from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.settings import ApplicationSettings
 from picer.ui import RoundedSlider
+
+
+def wait_for(predicate, timeout=3000):
+    deadline = QElapsedTimer()
+    deadline.start()
+    while not predicate() and deadline.elapsed() < timeout:
+        QTest.qWait(20)
+    assert predicate()
 
 
 def verify_popups(window, browser):
@@ -40,6 +48,9 @@ def verify_browser(window, browser, folder):
     """Exercise breadcrumb targets and Ctrl-wheel in the actual frozen EXE."""
     child = folder / "child"
     child.mkdir(exist_ok=True)
+    sample = QImage(12, 12, QImage.Format.Format_RGB32)
+    sample.fill(0x778899)
+    assert sample.save(str(child / "sample.png"))
     bar = browser.location
     bar.start_edit()
     bar.editor.setText(str(child))
@@ -63,6 +74,24 @@ def verify_browser(window, browser, folder):
         view.setFocus()
         QTest.qWait(30)
         assert view.hasFocus()
+        wait_for(lambda view=view: view.visualRect(browser.model.index(str(child))).isValid())
+        pos = view.visualRect(browser.model.index(str(child))).center()
+        QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+        assert bar.text() == str(folder)
+        QTest.mouseDClick(view.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+        assert bar.text() == str(child)
+        QTest.mouseClick(view.viewport(), Qt.MouseButton.BackButton)
+        assert bar.text() == str(folder)
+        QTest.mouseClick(view.viewport(), Qt.MouseButton.ForwardButton)
+        assert bar.text() == str(child)
+        QTest.keyClick(view, Qt.Key.Key_Backspace)
+        assert bar.text() == str(folder)
+        browser.open_folder(child)
+        QTest.mouseClick(browser.parent_entry, Qt.MouseButton.LeftButton)
+        assert bar.text() == str(child)
+        QTest.mouseDClick(browser.parent_entry, Qt.MouseButton.LeftButton)
+        assert bar.text() == str(folder)
+        view.setFocus()
         for delta, expected in ((120, 44), (-120, 40)):
             target = view.viewport()
             pos = target.rect().center()
@@ -87,15 +116,23 @@ def verify_browser(window, browser, folder):
     browser.tree.setCurrentIndex(index)
     browser.tree.setFocus()
     QTest.qWait(50)
-    row = browser.tree.visualRect(index)
+    row = browser.tree.visualRect(browser.model.index(str(child)))
     assert row.isValid()
     pixels = browser.tree.viewport().grab().toImage()
     for y in range(row.top(), row.bottom() + 1):
         for x in range(browser.tree.indentation()):
             color = pixels.pixelColor(x, y)
             channels = (color.red(), color.green(), color.blue())
-            assert min(channels) < 210 and max(channels) - min(channels) < 30
-    print("Browser breadcrumb, Ctrl-wheel and selected folder edge checks passed")
+            assert min(channels) < 210 and color.blue() <= max(color.red(), color.green()) + 20
+    root = browser.tree.rootIndex()
+    wait_for(lambda: browser.model.rowCount(root) == 3)
+    assert browser.model.isDir(browser.model.index(0, 0, root))
+    browser.model.data(browser.model.index(str(child)), Qt.ItemDataRole.DecorationRole)
+    wait_for(lambda: browser.model.files.folders.cache.get(str(child)) is True)
+    print(
+        "Browser glass folders, directory ordering, double-click/side-key/Backspace, "
+        "breadcrumbs and Ctrl-wheel checks passed"
+    )
 
 
 def run(window, args, folder, done):
@@ -323,7 +360,7 @@ def run(window, args, folder, done):
                 invert()
 
         def preview_ready():
-            if window.plugins.jobs:
+            if window.plugins.jobs or progress.expansion < 1:
                 QTimer.singleShot(25, lambda: guarded(preview_ready))
                 return
             assert len(progress.preview.items) == 2, (
@@ -349,6 +386,7 @@ def run(window, args, folder, done):
             assert progress.preview.geometry().bottom() == window.height() - 9
             controller.pin()
             progress.controls["preview"].click()
+            wait_for(lambda: not progress.preview.isVisible())
             assert not progress.preview.isVisible()
             invert()
 

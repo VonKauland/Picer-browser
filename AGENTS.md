@@ -27,3 +27,6 @@
 - Popup menus and comboboxes must have transparent rounded corners and no native white frame. Use RoundedSlider for default progress/settings sliders; render tests must check both orientations, inverted appearance and range endpoints while retaining Qt input behavior.
 
 - Bottom progress uses a centered one-third-width overlay and must not reserve a dock row. Side docks reach the bottom. Expose fixed/auto-hide only on grips and indicator strips. Transparent preview thumbnails retain configurable size/count, individual shadows, edge feathering and no scrollbar.
+
+- File browser: neutral frosted folder icons classify direct decodable images asynchronously; keep cache/watches bounded and stop them on disable. Selected row/tile outlines encompass the whole background, never tint folder icons. Keep parent entry pinned first, directories before files in every sort direction, single-click selection and double-click folder entry. Side keys navigate history; Backspace goes up but must keep text editing intact.
+- Preview reveal/compact motion shares one reversible timeline (280 ms OutCubic open, 220 ms InOutCubic close). Keep independent preview docking and existing edge-hover motion; verify intermediate frames, reversal and cleanup.

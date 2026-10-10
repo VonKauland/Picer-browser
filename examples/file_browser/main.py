@@ -17,13 +17,16 @@ from PySide6.QtWidgets import (
 from picer.plugins import SettingField, ui_icon
 
 from .address import AddressBar
-from .input import BrowserPanel
-from .thumbnails import PhotoModel, PhotoTree, configure_view
+from .input import BrowserPanel, ParentEntry
+from .model import BrowserModel
+from .thumbnails import PhotoTree, configure_view
 
 
 class Plugin:
     def activate(self, context):
         self.context = context
+        self.history = []
+        self.history_index = -1
         self.home = QStandardPaths.writableLocation(
             QStandardPaths.StandardLocation.PicturesLocation
         )
@@ -48,7 +51,7 @@ class Plugin:
             ),
         )
         context.add_settings(self.fields, self.apply_settings)
-        self.panel = BrowserPanel(self.resize_icons)
+        self.panel = BrowserPanel(self.resize_icons, self.go_up, self.go_back, self.go_forward)
         self.panel.setMinimumWidth(220)
         layout = QVBoxLayout(self.panel)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -79,22 +82,31 @@ class Plugin:
         self.location = AddressBar(self.panel)
         self.location.pathRequested.connect(self.open_folder)
         layout.addWidget(self.location)
-        self.model = PhotoModel(context, self.panel)
-        self.model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
-        self.model.setNameFilters(
+        self.parent_entry = ParentEntry()
+        self.parent_entry.activated.connect(self.go_up)
+        self.parent_entry.clicked.connect(self.select_parent)
+        layout.addWidget(self.parent_entry)
+        self.model = BrowserModel(context, self.panel)
+        self.parent_entry.setIcon(self.model.files.folders.icons[0])
+        self.model.files.setFilter(
+            QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot
+        )
+        self.model.files.setNameFilters(
             ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.webp", "*.tif", "*.tiff", "*.ico"]
         )
-        self.model.setNameFilterDisables(False)
+        self.model.files.setNameFilterDisables(False)
         self.tree = PhotoTree()
         self.tree.setModel(self.model)
         configure_view(self.tree)
         self.tree.setUniformRowHeights(True)
         self.tree.setSortingEnabled(True)
         self.tree.setAnimated(True)
+        self.tree.setExpandsOnDoubleClick(False)
         self.tree.setHeaderHidden(True)
         for column in (1, 2, 3):
             self.tree.hideColumn(column)
-        self.tree.clicked.connect(self.open_entry)
+        self.tree.clicked.connect(self.select_entry)
+        self.tree.doubleClicked.connect(self.enter_folder)
         self.tiles = QListView()
         self.tiles.setModel(self.model)
         configure_view(self.tiles)
@@ -103,9 +115,10 @@ class Plugin:
         self.tiles.setMovement(QListView.Movement.Static)
         self.tiles.setWrapping(True)
         self.tiles.setSpacing(4)
-        self.tiles.clicked.connect(self.open_entry)
+        self.tiles.clicked.connect(self.select_entry)
+        self.tiles.doubleClicked.connect(self.enter_folder)
         for view in (self.tree, self.tiles):
-            view.viewport().installEventFilter(self.panel)
+            view.viewport().setProperty("browserViewport", True)
         self.views = QStackedWidget()
         self.views.addWidget(self.tree)
         self.views.addWidget(self.tiles)
@@ -134,6 +147,8 @@ class Plugin:
 
     def apply_icon_size(self):
         size = self.values()["icon_size"]
+        self.parent_entry.setIconSize(QSize(size, size))
+        self.parent_entry.setFixedHeight(size + 14)
         self.tree.setIconSize(QSize(size, size))
         self.tiles.setIconSize(QSize(size * 2, size * 2))
         self.tiles.setGridSize(QSize(size * 2 + 32, size * 2 + 40))
@@ -167,17 +182,26 @@ class Plugin:
         self.context.set_setting("view", "list" if self.values()["view"] == "tiles" else "tiles")
         self.apply_view()
 
-    def open_folder(self, directory):
+    def open_folder(self, directory, *, remember=True):
         path = Path(directory).expanduser()
         if not path.is_dir():
             self.note.setText("文件夹不存在，请修改首页路径或输入其他路径。")
-            return
-        self.location.setText(str(path.resolve()))
+            return False
+        path = path.resolve()
+        if remember and (self.history_index < 0 or self.history[self.history_index] != path):
+            self.history = self.history[: self.history_index + 1] + [path]
+            self.history = self.history[-64:]
+            self.history_index = len(self.history) - 1
+        self.location.setText(str(path))
         self.location.setToolTip(str(path.resolve()))
         root = self.model.setRootPath(str(path.resolve()))
         self.tree.setRootIndex(root)
         self.tiles.setRootIndex(root)
+        self.parent_entry.setChecked(False)
+        self.parent_entry.setVisible(path.parent != path)
+        self.parent_entry.setToolTip(f"双击返回：{path.parent} · Backspace")
         self.note.setText("")
+        return True
 
     def go_home(self):
         path = self.values()["home"]
@@ -188,13 +212,43 @@ class Plugin:
     def go_up(self):
         self.open_folder(str(Path(self.location.text()).parent))
 
+    def go_back(self):
+        if self.history_index > 0:
+            target = self.history_index - 1
+            if self.open_folder(self.history[target], remember=False):
+                self.history_index = target
+        else:
+            self.go_up()
+
+    def go_forward(self):
+        if self.history_index + 1 < len(self.history):
+            target = self.history_index + 1
+            if self.open_folder(self.history[target], remember=False):
+                self.history_index = target
+
+    def select_entry(self, index):
+        self.parent_entry.setChecked(False)
+        if not self.model.isDir(index):
+            self.open_entry(index)
+
+    def select_parent(self):
+        self.tree.clearSelection()
+        self.tiles.clearSelection()
+
+    def enter_folder(self, index):
+        if self.model.isDir(index):
+            self.open_folder(self.model.filePath(index))
+
     def open_entry(self, index):
+        if not index.isValid():
+            return
         path = Path(self.model.filePath(index))
-        if path.is_dir() and self.views.currentWidget() is self.tiles:
+        if path.is_dir():
             self.open_folder(str(path))
             return
         if path.is_file() and not self.context.open_image(path):
             QMessageBox.warning(self.panel, "无法打开", f"无法读取图片：{path.name}")
 
     def deactivate(self):
+        self.panel.stop()
         self.model.stop()

@@ -181,7 +181,7 @@ def test_preview_size_count_and_selection(window, tmp_path, qtbot, pictures):
     assert window.current_path.name == "3.png"
     assert plugin.preview.isVisible()
     plugin.controls["preview"].click()
-    assert not plugin.preview.isVisible()
+    qtbot.waitUntil(lambda: not plugin.preview.isVisible())
 
 
 def test_macos_host_skin_keeps_plugin_styles_and_icons(window, tmp_path, pictures):
@@ -454,6 +454,7 @@ def test_browser_photo_previews_and_frame_free_selection(window, tmp_path, qtbot
     # Request and inspect the actual decoded decoration, rather than a generic file icon.
     plugin.model.data(index, Qt.ItemDataRole.DecorationRole)
     qtbot.waitUntil(lambda: any(Path(key[0]) == pictures / "1.jpg" for key in plugin.model.cache))
+    index = plugin.model.index(str(pictures / "1.jpg"))
     image = plugin.model.data(index, Qt.ItemDataRole.DecorationRole).pixmap(32, 32).toImage()
     color = image.pixelColor(image.width() // 2, image.height() // 2)
     assert color.red() > 200 and color.green() < 50 and color.blue() < 50
@@ -524,7 +525,7 @@ def test_preview_remains_until_button_toggle_and_docks_down(window, tmp_path, qt
     assert preview.geometry().bottom() == window.height() - 9
     controller.pin()
     plugin.controls["preview"].click()
-    assert not preview.isVisible() and plugin.dock.height() == 72
+    qtbot.waitUntil(lambda: not preview.isVisible() and plugin.dock.height() == 72)
     assert not preview.anchor_timer.isActive()
 
 
@@ -619,7 +620,7 @@ def test_selected_folder_branch_has_no_blue_or_white_edges(
             color = image.pixelColor(x, y)
             channels = (color.red(), color.green(), color.blue())
             assert min(channels) < 210
-            assert max(channels) - min(channels) < 30
+            assert color.blue() <= max(color.red(), color.green()) + 20
 
 
 def wheel(view, delta, modifiers=Qt.KeyboardModifier.ControlModifier, pixels=0):
@@ -751,3 +752,169 @@ def test_persistent_preview_discards_other_folder_tiles(window, tmp_path, qtbot,
     qtbot.waitUntil(lambda: len(plugin.preview.items) == 1)
     assert plugin.preview.items[0][1] == str(target.resolve())
     assert window.plugins.records["example.progress"].state == "enabled"
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+def test_browser_double_click_parent_backspace_and_side_buttons(
+    window, tmp_path, qtbot, pictures, mode
+):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("view", mode)
+    plugin.apply_view()
+    plugin.open_folder(pictures)
+    view = plugin.views.currentWidget()
+    qtbot.waitUntil(lambda: view.visualRect(plugin.model.index(str(pictures / "nested"))).isValid())
+    pos = view.visualRect(plugin.model.index(str(pictures / "nested"))).center()
+    qtbot.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    assert plugin.location.text() == str(pictures.resolve())
+    qtbot.mouseDClick(view.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    assert plugin.location.text() == str((pictures / "nested").resolve())
+    qtbot.mouseClick(view.viewport(), Qt.MouseButton.BackButton)
+    assert plugin.location.text() == str(pictures.resolve())
+    qtbot.mouseClick(view.viewport(), Qt.MouseButton.ForwardButton)
+    assert plugin.location.text() == str((pictures / "nested").resolve())
+    qtbot.keyClick(view, Qt.Key.Key_Backspace)
+    assert plugin.location.text() == str(pictures.resolve())
+    plugin.open_folder(pictures / "nested")
+    qtbot.mouseClick(plugin.parent_entry, Qt.MouseButton.LeftButton)
+    assert plugin.location.text() == str((pictures / "nested").resolve())
+    qtbot.mouseDClick(plugin.parent_entry, Qt.MouseButton.LeftButton)
+    assert plugin.location.text() == str(pictures.resolve())
+    plugin.location.start_edit()
+    plugin.location.editor.setText("abc")
+    qtbot.keyClick(plugin.location.editor, Qt.Key.Key_Backspace)
+    assert plugin.location.editor.text() == "ab"
+    assert plugin.location.text() == str(pictures.resolve())
+    plugin.open_folder(Path(pictures.anchor))
+    assert plugin.parent_entry.isHidden()
+    plugin.go_up()
+    assert plugin.location.text() == str(Path(pictures.anchor))
+
+
+@pytest.mark.parametrize("column", ["name", "size", "type", "modified"])
+@pytest.mark.parametrize("descending", [False, True])
+def test_browser_directories_first_for_every_sort(
+    window, tmp_path, qtbot, pictures, column, descending
+):
+    (pictures / "aaa").mkdir()
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("sort", column)
+    plugin.context.set_setting("descending", descending)
+    plugin.sort_tree()
+    plugin.open_folder(pictures)
+    root = plugin.tree.rootIndex()
+    qtbot.waitUntil(lambda: plugin.model.rowCount(root) == 5)
+    entries = [plugin.model.isDir(plugin.model.index(row, 0, root)) for row in range(5)]
+    assert entries == [True, True, False, False, False]
+    assert plugin.parent_entry.isVisible()
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+def test_browser_fast_wheel_scrolling_preserves_icon_size(window, tmp_path, qtbot, pictures, mode):
+    for number in range(70):
+        Image.new("RGB", (8, 8)).save(pictures / f"extra-{number:03}.png")
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("view", mode)
+    plugin.apply_view()
+    plugin.open_folder(pictures)
+    view = plugin.views.currentWidget()
+    bar = view.verticalScrollBar()
+    qtbot.waitUntil(lambda: bar.maximum() > 400)
+    bar.setValue(0)
+    wheel(view, -120, Qt.KeyboardModifier.NoModifier)
+    assert bar.value() >= 180
+    wheel(view, 120, Qt.KeyboardModifier.NoModifier)
+    assert bar.value() == 0
+    assert plugin.tree.iconSize().width() == 24
+
+
+def test_glass_folder_classification_watch_and_neutral_icons(window, tmp_path, qtbot, pictures):
+    ordinary = pictures / "documents"
+    ordinary.mkdir()
+    (ordinary / "fake.jpg").write_text("not an image")
+    (ordinary / "deep").mkdir()
+    Image.new("RGB", (8, 8)).save(ordinary / "deep" / "deep.png")
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.open_folder(pictures)
+    folders = plugin.model.files.folders
+    for path in (ordinary, pictures / "nested"):
+        plugin.model.data(plugin.model.index(str(path)), Qt.ItemDataRole.DecorationRole)
+    qtbot.waitUntil(
+        lambda: all(str(path) in folders.cache for path in (ordinary, pictures / "nested"))
+    )
+    assert not folders.cache[str(ordinary)] and folders.cache[str(pictures / "nested")]
+    image = ordinary / "photo.png"
+    Image.new("RGB", (10, 10), "red").save(image)
+    qtbot.waitUntil(lambda: folders.cache.get(str(ordinary)) is True)
+    image.unlink()
+    qtbot.waitUntil(lambda: folders.cache.get(str(ordinary)) is False)
+    for icon in folders.icons:
+        normal = icon.pixmap(32, 32, QIcon.Mode.Normal).toImage()
+        selected = icon.pixmap(32, 32, QIcon.Mode.Selected).toImage()
+        assert normal == selected
+        assert normal.pixelColor(0, 0).alpha() == 0
+        for x in range(normal.width()):
+            for y in range(normal.height()):
+                color = normal.pixelColor(x, y)
+                assert color.alpha() < 80 or (
+                    max(color.red(), color.green(), color.blue())
+                    - min(color.red(), color.green(), color.blue())
+                    < 12
+                )
+    window.plugins.disable("example.files")
+    assert folders.stopped and not folders.watcher.directories()
+
+
+def test_preview_motion_intermediate_frames_reversal_and_cleanup(window, tmp_path, qtbot, pictures):
+    from PySide6.QtCore import QAbstractAnimation
+
+    plugin = enable(window, tmp_path, "progress_panel")
+    window.open_image(pictures / "1.jpg")
+    plugin.controls["preview"].click()
+    assert plugin.preview_open and plugin.motion.state() == QAbstractAnimation.State.Running
+    plugin.motion.setCurrentTime(100)
+    assert 0 < plugin.preview.reveal < 1
+    assert 52 < plugin.dock.height() < 72
+    assert 20 < plugin.controls["next"].height() < 28
+    before = plugin.expansion
+    plugin.controls["preview"].click()
+    assert not plugin.preview_open and plugin.expansion == before
+    plugin.motion.setCurrentTime(40)
+    assert plugin.expansion < before
+    before = plugin.expansion
+    plugin.controls["preview"].click()
+    assert plugin.preview_open and plugin.expansion == before
+    qtbot.waitUntil(lambda: plugin.expansion == 1)
+    assert plugin.dock.height() == 52 and plugin.controls["next"].height() == 20
+    assert plugin.preview.reveal == 1
+    plugin.controls["preview"].click()
+    qtbot.waitUntil(lambda: not plugin.preview.isVisible())
+    assert plugin.dock.height() == 72 and not plugin.preview.anchor_timer.isActive()
+    plugin.controls["preview"].click()
+    window.plugins.disable("example.progress")
+    assert plugin.motion.state() == QAbstractAnimation.State.Stopped
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+def test_browser_selection_outline_encloses_whole_item(window, tmp_path, qtbot, pictures, mode):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("view", mode)
+    plugin.apply_view()
+    plugin.open_folder(pictures)
+    view = plugin.views.currentWidget()
+    qtbot.waitUntil(lambda: plugin.model.rowCount(view.rootIndex()) == 4)
+    index = plugin.model.index(str(pictures / "nested"))
+    view.setCurrentIndex(index)
+    qtbot.wait(40)
+    row = view.visualRect(plugin.model.index(str(pictures / "nested")))
+    image = view.viewport().grab().toImage()
+    accent = []
+    for x in range(max(0, row.left()), min(image.width(), row.right() + 1)):
+        for y in range(max(0, row.top()), min(image.height(), row.bottom() + 1)):
+            color = image.pixelColor(x, y)
+            if color.red() > 140 and color.green() > 160 and color.blue() < 150:
+                accent.append(QPoint(x, y))
+    assert accent
+    # Border extends to the far edge of the row/tile, beyond the icon.
+    assert max(point.x() for point in accent) >= row.right() - 5
+    assert min(point.y() for point in accent) <= row.top() + 4

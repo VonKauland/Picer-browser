@@ -3,11 +3,32 @@
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QPersistentModelIndex, QRectF, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPalette, QPen, QPixmap
-from PySide6.QtWidgets import QFileSystemModel, QStyle, QStyledItemDelegate, QTreeView
+from PySide6.QtWidgets import (
+    QFileSystemModel,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
+    QTreeView,
+)
 
 from picer.plugins import ui_icon
+
+from .folders import FolderContents
+
+
+def paint_item(painter, rect, state):
+    selected = bool(state & QStyle.StateFlag.State_Selected)
+    hovered = bool(state & QStyle.StateFlag.State_MouseOver)
+    if not (selected or hovered):
+        return
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(QColor("#414145" if selected else "#343437"))
+    painter.setPen(QPen(QColor("#E8FF59"), 1.2) if selected else QPen(Qt.PenStyle.NoPen))
+    painter.drawRoundedRect(QRectF(rect).adjusted(1.5, 1.5, -1.5, -1.5), 9, 9)
+    painter.restore()
 
 
 class PhotoModel(QFileSystemModel):
@@ -23,8 +44,21 @@ class PhotoModel(QFileSystemModel):
         self.timer = QTimer(self)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.load_batch)
+        self.folders = FolderContents(context, self.folder_changed, self)
+
+    def folder_changed(self, path):
+        index = self.index(path)
+        if index.isValid():
+            self.dataChanged.emit(index, index, [Qt.ItemDataRole.DecorationRole])
 
     def data(self, index, role=Qt.ItemDataRole.DisplayRole):
+        if (
+            index.isValid()
+            and index.column() == 0
+            and role == Qt.ItemDataRole.DecorationRole
+            and self.isDir(index)
+        ):
+            return self.folders.icon(str(Path(self.filePath(index))))
         if (
             index.isValid()
             and role == Qt.ItemDataRole.DecorationRole
@@ -90,6 +124,7 @@ class PhotoModel(QFileSystemModel):
         self.stopped = True
         self.timer.stop()
         self.pending.clear()
+        self.folders.stop()
         if self.token:
             self.token.cancel()
 
@@ -100,8 +135,45 @@ class PhotoDelegate(QStyledItemDelegate):
         # Windows' native focus frame draws a white rectangle over rounded rows.
         option.state &= ~QStyle.StateFlag.State_HasFocus
 
+    def paint(self, painter, option, index):
+        if not isinstance(self.parent(), QTreeView):
+            paint_item(painter, option.rect, option.state)
+        copy = QStyleOptionViewItem(option)
+        copy.state &= ~(
+            QStyle.StateFlag.State_Selected
+            | QStyle.StateFlag.State_MouseOver
+            | QStyle.StateFlag.State_HasFocus
+        )
+        super().paint(painter, copy, index)
+
 
 class PhotoTree(QTreeView):
+    def __init__(self):
+        super().__init__()
+        self.hover_index = QPersistentModelIndex()
+
+    def mouseMoveEvent(self, event):
+        self.hover_index = QPersistentModelIndex(self.indexAt(event.position().toPoint()))
+        self.viewport().update()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event):
+        self.hover_index = QPersistentModelIndex()
+        self.viewport().update()
+        super().leaveEvent(event)
+
+    def drawRow(self, painter, option, index):
+        # Include the branch gutter in the single selection container.
+        state = option.state
+        if self.selectionModel().isSelected(index):
+            state |= QStyle.StateFlag.State_Selected
+        if self.hover_index == index:
+            state |= QStyle.StateFlag.State_MouseOver
+        paint_item(painter, option.rect, state)
+        copy = QStyleOptionViewItem(option)
+        copy.state &= ~(QStyle.StateFlag.State_Selected | QStyle.StateFlag.State_MouseOver)
+        super().drawRow(painter, copy, index)
+
     def drawBranches(self, painter, rect, index):
         if not self.model().isDir(index):
             return
@@ -126,6 +198,10 @@ def configure_view(view):
     view.setTextElideMode(Qt.TextElideMode.ElideRight)
     view.setEditTriggers(view.EditTrigger.NoEditTriggers)
     view.setIconSize(QSize(24, 24))
+    view.setMouseTracking(True)
+    view.viewport().setMouseTracking(True)
+    view.setVerticalScrollMode(view.ScrollMode.ScrollPerPixel)
+    view.verticalScrollBar().setSingleStep(36)
     view.viewport().setAutoFillBackground(False)
     # Qt paints the branch selection before drawBranches. An unspecified native
     # Highlight color leaks blue/white around QSS-rounded branch backgrounds.
@@ -141,7 +217,8 @@ def configure_view(view):
     view.setStyleSheet("""
 QTreeView, QListView { background: transparent; border: none; outline: none; }
 QTreeView::item, QListView::item { padding: 6px; border: none; border-radius: 8px; }
-QTreeView::item:selected, QListView::item:selected { background: #414145; border: none; }
+QTreeView::item:selected, QListView::item:selected,
+QTreeView::item:hover, QListView::item:hover { background: transparent; border: none; }
 QTreeView::branch { background: transparent; border: none; }
 QTreeView::branch:selected, QTreeView::branch:hover, QTreeView::branch:focus {
 background: transparent; border: none; outline: none; image: none; }

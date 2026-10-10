@@ -1,6 +1,6 @@
 """Live navigation with a persistent, independently docked thumbnail strip."""
 
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QSize, Qt, QTimer, QVariantAnimation
 from PySide6.QtGui import QImageReader, QTransform
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -67,6 +67,11 @@ class Plugin:
         self.layout.addLayout(self.progress_row)
         self.dock = context.add_panel(self.panel, area="bottom")
         self.preview = PreviewStrip(self)
+        self.preview_open = False
+        self.expansion = 0.0
+        self.motion = QVariantAnimation(self.panel)
+        self.motion.valueChanged.connect(self.set_expansion)
+        self.motion.finished.connect(self.finish_motion)
         self.timer = QTimer(self.panel)
         self.timer.timeout.connect(lambda: context.navigate(1))
         self.preview_token = None
@@ -74,7 +79,7 @@ class Plugin:
         self.refresh_timer.setSingleShot(True)
         self.refresh_timer.setInterval(30)
         self.refresh_timer.timeout.connect(self.refresh_preview)
-        self.compact(False)
+        self.compact(False, animate=False)
         context.subscribe("image.changed", self.on_image)
         self.apply_settings()
         self.update_progress()
@@ -90,22 +95,54 @@ class Plugin:
         if self.preview.isVisible():
             self.refresh_timer.start()
 
-    def compact(self, expanded):
-        for button in self.controls.values():
-            button.setFixedSize(30, 20 if expanded else 28)
+    def compact(self, expanded, *, animate=True):
+        target = 1.0 if expanded else 0.0
         self.controls["preview"].setIcon(ui_icon("grid", "#E8FF59" if expanded else "#F3F3F0"))
-        self.layout.setContentsMargins(16, 2 if expanded else 3, 16, 2 if expanded else 6)
-        self.layout.setSpacing(0 if expanded else 2)
-        self.slider.setFixedHeight(16 if expanded else 20)
-        self.panel.setFixedHeight(40 if expanded else 60)
-        self.dock.setFixedHeight(52 if expanded else 72)
-        self.dock.setProperty("compactHeight", 52 if expanded else 72)
+        self.motion.stop()
+        if not animate:
+            self.set_expansion(target)
+            return
+        # Changing endpoints can emit intermediate values from the previous
+        # timeline; suppress those while rebuilding a reversed transition.
+        self.motion.blockSignals(True)
+        self.motion.setDuration(
+            max(80, round((280 if expanded else 220) * abs(target - self.expansion)))
+        )
+        self.motion.setEasingCurve(
+            QEasingCurve.Type.OutCubic if expanded else QEasingCurve.Type.InOutCubic
+        )
+        self.motion.setStartValue(self.expansion)
+        self.motion.setEndValue(target)
+        self.motion.setCurrentTime(0)
+        self.motion.blockSignals(False)
+        self.motion.start()
+
+    def set_expansion(self, value):
+        self.expansion = float(value)
+        for button in self.controls.values():
+            button.setFixedSize(30, round(28 - 8 * self.expansion))
+        self.layout.setContentsMargins(
+            16, round(3 - self.expansion), 16, round(6 - 4 * self.expansion)
+        )
+        self.layout.setSpacing(round(2 - 2 * self.expansion))
+        self.slider.setFixedHeight(round(20 - 4 * self.expansion))
+        self.panel.setFixedHeight(round(60 - 20 * self.expansion))
+        height = round(72 - 20 * self.expansion)
+        self.dock.setFixedHeight(height)
+        self.dock.setProperty("compactHeight", height)
         host = self.dock.parentWidget()
         host.panel_hovers.layout_strips()
+        self.preview.reveal = self.expansion
+        self.preview.reposition()
+        self.preview.update()
+
+    def finish_motion(self):
+        if not self.preview_open:
+            self.preview.hide()
 
     def on_image(self, event):
         self.update_progress()
-        if self.preview.isVisible():
+        if self.preview_open:
             paths = self.context.image_paths()
             path = self.context.current_path()
             self.preview.items = [
@@ -150,19 +187,22 @@ class Plugin:
         self.controls["slideshow"].setIcon(ui_icon("pause" if self.timer.isActive() else "play"))
 
     def show_preview(self):
-        if self.preview.isVisible():
-            self.preview.hide()
+        if self.preview_open:
+            self.preview_open = False
+            self.compact(False)
             self.refresh_timer.stop()
             if self.preview_token:
                 self.preview_token.cancel()
             return
         if not self.context.image_paths():
             return
+        self.preview_open = True
         self.preview.show()
+        self.compact(True)
         self.refresh_preview()
 
     def refresh_preview(self):
-        if not self.preview.isVisible():
+        if not self.preview_open:
             return
         paths = self.context.image_paths()
         if not paths:
@@ -203,6 +243,8 @@ class Plugin:
         self.preview_token = self.context.run_task(work, render)
 
     def deactivate(self):
+        self.motion.stop()
+        self.preview_open = False
         self.timer.stop()
         self.refresh_timer.stop()
         self.preview.close()

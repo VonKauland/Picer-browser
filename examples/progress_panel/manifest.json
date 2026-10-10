@@ -1,12 +1,12 @@
 {
   "id": "example.progress",
   "name": "浏览进度",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "api_version": 1,
   "type": "panel",
   "panel_role": "progress",
   "entrypoint": "main:Plugin",
-  "description": "实时拖动切图、旋转、幻灯片；独立保持展开的透明缩略预览。",
+  "description": "实时切图、旋转、幻灯片；透明缩略预览与紧凑控制面板联动动画。",
   "permissions": [
     "ui.panels",
     "image.read",

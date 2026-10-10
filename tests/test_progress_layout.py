@@ -91,7 +91,7 @@ def test_old_progress_upgrade_preserves_settings_and_migrates_side_location(tmp_
     qtbot.wait(30)
     manager = upgraded.plugins
     record = manager.records["example.progress"]
-    assert record.state == "enabled" and record.manifest.version == "1.4.0"
+    assert record.state == "enabled" and record.manifest.version == "1.5.0"
     assert manager.get_setting("example.progress", "thumbnail_size", 0) == 144
     assert manager.panels["example.progress"].isHidden()
     assert upgraded.panel_hovers.controllers["example.progress"].area == DOCK_AREAS["bottom"]
@@ -164,6 +164,7 @@ def test_preview_transparent_fading_compact_controls_and_size_setting(
     window.plugins.set_setting("example.progress", "thumbnail_size", size)
     progress.show_preview()
     qtbot.waitUntil(lambda: len(progress.preview.items) == 9)
+    qtbot.waitUntil(lambda: progress.expansion == 1)
     preview = progress.preview
     assert preview.thumbnail_size == size and preview.height() == size + 18
     assert preview.width() == progress.dock.width()
@@ -181,7 +182,7 @@ def test_preview_transparent_fading_compact_controls_and_size_setting(
     qtbot.keyClick(preview, Qt.Key.Key_Escape)
     assert preview.isVisible()
     progress.controls["preview"].click()
-    assert not preview.isVisible() and progress.dock.height() == 72
+    qtbot.waitUntil(lambda: not preview.isVisible() and progress.dock.height() == 72)
     assert all(button.height() == 28 for button in progress.controls.values())
 
 
@@ -275,6 +276,7 @@ def test_preview_inside_autohide_reveal_and_cleanup(window, qtbot, tmp_path):
     qtbot.wait(450)
     progress.controls["preview"].click()
     qtbot.waitUntil(lambda: len(progress.preview.items) == 4)
+    qtbot.waitUntil(lambda: progress.expansion == 1)
     assert progress.preview.isVisible()
     assert progress.preview.width() == controller.bounds().width()
     assert controller.popup.height() == 52 and controller.dock.isHidden()
@@ -283,7 +285,7 @@ def test_preview_inside_autohide_reveal_and_cleanup(window, qtbot, tmp_path):
     assert window.current_path.name == "2.png"
     assert progress.preview.isVisible()
     progress.controls["preview"].click()
-    assert not progress.preview.isVisible()
+    qtbot.waitUntil(lambda: not progress.preview.isVisible())
     controller.pin()
     progress.show_preview()
     window.plugins.disable("example.progress")

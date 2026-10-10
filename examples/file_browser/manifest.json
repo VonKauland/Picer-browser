@@ -1,11 +1,11 @@
 {
   "id": "example.files",
   "name": "文件浏览器",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",
-  "description": "列表 / 平铺图片预览、可点击路径层级与 Ctrl+滚轮缩放；可设置首页、图标大小与排序。",
+  "description": "毛玻璃内容识别图标、列表 / 平铺预览、双击目录与侧键导航、快速滚动和路径层级。",
   "permissions": [
     "ui.panels",
     "image.read",
