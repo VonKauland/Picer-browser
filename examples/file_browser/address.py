@@ -126,7 +126,7 @@ QPushButton#crumbButton:focus, QPushButton#addressButton:focus { border: none; }
             button.hide()
             button.deleteLater()
         self.buttons = []
-        parts = path_parts(Path(path))
+        parts = path_parts(Path(path)) if path else (("此电脑", ""),)
         for index, (label, target) in enumerate(parts):
             button = CrumbButton(label, target, index < len(parts) - 1, self.row)
             button.clicked.connect(

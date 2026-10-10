@@ -1,11 +1,11 @@
 {
   "id": "example.files",
   "name": "文件浏览器",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",
-  "description": "毛玻璃内容识别图标、列表 / 平铺预览、双击目录与侧键导航、快速滚动和路径层级。",
+  "description": "独立快速访问与历史、磁盘列表、目录独立排序、毛玻璃图标和列表 / 平铺图片预览。",
   "permissions": [
     "ui.panels",
     "image.read",

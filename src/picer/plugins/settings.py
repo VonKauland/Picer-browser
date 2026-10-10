@@ -55,7 +55,10 @@ class SettingsForm(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
         groups = {
-            "example.files": (("首页", {"home"}), ("浏览", {"icon_size", "sort", "descending"})),
+            "example.files": (
+                ("首页", {"home"}),
+                ("浏览", {"icon_size", "sort", "photo_sort", "descending", "view"}),
+            ),
             "example.info": (("显示内容", {field.key for field in self.fields}),),
             "example.progress": (
                 ("缩略预览", {"thumbnail_size", "thumbnail_count"}),

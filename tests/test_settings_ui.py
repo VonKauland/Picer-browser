@@ -45,10 +45,12 @@ def install_example(window, tmp_path, name):
 @pytest.mark.parametrize("name", ["file_browser", "info_panel", "progress_panel"])
 def test_examples_have_no_settings_button(window, tmp_path, name):
     plugin_id = install_example(window, tmp_path, name)
-    panel = window.plugins.records[plugin_id].instance.panel
+    instance = window.plugins.records[plugin_id].instance
+    panel = instance.panel
     assert all(
         "设置" not in button.text() + button.toolTip() + button.accessibleName()
         for button in panel.findChildren(QPushButton)
+        if button is not getattr(instance, "view_button", None)
     )
     dialog = PluginDialog(window.plugins, window, selected_id=plugin_id, open_settings=True)
     assert dialog.pages.currentIndex() == 1

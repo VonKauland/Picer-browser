@@ -129,8 +129,40 @@ def verify_browser(window, browser, folder):
     assert browser.model.isDir(browser.model.index(0, 0, browser.tree.rootIndex()))
     browser.model.data(browser.model.index(str(child)), Qt.ItemDataRole.DecorationRole)
     wait_for(lambda: browser.model.files.folders.cache.get(str(child)) is True)
+    browser.view_button.click()
+    QTest.qWait(20)
+    assert browser.quick_menu.isVisible()
+    pixels = browser.quick_menu.grab().toImage()
+    assert pixels.pixelColor(0, 0).alpha() == 0
+    browser.quick_actions["favorite"].trigger()
+    browser.quick_menu.hide()
+    browser.tabs.setCurrentIndex(1)
+    assert browser.favorites.count() >= 1
+    assert browser.context.get_setting("favorites") == [str(folder)]
+    browser.tabs.setCurrentIndex(2)
+    assert browser.recent.count() >= 2
+    browser.open_folder(Path(folder.anchor))
+    QTest.keyClick(browser.tree, Qt.Key.Key_Backspace)
+    assert bar.text() == "" and browser.parent_entry.isHidden()
+    assert bar.buttons[0].label == "此电脑"
+    wait_for(lambda: browser.model.rowCount(browser.tree.rootIndex()) > 0)
+    browser.go_back()
+    assert bar.text() == str(Path(folder.anchor))
+    browser.open_folder(folder)
+    browser.sort.setCurrentIndex(browser.sort.findData("modified"))
+    browser.set_descending(True)
+    browser.open_folder(child)
+    wait_for(lambda: browser.model.files.folders.cache.get(str(child)) is True)
+    assert browser.current_order() == ("name", False)
+    browser.go_up()
+    wait_for(
+        lambda: browser.model.filePath(browser.tree.currentIndex()) == str(child).replace("\\", "/")
+    )
+    assert browser.current_order() == ("modified", True)
     print(
-        "Browser glass folders, directory ordering, double-click/side-key/Backspace, "
+        "Browser local favorites/recent history, disk list, per-folder sorting "
+        "and return selection; "
+        "glass folders, directory ordering, double-click/side-key/Backspace, "
         "breadcrumbs and Ctrl-wheel checks passed"
     )
 
@@ -250,6 +282,7 @@ def run(window, args, folder, done):
                 assert all(
                     "设置" not in button.text() + button.toolTip() + button.accessibleName()
                     for button in record.instance.panel.findChildren(QPushButton)
+                    if button is not getattr(record.instance, "view_button", None)
                 )
         if args.file_panel_archive:
             browser_record = window.plugins.records["example.files"]
@@ -257,6 +290,12 @@ def run(window, args, folder, done):
             if count_before:
                 assert browser_record.context.get_setting("home") == str(folder)
                 assert browser_record.context.get_setting("icon_size") == 40
+                assert browser_record.context.get_setting("favorites") == [str(folder)]
+                assert str(folder / "child") in browser_record.context.get_setting("recent_folders")
+                assert browser_record.context.get_setting("folder_orders")[str(folder)] == {
+                    "sort": "modified",
+                    "descending": True,
+                }
             management = PluginDialog(
                 window.plugins, window, selected_id="example.files", open_settings=True
             )
@@ -408,9 +447,9 @@ def run(window, args, folder, done):
                     thumbnail.pixelColor(thumbnail.width() // 2, thumbnail.height() // 2).blue()
                     > 150
                 )
-                browser.view_button.click()
+                browser.quick_actions["tiles"].trigger()
                 assert browser.views.currentWidget() is browser.tiles
-                browser.view_button.click()
+                browser.quick_actions["list"].trigger()
                 assert browser.views.currentWidget() is browser.tree
             if progress:
                 progress.show_preview()

@@ -3,7 +3,7 @@
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtCore import QPersistentModelIndex, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QPersistentModelIndex, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFileSystemModel,
@@ -33,6 +33,8 @@ def paint_item(painter, rect, state):
 
 
 class PhotoModel(QFileSystemModel):
+    folderClassified = Signal(str)
+
     def __init__(self, context, parent):
         super().__init__(parent)
         self.context = context
@@ -48,6 +50,7 @@ class PhotoModel(QFileSystemModel):
         self.folders = FolderContents(context, self.folder_changed, self)
 
     def folder_changed(self, path):
+        self.folderClassified.emit(path)
         index = self.index(path)
         if index.isValid():
             self.dataChanged.emit(index, index, [Qt.ItemDataRole.DecorationRole])
@@ -103,6 +106,8 @@ class PhotoModel(QFileSystemModel):
             return images
 
         def render(images):
+            if self.stopped:
+                return
             self.busy = False
             for key, image in images:
                 self.pending.pop(key, None)

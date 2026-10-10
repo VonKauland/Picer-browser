@@ -66,6 +66,7 @@ def test_file_browser_home_tree_sort_icons_and_open(window, tmp_path, qtbot, pic
     context.set_setting("home", str(pictures))
     context.set_setting("icon_size", 48)
     context.set_setting("sort", "modified")
+    context.set_setting("photo_sort", "modified")
     context.set_setting("descending", True)
     plugin.apply_settings()
     assert window.dockWidgetArea(plugin.dock) == Qt.DockWidgetArea.LeftDockWidgetArea
@@ -464,7 +465,7 @@ def test_browser_photo_previews_and_frame_free_selection(window, tmp_path, qtbot
     assert not option.state & QStyle.StateFlag.State_HasFocus
     assert view.frameShape() == view.Shape.NoFrame
     assert view.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    plugin.view_button.click()
+    plugin.quick_actions["tiles" if mode == "list" else "list"].trigger()
     assert plugin.context.get_setting("view") == ("tiles" if mode == "list" else "list")
     # Tile navigation and the list's hierarchical root use the same filesystem model.
     plugin.context.set_setting("view", "tiles")
@@ -694,11 +695,12 @@ def test_breadcrumb_navigation_editing_overflow_and_long_names(window, tmp_path,
     pixels = menu.grab().toImage()
     assert pixels.pixelColor(0, 0).alpha() == 0
     assert pixels.pixelColor(pixels.width() - 1, pixels.height() - 1).alpha() == 0
-    ancestor = next(button for button in bar.hidden_parts if button.target == pictures.resolve())
+    ancestor = bar.hidden_parts[-1]
     action = next(action for action in menu.actions() if action.toolTip() == str(ancestor.target))
     action.trigger()
     menu.hide()
-    assert bar.text() == str(pictures.resolve())
+    assert bar.text() == str(ancestor.target)
+    bar.pathRequested.emit(str(pictures))
     bar.start_edit()
     assert bar.editor.text() == str(pictures.resolve())
     bar.editor.setText(str(pictures / "nested"))
@@ -786,9 +788,10 @@ def test_browser_double_click_parent_backspace_and_side_buttons(
     assert plugin.location.editor.text() == "ab"
     assert plugin.location.text() == str(pictures.resolve())
     plugin.open_folder(Path(pictures.anchor))
-    assert plugin.parent_entry.isHidden()
+    assert plugin.parent_entry.isVisible()
     plugin.go_up()
-    assert plugin.location.text() == str(Path(pictures.anchor))
+    assert plugin.location.text() == ""
+    assert plugin.parent_entry.isHidden()
 
 
 @pytest.mark.parametrize("column", ["name", "size", "type", "modified"])
@@ -799,6 +802,7 @@ def test_browser_directories_first_for_every_sort(
     (pictures / "aaa").mkdir()
     plugin = enable(window, tmp_path, "file_browser")
     plugin.context.set_setting("sort", column)
+    plugin.context.set_setting("photo_sort", column)
     plugin.context.set_setting("descending", descending)
     plugin.sort_tree()
     plugin.open_folder(pictures)
@@ -921,3 +925,152 @@ def test_browser_selection_outline_encloses_whole_item(window, tmp_path, qtbot, 
     # Border extends to the far edge of the row/tile, beyond the icon.
     assert max(point.x() for point in accent) >= row.right() - 5
     assert min(point.y() for point in accent) <= row.top() + 4
+
+
+def test_browser_quick_menu_places_and_restart(window, tmp_path, qtbot, pictures):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("home", str(pictures))
+    plugin.open_folder(pictures)
+    assert [plugin.tabs.tabText(i) for i in range(3)] == ["", "", ""]
+    assert [plugin.tabs.tabToolTip(i) for i in range(3)] == ["文件", "快速访问", "历史记录"]
+    assert all(not plugin.tabs.tabIcon(i).isNull() for i in range(3))
+    assert plugin.tabs.tabSizeHint(0).width() == 36
+    qtbot.mouseClick(plugin.view_button, Qt.MouseButton.LeftButton)
+    qtbot.waitUntil(plugin.quick_menu.isVisible)
+    assert [
+        None if action.isSeparator() else action.text() for action in plugin.quick_menu.actions()
+    ] == ["平铺视图", "列表视图", None, "刷新", None, "正序排列", "倒序排列", None, "加入快速访问"]
+    pixels = plugin.quick_menu.grab().toImage()
+    assert pixels.pixelColor(0, 0).alpha() == 0
+    assert pixels.pixelColor(pixels.width() - 1, pixels.height() - 1).alpha() == 0
+    plugin.quick_actions["favorite"].trigger()
+    plugin.add_favorite()
+    assert plugin.context.get_setting("favorites") == [str(pictures.resolve())]
+    plugin.quick_menu.hide()
+    plugin.open_folder(pictures / "nested")
+    plugin.tabs.setCurrentIndex(1)
+    assert plugin.pages.currentWidget() is plugin.favorites
+    item = plugin.favorites.item(0)
+    pos = plugin.favorites.visualItemRect(item).center()
+    qtbot.mouseClick(plugin.favorites.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    assert plugin.location.text() == str((pictures / "nested").resolve())
+    qtbot.mouseDClick(plugin.favorites.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    assert plugin.location.text() == str(pictures.resolve())
+    plugin.tabs.setCurrentIndex(2)
+    assert plugin.pages.currentWidget() is plugin.recent
+    assert plugin.recent.item(0).data(Qt.ItemDataRole.UserRole) == str(pictures.resolve())
+    saved_recent = plugin.context.get_setting("recent_folders")
+    plugin.open_folder(tmp_path / "missing")
+    assert plugin.context.get_setting("recent_folders") == saved_recent
+    root = window.plugins.root
+    window.plugins.shutdown()
+    restarted = MainWindow(load_examples=False, plugin_root=root)
+    qtbot.addWidget(restarted)
+    browser = restarted.plugins.records["example.files"].instance
+    assert browser.context.get_setting("favorites") == [str(pictures.resolve())]
+    assert str((pictures / "nested").resolve()) in browser.context.get_setting("recent_folders")
+    browser.favorites.remove_path(str(pictures.resolve()))
+    browser.recent.clear_history()
+    assert browser.favorites.count() == browser.recent.count() == 0
+    restarted.plugins.shutdown()
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+def test_browser_disk_list_double_click_and_history(window, tmp_path, qtbot, pictures, mode):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.set_view(mode)
+    drive = Path(pictures.anchor)
+    plugin.open_folder(drive)
+    plugin.go_up()
+    assert plugin.location.text() == ""
+    assert plugin.location.buttons[0].label == "此电脑"
+    assert plugin.parent_entry.isHidden()
+    plugin.sync_quick_menu()
+    assert not plugin.quick_actions["favorite"].isEnabled()
+    view = plugin.views.currentWidget()
+    qtbot.waitUntil(lambda: view.visualRect(plugin.model.index(str(drive))).isValid())
+    pos = view.visualRect(plugin.model.index(str(drive))).center()
+    qtbot.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    assert plugin.location.text() == ""
+    qtbot.mouseDClick(view.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+    assert plugin.location.text() == str(drive)
+    plugin.go_back()
+    assert plugin.location.text() == ""
+    plugin.go_forward()
+    assert plugin.location.text() == str(drive)
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+@pytest.mark.parametrize("descending", [False, True])
+def test_browser_return_selection_scrolls_to_top(window, tmp_path, qtbot, mode, descending):
+    folder = tmp_path / "many-folders"
+    folder.mkdir()
+    for number in range(90):
+        (folder / f"folder-{number:03}").mkdir()
+    exited = folder / "folder-045"
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.set_view(mode)
+    plugin.open_folder(folder)
+    plugin.set_descending(descending)
+    plugin.open_folder(exited)
+    plugin.go_up()
+    view = plugin.views.currentWidget()
+    qtbot.waitUntil(
+        lambda: view.currentIndex().isValid()
+        and Path(plugin.model.filePath(view.currentIndex())) == exited
+    )
+    qtbot.waitUntil(lambda: abs(view.visualRect(plugin.model.index(str(exited))).top()) <= 4)
+    assert plugin.model.isDir(view.currentIndex())
+    assert plugin.tree.header().sortIndicatorOrder() == (
+        Qt.SortOrder.DescendingOrder if descending else Qt.SortOrder.AscendingOrder
+    )
+
+
+def test_browser_folder_sort_defaults_isolation_and_persistence(window, tmp_path, qtbot, pictures):
+    ordinary = tmp_path / "ordinary"
+    ordinary.mkdir()
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("sort", "modified")
+    plugin.open_folder(ordinary)
+    qtbot.waitUntil(lambda: str(ordinary) in plugin.model.files.folders.cache)
+    assert plugin.current_order() == ("modified", False)
+    plugin.sort.setCurrentIndex(plugin.sort.findData("size"))
+    plugin.set_descending(True)
+    plugin.open_folder(pictures)
+    qtbot.waitUntil(lambda: plugin.model.files.folders.cache.get(str(pictures)) is True)
+    assert plugin.current_order() == ("name", False)
+    plugin.context.set_setting("photo_sort", "type")
+    plugin.sort_tree()
+    assert plugin.current_order() == ("type", False)
+    plugin.open_folder(ordinary)
+    assert plugin.current_order() == ("size", True)
+    plugin.open_folder(pictures / "nested")
+    qtbot.waitUntil(lambda: plugin.model.files.folders.cache.get(str(pictures / "nested")) is True)
+    assert plugin.current_order() == ("type", False)
+    plugin.context.set_setting("home", str(ordinary))
+    root = window.plugins.root
+    window.plugins.shutdown()
+    restarted = MainWindow(load_examples=False, plugin_root=root)
+    qtbot.addWidget(restarted)
+    browser = restarted.plugins.records["example.files"].instance
+    assert browser.current_order() == ("size", True)
+    restarted.plugins.shutdown()
+
+
+def test_browser_refresh_reloads_image_and_stops_old_jobs(window, tmp_path, qtbot, pictures):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.open_folder(pictures)
+    path = pictures / "1.jpg"
+    qtbot.waitUntil(lambda: plugin.model.index(str(path)).isValid())
+    plugin.model.data(plugin.model.index(str(path)), Qt.ItemDataRole.DecorationRole)
+    qtbot.waitUntil(lambda: any(Path(key[0]) == path for key in plugin.model.cache))
+    old = plugin.model
+    Image.new("RGB", (80, 60), "blue").save(path)
+    plugin.quick_actions["refresh"].trigger()
+    assert old.stopped and old.files.folders.stopped
+    qtbot.waitUntil(lambda: plugin.model.index(str(path)).isValid())
+    plugin.model.data(plugin.model.index(str(path)), Qt.ItemDataRole.DecorationRole)
+    qtbot.waitUntil(lambda: any(Path(key[0]) == path for key in plugin.model.cache))
+    icon = plugin.model.data(plugin.model.index(str(path)), Qt.ItemDataRole.DecorationRole)
+    image = icon.pixmap(32, 32).toImage()
+    assert image.pixelColor(image.width() // 2, image.height() // 2).blue() > 200

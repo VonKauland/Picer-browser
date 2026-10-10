@@ -80,6 +80,8 @@ class FolderContents(QObject):
             return results
 
         def render(results):
+            if self.stopped:
+                return
             self.busy = False
             self.in_flight.clear()
             for path, generation, found in results:

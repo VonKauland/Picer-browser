@@ -108,7 +108,8 @@ def test_combobox_popup_rounding_selection_and_complete_rows(window, qtbot, tmp_
     assert combo.currentIndex() == 1
     assert not combo.view().window().isVisible()
     if owner == "panel":
-        assert plugin.context.get_setting("sort") == "size"
+        assert plugin.current_order()[0] == "size"
+        assert plugin.context.get_setting("folder_orders")[plugin.location.text()]["sort"] == "size"
 
 
 @pytest.mark.parametrize("orientation", [Qt.Orientation.Horizontal, Qt.Orientation.Vertical])

@@ -22,7 +22,7 @@
 
 - Scope skins to host widgets only; preserve external plugin QIcon and content styles. All panel shells use shared glass backdrops; hover reveals must preserve hidden preferences and restore widget ownership on cleanup.
 - Keep four primary example ZIPs (file browser, image info, progress, macOS skin) plus the SDK negative regression ZIP. EXE checks must read actual JPEG EXIF and exercise hover animation and persistent example settings.
-- Keep default UI charcoal with a distinct lime accent. Default example panels have no settings buttons; edit component settings inline in Plugin Management. Application preferences belong in Edit → Settings.
+- Keep default UI charcoal with a distinct lime accent. Default example panels have no component-configuration buttons; edit component settings inline in Plugin Management. The file browser quick-settings menu is authorized for daily browsing actions. Application preferences belong in Edit → Settings.
 - Preserve panel motion: 420 ms OutBack (overshoot 0.55) expansion, 300 ms InOutCubic collapse, 220 ms leave delay and continuous reversal. Visual restyling must not change these animations.
 - Popup menus and comboboxes must have transparent rounded corners and no native white frame. Use RoundedSlider for default progress/settings sliders; render tests must check both orientations, inverted appearance and range endpoints while retaining Qt input behavior.
 
@@ -30,3 +30,5 @@
 
 - File browser: neutral frosted folder icons classify direct decodable images asynchronously; keep cache/watches bounded and stop them on disable. Selected row/tile outlines encompass the whole background, never tint folder icons. Keep parent entry pinned first, directories before files in every sort direction, single-click selection and double-click folder entry. Side keys navigate history; Backspace goes up but must keep text editing intact.
 - Preview reveal/compact motion shares one reversible timeline (280 ms OutCubic open, 220 ms InOutCubic close). Keep independent preview docking and existing edge-hover motion; verify intermediate frames, reversal and cleanup.
+
+- File browser locations: Picer-only favorites and recent folders persist separately from session back/forward navigation, each bounded to 64 entries. Drive roots go up to the virtual disk list. Returning to a parent selects the exited directory and scrolls to the top. Keep folder-specific sort overrides bounded to 128 entries; normal/image-containing folder defaults are separate plugin settings, classified asynchronously without recursive scans.

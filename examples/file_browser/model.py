@@ -10,7 +10,7 @@ from .thumbnails import PhotoModel
 class BrowserModel(QSortFilterProxyModel):
     def __init__(self, context, parent):
         super().__init__(parent)
-        self.files = PhotoModel(context, parent)
+        self.files = PhotoModel(context, self)
         self.setSourceModel(self.files)
         self.setDynamicSortFilter(True)
 
