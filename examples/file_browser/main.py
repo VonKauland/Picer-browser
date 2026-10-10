@@ -7,17 +7,17 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListView,
     QMessageBox,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
-    QWidget,
 )
 
 from picer.plugins import SettingField, ui_icon
 
+from .address import AddressBar
+from .input import BrowserPanel
 from .thumbnails import PhotoModel, PhotoTree, configure_view
 
 
@@ -48,7 +48,7 @@ class Plugin:
             ),
         )
         context.add_settings(self.fields, self.apply_settings)
-        self.panel = QWidget()
+        self.panel = BrowserPanel(self.resize_icons)
         self.panel.setMinimumWidth(220)
         layout = QVBoxLayout(self.panel)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -76,9 +76,8 @@ class Plugin:
         self.view_button.clicked.connect(self.toggle_view)
         toolbar.addWidget(self.view_button)
         layout.addLayout(toolbar)
-        self.location = QLineEdit()
-        self.location.setPlaceholderText("输入文件夹路径")
-        self.location.returnPressed.connect(lambda: self.open_folder(self.location.text()))
+        self.location = AddressBar(self.panel)
+        self.location.pathRequested.connect(self.open_folder)
         layout.addWidget(self.location)
         self.model = PhotoModel(context, self.panel)
         self.model.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
@@ -105,6 +104,8 @@ class Plugin:
         self.tiles.setWrapping(True)
         self.tiles.setSpacing(4)
         self.tiles.clicked.connect(self.open_entry)
+        for view in (self.tree, self.tiles):
+            view.viewport().installEventFilter(self.panel)
         self.views = QStackedWidget()
         self.views.addWidget(self.tree)
         self.views.addWidget(self.tiles)
@@ -123,16 +124,25 @@ class Plugin:
 
     def apply_settings(self):
         values = self.values()
-        self.tree.setIconSize(QSize(values["icon_size"], values["icon_size"]))
-        size = values["icon_size"] * 2
-        self.tiles.setIconSize(QSize(size, size))
-        self.tiles.setGridSize(QSize(size + 32, size + 40))
+        self.apply_icon_size()
         self.apply_view()
         self.sort.blockSignals(True)
         self.sort.setCurrentIndex(self.sort.findData(values["sort"]))
         self.sort.blockSignals(False)
         self.sort_tree()
         self.go_home()
+
+    def apply_icon_size(self):
+        size = self.values()["icon_size"]
+        self.tree.setIconSize(QSize(size, size))
+        self.tiles.setIconSize(QSize(size * 2, size * 2))
+        self.tiles.setGridSize(QSize(size * 2 + 32, size * 2 + 40))
+
+    def resize_icons(self, steps):
+        field = self.fields[1]
+        size = max(field.minimum, min(field.maximum, self.values()["icon_size"] + steps * 4))
+        self.context.set_setting("icon_size", size)
+        self.apply_icon_size()
 
     def sort_tree(self):
         values = self.values()
@@ -164,7 +174,6 @@ class Plugin:
             return
         self.location.setText(str(path.resolve()))
         self.location.setToolTip(str(path.resolve()))
-        self.location.setCursorPosition(0)
         root = self.model.setRootPath(str(path.resolve()))
         self.tree.setRootIndex(root)
         self.tiles.setRootIndex(root)

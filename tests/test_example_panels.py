@@ -1,13 +1,14 @@
 """Install real example ZIPs and exercise their models, metadata and animations."""
 
 import zipfile
-from pathlib import Path
+from importlib import import_module
+from pathlib import Path, PureWindowsPath
 
 import pytest
 from PIL import Image
-from PySide6.QtCore import QPoint, Qt
-from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QDockWidget
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QIcon, QPixmap, QWheelEvent
+from PySide6.QtWidgets import QApplication, QDockWidget, QMenu
 
 from picer.metadata import inspect_image
 from picer.panels import DOCK_AREAS, GlassSurface
@@ -595,6 +596,142 @@ def test_browser_branch_gutter_and_scrollbar_have_no_white_frames(
         for y in range(bar.height()):
             color = bar.pixelColor(x, y)
             assert min(color.red(), color.green(), color.blue()) < 210
+
+
+@pytest.mark.parametrize("expanded", [False, True])
+def test_selected_folder_branch_has_no_blue_or_white_edges(
+    window, tmp_path, qtbot, pictures, expanded
+):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.open_folder(pictures)
+    index = plugin.model.index(str(pictures / "nested"))
+    qtbot.waitUntil(lambda: plugin.tree.visualRect(index).isValid())
+    plugin.tree.setExpanded(index, expanded)
+    plugin.tree.setCurrentIndex(index)
+    window.activateWindow()
+    plugin.tree.setFocus()
+    row = plugin.tree.visualRect(index)
+    qtbot.mouseMove(plugin.tree.viewport(), QPoint(8, row.center().y()))
+    qtbot.wait(250)  # Wait for Qt's tree expansion animation.
+    image = plugin.tree.viewport().grab().toImage()
+    for y in range(row.top(), row.bottom() + 1):
+        for x in range(plugin.tree.indentation()):
+            color = image.pixelColor(x, y)
+            channels = (color.red(), color.green(), color.blue())
+            assert min(channels) < 210
+            assert max(channels) - min(channels) < 30
+
+
+def wheel(view, delta, modifiers=Qt.KeyboardModifier.ControlModifier, pixels=0):
+    target = view.viewport()
+    pos = target.rect().center()
+    event = QWheelEvent(
+        QPointF(pos),
+        QPointF(target.mapToGlobal(pos)),
+        QPoint(0, pixels),
+        QPoint(0, delta),
+        Qt.MouseButton.NoButton,
+        modifiers,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(target, event)
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+def test_browser_ctrl_wheel_sizes_limits_and_navigation(window, tmp_path, qtbot, pictures, mode):
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("view", mode)
+    plugin.apply_view()
+    plugin.open_folder(pictures / "nested")
+    view = plugin.views.currentWidget()
+    window.activateWindow()
+    view.setFocus()
+    qtbot.waitUntil(view.hasFocus)
+    wheel(view, 60)
+    assert plugin.tree.iconSize().width() == 24
+    wheel(view, 60)
+    assert plugin.tree.iconSize().width() == 28
+    assert plugin.tiles.iconSize().width() == 56
+    assert plugin.context.get_setting("icon_size") == 28
+    wheel(view, -240)
+    assert plugin.tree.iconSize().width() == 20
+    wheel(view, -1200)
+    assert plugin.tree.iconSize().width() == 16
+    wheel(view, 2400)
+    assert plugin.tree.iconSize().width() == 64
+    wheel(view, 120)
+    assert plugin.tree.iconSize().width() == 64
+    wheel(view, 0, pixels=-30)
+    assert plugin.tree.iconSize().width() == 60
+    wheel(view, 120, Qt.KeyboardModifier.NoModifier)
+    assert plugin.tree.iconSize().width() == 60
+    assert plugin.location.text() == str((pictures / "nested").resolve())
+    window.view.setFocus()
+    qtbot.waitUntil(window.view.hasFocus)
+    wheel(view, 120)
+    assert plugin.tree.iconSize().width() == 60
+
+
+def test_breadcrumb_navigation_editing_overflow_and_long_names(window, tmp_path, qtbot, pictures):
+    plugin = enable(window, tmp_path, "file_browser")
+    long_folder = pictures / ("长文件夹名称" * 8)
+    long_folder.mkdir()
+    plugin.open_folder(long_folder)
+    bar = plugin.location
+    qtbot.waitUntil(lambda: bar.buttons[-1].isVisible())
+    assert bar.buttons[-1].text() != bar.buttons[-1].label
+    assert "…" in bar.buttons[-1].text()
+    assert bar.buttons[-1].toolTip() == str(long_folder.resolve())
+    for button in (bar.buttons[0], bar.buttons[-1], bar.edit):
+        assert bar.row.rect().contains(button.geometry())
+    assert bar.buttons[0].isVisible()  # Drive/root always stays available.
+    assert bar.hidden_parts and bar.overflow.isVisible()
+    qtbot.mouseClick(bar.overflow, Qt.MouseButton.LeftButton)
+    menu = bar.findChild(QMenu)
+    assert menu is not None and menu.isVisible()
+    pixels = menu.grab().toImage()
+    assert pixels.pixelColor(0, 0).alpha() == 0
+    assert pixels.pixelColor(pixels.width() - 1, pixels.height() - 1).alpha() == 0
+    ancestor = next(button for button in bar.hidden_parts if button.target == pictures.resolve())
+    action = next(action for action in menu.actions() if action.toolTip() == str(ancestor.target))
+    action.trigger()
+    menu.hide()
+    assert bar.text() == str(pictures.resolve())
+    bar.start_edit()
+    assert bar.editor.text() == str(pictures.resolve())
+    bar.editor.setText(str(pictures / "nested"))
+    qtbot.keyClick(bar.editor, Qt.Key.Key_Return)
+    assert bar.text() == str((pictures / "nested").resolve())
+    assert bar.stack.currentWidget() is bar.row
+    bar.start_edit()
+    bar.editor.setText("invalid")
+    qtbot.keyClick(bar.editor, Qt.Key.Key_Escape)
+    assert bar.text() == str((pictures / "nested").resolve())
+    assert bar.stack.currentWidget() is bar.row
+    parent = next(button for button in bar.buttons if button.target == pictures.resolve())
+    parent.click()
+    assert bar.text() == str(pictures.resolve())
+    bar.start_edit()
+    bar.editor.setText(str(tmp_path / "missing"))
+    qtbot.keyClick(bar.editor, Qt.Key.Key_Return)
+    assert bar.text() == str(pictures.resolve()) and plugin.note.text()
+    qtbot.keyClick(bar.editor, Qt.Key.Key_Escape)
+    bar.row.setFocus()
+    qtbot.keyClick(bar.row, Qt.Key.Key_L, Qt.KeyboardModifier.ControlModifier)
+    assert bar.stack.currentWidget() is bar.editor
+
+
+@pytest.mark.parametrize(
+    "path", [PureWindowsPath("C:/Users/user/Pictures"), PureWindowsPath("//server/share/photos")]
+)
+def test_breadcrumb_windows_drive_and_unc_targets(window, tmp_path, path):
+    plugin = enable(window, tmp_path, "file_browser")
+    parts = import_module(type(plugin.location).__module__).path_parts(path)
+    assert parts[0][1] == PureWindowsPath(path.anchor)
+    assert parts[0][0] == path.anchor.rstrip("\\/")
+    assert parts[-1][1] == path
+    assert all(target == parts[index + 1][1].parent for index, (_, target) in enumerate(parts[:-1]))
 
 
 def test_persistent_preview_discards_other_folder_tiles(window, tmp_path, qtbot, pictures):

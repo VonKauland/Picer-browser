@@ -4,10 +4,10 @@ import traceback
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QPoint, Qt, QTimer
-from PySide6.QtGui import QCursor, QImage
+from PySide6.QtCore import QPoint, QPointF, Qt, QTimer
+from PySide6.QtGui import QCursor, QImage, QWheelEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QPushButton, QStyleOptionSlider
+from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QStyleOptionSlider
 
 from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
@@ -34,6 +34,68 @@ def verify_popups(window, browser):
     assert pixels.pixelColor(pixels.width() - 1, pixels.height() - 1).alpha() == 0
     QTest.keyClick(browser.sort.view(), Qt.Key.Key_Escape)
     assert not popup.isVisible()
+
+
+def verify_browser(window, browser, folder):
+    """Exercise breadcrumb targets and Ctrl-wheel in the actual frozen EXE."""
+    child = folder / "child"
+    child.mkdir(exist_ok=True)
+    bar = browser.location
+    bar.start_edit()
+    bar.editor.setText(str(child))
+    QTest.keyClick(bar.editor, Qt.Key.Key_Return)
+    assert bar.text() == str(child) and bar.stack.currentWidget() is bar.row
+    parent = next(button for button in bar.buttons if button.target == folder)
+    if parent.isVisible():
+        QTest.mouseClick(parent, Qt.MouseButton.LeftButton)
+    else:
+        QTest.mouseClick(bar.overflow, Qt.MouseButton.LeftButton)
+        menu = bar.findChild(QMenu)
+        assert menu and menu.isVisible()
+        next(action for action in menu.actions() if action.toolTip() == str(folder)).trigger()
+        menu.hide()
+    assert bar.text() == str(folder)
+    for mode in ("list", "tiles"):
+        browser.context.set_setting("view", mode)
+        browser.apply_view()
+        view = browser.views.currentWidget()
+        window.activateWindow()
+        view.setFocus()
+        QTest.qWait(30)
+        assert view.hasFocus()
+        for delta, expected in ((120, 44), (-120, 40)):
+            target = view.viewport()
+            pos = target.rect().center()
+            event = QWheelEvent(
+                QPointF(pos),
+                QPointF(target.mapToGlobal(pos)),
+                QPoint(),
+                QPoint(0, delta),
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.ControlModifier,
+                Qt.ScrollPhase.NoScrollPhase,
+                False,
+            )
+            QApplication.sendEvent(target, event)
+            assert browser.tree.iconSize().width() == expected
+            assert browser.tiles.iconSize().width() == expected * 2
+            assert browser.context.get_setting("icon_size") == expected
+            assert bar.text() == str(folder)
+    browser.context.set_setting("view", "list")
+    browser.apply_view()
+    index = browser.model.index(str(child))
+    browser.tree.setCurrentIndex(index)
+    browser.tree.setFocus()
+    QTest.qWait(50)
+    row = browser.tree.visualRect(index)
+    assert row.isValid()
+    pixels = browser.tree.viewport().grab().toImage()
+    for y in range(row.top(), row.bottom() + 1):
+        for x in range(browser.tree.indentation()):
+            color = pixels.pixelColor(x, y)
+            channels = (color.red(), color.green(), color.blue())
+            assert min(channels) < 210 and max(channels) - min(channels) < 30
+    print("Browser breadcrumb, Ctrl-wheel and selected folder edge checks passed")
 
 
 def run(window, args, folder, done):
@@ -121,6 +183,7 @@ def run(window, args, folder, done):
             assert window.view.zoom_step == 30
             application_settings.deleteLater()
             verify_popups(window, browser)
+            verify_browser(window, browser, folder)
         progress = (
             window.plugins.records["example.progress"].instance
             if args.progress_panel_archive

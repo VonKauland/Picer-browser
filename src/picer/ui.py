@@ -32,6 +32,7 @@ ICON_PATHS = {
     ),
     "home": '<path d="m3 11 9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
     "up": '<path d="M12 21V3m-7 7 7-7 7 7"/>',
+    "edit": '<path d="m15 3 6 6-12 12H3v-6zM12 6l6 6"/>',
     "left": '<path d="m15 4-8 8 8 8"/>',
     "right": '<path d="m9 4 8 8-8 8"/>',
     "rotate": '<path d="M20 10a8 8 0 1 0-2 8M20 3v7h-7"/>',

@@ -4,7 +4,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QImageReader, QPainter, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QFileSystemModel, QStyle, QStyledItemDelegate, QTreeView
 
 from picer.plugins import ui_icon
@@ -127,11 +127,24 @@ def configure_view(view):
     view.setEditTriggers(view.EditTrigger.NoEditTriggers)
     view.setIconSize(QSize(24, 24))
     view.viewport().setAutoFillBackground(False)
+    # Qt paints the branch selection before drawBranches. An unspecified native
+    # Highlight color leaks blue/white around QSS-rounded branch backgrounds.
+    palette = view.palette()
+    for group in (
+        QPalette.ColorGroup.Active,
+        QPalette.ColorGroup.Inactive,
+        QPalette.ColorGroup.Disabled,
+    ):
+        palette.setColor(group, QPalette.ColorRole.Highlight, QColor(Qt.GlobalColor.transparent))
+        palette.setColor(group, QPalette.ColorRole.HighlightedText, QColor("#F3F3F0"))
+    view.setPalette(palette)
     view.setStyleSheet("""
 QTreeView, QListView { background: transparent; border: none; outline: none; }
 QTreeView::item, QListView::item { padding: 6px; border: none; border-radius: 8px; }
 QTreeView::item:selected, QListView::item:selected { background: #414145; border: none; }
 QTreeView::branch { background: transparent; border: none; }
+QTreeView::branch:selected, QTreeView::branch:hover, QTreeView::branch:focus {
+background: transparent; border: none; outline: none; image: none; }
 QScrollBar:vertical { background: transparent; width: 8px; margin: 0; border: none; }
 QScrollBar::handle:vertical { background: #454549; min-height: 24px; border-radius: 4px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none;
