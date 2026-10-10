@@ -86,9 +86,12 @@ def test_settings_apply_atomically_and_restore(window, tmp_path, qtbot, pictures
     qtbot.addWidget(dialog)
     dialog.editors["home"].setText(str(pictures))
     dialog.editors["icon_size"].setValue(40)
+    dialog.editors["view"].setCurrentIndex(dialog.editors["view"].findData("tiles"))
     dialog.save()
     assert plugin.location.text() == str(pictures.resolve())
     assert plugin.tree.iconSize().width() == 40
+    assert plugin.tiles.iconSize().width() == 80
+    assert plugin.views.currentWidget() is plugin.tiles
     root = window.plugins.root
     window.plugins.shutdown()
     restarted = MainWindow(load_examples=False, plugin_root=root)
@@ -96,6 +99,8 @@ def test_settings_apply_atomically_and_restore(window, tmp_path, qtbot, pictures
     browser = restarted.plugins.records["example.files"].instance
     assert browser.location.text() == str(pictures.resolve())
     assert browser.tree.iconSize().width() == 40
+    assert browser.tiles.iconSize().width() == 80
+    assert browser.views.currentWidget() is browser.tiles
     restarted.plugins.shutdown()
 
 
@@ -173,6 +178,8 @@ def test_preview_size_count_and_selection(window, tmp_path, qtbot, pictures):
         pos=plugin.preview.tile_rect(2).center().toPoint(),
     )
     assert window.current_path.name == "3.png"
+    assert plugin.preview.isVisible()
+    plugin.controls["preview"].click()
     assert not plugin.preview.isVisible()
 
 
@@ -427,3 +434,181 @@ def test_shift_grip_moves_visible_panel_and_unload_cleans_drag_hint(window, tmp_
     window.plugins.disable("example.files")
     assert not window.panel_hovers.drop_hint.isVisible()
     assert "example.files" not in window.panel_hovers.controllers
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+def test_browser_photo_previews_and_frame_free_selection(window, tmp_path, qtbot, pictures, mode):
+    from PySide6.QtWidgets import QStyle, QStyleOptionViewItem
+
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("home", str(pictures))
+    plugin.context.set_setting("view", mode)
+    plugin.apply_settings()
+    view = plugin.views.currentWidget()
+    assert view is (plugin.tree if mode == "list" else plugin.tiles)
+    qtbot.waitUntil(lambda: plugin.model.index(str(pictures / "1.jpg")).isValid())
+    index = plugin.model.index(str(pictures / "1.jpg"))
+    view.setCurrentIndex(index)
+    view.setFocus()
+    # Request and inspect the actual decoded decoration, rather than a generic file icon.
+    plugin.model.data(index, Qt.ItemDataRole.DecorationRole)
+    qtbot.waitUntil(lambda: any(key[0] == str(pictures / "1.jpg") for key in plugin.model.cache))
+    image = plugin.model.data(index, Qt.ItemDataRole.DecorationRole).pixmap(32, 32).toImage()
+    color = image.pixelColor(image.width() // 2, image.height() // 2)
+    assert color.red() > 200 and color.green() < 50 and color.blue() < 50
+    option = QStyleOptionViewItem()
+    option.state |= QStyle.StateFlag.State_HasFocus
+    view.itemDelegate().initStyleOption(option, index)
+    assert not option.state & QStyle.StateFlag.State_HasFocus
+    assert view.frameShape() == view.Shape.NoFrame
+    assert view.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    plugin.view_button.click()
+    assert plugin.context.get_setting("view") == ("tiles" if mode == "list" else "list")
+    # Tile navigation and the list's hierarchical root use the same filesystem model.
+    plugin.context.set_setting("view", "tiles")
+    plugin.apply_view()
+    plugin.open_entry(plugin.model.index(str(pictures / "nested")))
+    assert plugin.location.text() == str((pictures / "nested").resolve())
+    plugin.go_up()
+    assert plugin.tiles.rootIndex() == plugin.tree.rootIndex()
+    window.plugins.disable("example.files")
+    assert plugin.model.stopped and not plugin.model.timer.isActive()
+
+
+def test_progress_drag_changes_image_before_release(window, tmp_path, qtbot, pictures):
+    from PySide6.QtWidgets import QStyleOptionSlider
+
+    plugin = enable(window, tmp_path, "progress_panel")
+    window.open_image(pictures / "1.jpg")
+    option = QStyleOptionSlider()
+    plugin.slider.initStyleOption(option)
+    start = plugin.slider.handle_rect(option).center().toPoint()
+    qtbot.mousePress(plugin.slider, Qt.MouseButton.LeftButton, pos=start)
+    qtbot.mouseMove(plugin.slider, QPoint(plugin.slider.width() - 8, start.y()))
+    assert plugin.slider.isSliderDown()
+    assert window.current_path.name == "3.png"
+    assert plugin.count.text() == "3/3"
+    qtbot.mouseRelease(
+        plugin.slider, Qt.MouseButton.LeftButton, pos=QPoint(plugin.slider.width() - 8, start.y())
+    )
+    assert window.current_path.name == "3.png"
+
+
+def test_preview_remains_until_button_toggle_and_docks_down(window, tmp_path, qtbot, pictures):
+    plugin = enable(window, tmp_path, "progress_panel")
+    window.open_image(pictures / "1.jpg")
+    plugin.controls["preview"].click()
+    qtbot.waitUntil(lambda: len(plugin.preview.items) == 3)
+    preview = plugin.preview
+    qtbot.mouseClick(window.view.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(40, 40))
+    assert preview.isVisible()
+    plugin.controls["next"].click()
+    qtbot.waitUntil(lambda: preview.center_index == 1 and len(preview.items) == 3)
+    assert preview.isVisible()
+    plugin.dock.close()
+    qtbot.waitUntil(lambda: preview.geometry().bottom() == window.height() - 9)
+    assert preview.isVisible()
+    controller = window.panel_hovers.controllers["example.progress"]
+    controller.reveal()
+    qtbot.wait(460)
+    assert preview.isVisible() and controller.popup is not None
+    assert abs(preview.geometry().bottom() - (controller.popup.geometry().top() - 9)) <= 1
+    controller.collapse()
+    qtbot.wait(330)
+    assert preview.isVisible() and preview.geometry().bottom() == window.height() - 9
+    window.resize(1300, 840)
+    qtbot.waitUntil(lambda: preview.width() == window.width() // 3)
+    assert preview.geometry().bottom() == window.height() - 9
+    controller.pin()
+    plugin.controls["preview"].click()
+    assert not preview.isVisible() and plugin.dock.height() == 72
+    assert not preview.anchor_timer.isActive()
+
+
+@pytest.mark.parametrize("width", [220, 260, 380])
+def test_information_resizes_long_fields_without_horizontal_overflow(
+    window, tmp_path, qtbot, pictures, width
+):
+    from PySide6.QtWidgets import QFormLayout, QLabel
+
+    plugin = enable(window, tmp_path, "info_panel")
+    window.open_image(pictures / "1.jpg")
+    qtbot.waitUntil(lambda: plugin.metadata is not None)
+    data = dict(plugin.metadata)
+    data["file"] = {
+        "路径": "C:/" + "long_directory/" * 25 + "照片.jpg",
+        "名称": "longfilename" * 20,
+    }
+    data["extra"] = {"VeryLongMetadataLabel" * 8: "metadata" * 70}
+    data["exif"] = {"相机": "CameraModel" * 30}
+    plugin.show_metadata(data)
+    controller = window.panel_hovers.controllers["example.info"]
+    controller.resize_extent(width)
+    qtbot.wait(80)
+    viewport = plugin.scroll.viewport()
+    assert plugin.scroll.widget().width() <= viewport.width()
+    assert plugin.scroll.horizontalScrollBar().maximum() == 0
+    assert plugin.exif_text.horizontalScrollBar().maximum() == 0
+    for table in plugin.tables.values():
+        expected = (
+            QFormLayout.RowWrapPolicy.WrapAllRows
+            if viewport.width() < 320
+            else QFormLayout.RowWrapPolicy.DontWrapRows
+        )
+        assert table.rowWrapPolicy() == expected
+        for row in range(table.rowCount()):
+            for role in (QFormLayout.ItemRole.LabelRole, QFormLayout.ItemRole.FieldRole):
+                label = table.itemAt(row, role).widget()
+                assert isinstance(label, QLabel) and label.wordWrap()
+                assert label.width() <= viewport.width()
+                assert label.height() >= label.heightForWidth(label.width())
+    if width == 220:
+        assert plugin.dock.width() <= 240
+    assert not plugin.exif_box.isHidden()
+
+
+def test_browser_branch_gutter_and_scrollbar_have_no_white_frames(
+    window, tmp_path, qtbot, pictures
+):
+    for index in range(50):
+        Image.new("RGB", (16, 16), "red").save(pictures / f"extra-{index:02d}.png")
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("home", str(pictures))
+    plugin.apply_settings()
+    qtbot.waitUntil(lambda: plugin.tree.verticalScrollBar().maximum() > 0)
+    index = plugin.model.index(str(pictures / "1.jpg"))
+    plugin.tree.setCurrentIndex(index)
+    plugin.tree.setFocus()
+    qtbot.wait(40)
+    row = plugin.tree.visualRect(index)
+    pixels = plugin.tree.viewport().grab().toImage()
+    # The branch gutter sits before the image icon/text and must remain dark,
+    # including the selected/focused row on Windows' native Qt style.
+    for y in range(max(0, row.top()), min(pixels.height(), row.bottom() + 1)):
+        for x in range(min(12, pixels.width())):
+            color = pixels.pixelColor(x, y)
+            assert min(color.red(), color.green(), color.blue()) < 210
+    bar = plugin.tree.verticalScrollBar().grab().toImage()
+    for x in range(bar.width()):
+        for y in range(bar.height()):
+            color = bar.pixelColor(x, y)
+            assert min(color.red(), color.green(), color.blue()) < 210
+
+
+def test_persistent_preview_discards_other_folder_tiles(window, tmp_path, qtbot, pictures):
+    plugin = enable(window, tmp_path, "progress_panel")
+    window.open_image(pictures / "1.jpg")
+    plugin.controls["preview"].click()
+    qtbot.waitUntil(lambda: len(plugin.preview.items) == 3)
+    old_position = plugin.preview.tile_rect(2).center().toPoint()
+    folder = tmp_path / "另一组"
+    folder.mkdir()
+    target = folder / "only.png"
+    Image.new("RGB", (30, 20), "orange").save(target)
+    window.open_image(target)
+    assert plugin.preview.isVisible() and not plugin.preview.items
+    qtbot.mouseClick(plugin.preview, Qt.MouseButton.LeftButton, pos=old_position)
+    assert window.current_path == target.resolve()
+    qtbot.waitUntil(lambda: len(plugin.preview.items) == 1)
+    assert plugin.preview.items[0][1] == str(target.resolve())
+    assert window.plugins.records["example.progress"].state == "enabled"

@@ -7,7 +7,7 @@ from PIL import Image
 from PySide6.QtCore import QPoint, Qt, QTimer
 from PySide6.QtGui import QCursor, QImage
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QPushButton, QStyleOptionSlider
 
 from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
@@ -134,9 +134,22 @@ def run(window, args, folder, done):
         opened = 2
         if progress:
             assert progress.count.text() == "2/2"
-            progress.slider.setValue(0)
+
+            def drag_to(index):
+                option = QStyleOptionSlider()
+                progress.slider.initStyleOption(option)
+                start = progress.slider.handle_rect(option).center().toPoint()
+                option.sliderPosition = index
+                target = progress.slider.handle_rect(option).center().toPoint()
+                QTest.mousePress(progress.slider, Qt.MouseButton.LeftButton, pos=start)
+                QTest.mouseMove(progress.slider, target)
+                assert progress.slider.isSliderDown()
+                assert window.current_path == window.paths[index]
+                QTest.mouseRelease(progress.slider, Qt.MouseButton.LeftButton, pos=target)
+
+            drag_to(0)
             assert window.current_path == first.resolve()
-            progress.slider.setValue(1)
+            drag_to(1)
             assert window.current_path == second.resolve()
             opened += 2
             settings = window.plugins.records["example.progress"].context
@@ -186,11 +199,38 @@ def run(window, args, folder, done):
                 return
             if args.panel_archive:
                 info = window.plugins.records["example.info"].instance
+                if info.metadata is None:
+                    QTimer.singleShot(25, lambda: guarded(metadata_ready))
+                    return
                 assert info.metadata is not None
                 assert info.metadata["dimensions"]["宽度"] == "80"
                 assert "Picer Test Camera" in info.exif_text.toPlainText()
                 assert not info.exif_box.isHidden()
                 assert len(info.histogram.channels) == 3
+                window.panel_hovers.controllers["example.info"].resize_extent(220)
+                QTest.qWait(50)
+                assert info.scroll.widget().width() <= info.scroll.viewport().width()
+                assert info.scroll.horizontalScrollBar().maximum() == 0
+                assert info.exif_text.horizontalScrollBar().maximum() == 0
+            if args.file_panel_archive:
+                index = browser.model.index(str(first))
+                browser.model.data(index, Qt.ItemDataRole.DecorationRole)
+                if not any(key[0] == str(first) for key in browser.model.cache):
+                    QTimer.singleShot(25, lambda: guarded(metadata_ready))
+                    return
+                thumbnail = (
+                    browser.model.data(index, Qt.ItemDataRole.DecorationRole)
+                    .pixmap(32, 32)
+                    .toImage()
+                )
+                assert (
+                    thumbnail.pixelColor(thumbnail.width() // 2, thumbnail.height() // 2).blue()
+                    > 150
+                )
+                browser.view_button.click()
+                assert browser.views.currentWidget() is browser.tiles
+                browser.view_button.click()
+                assert browser.views.currentWidget() is browser.tree
             if progress:
                 progress.show_preview()
                 QTimer.singleShot(25, lambda: guarded(preview_ready))
@@ -214,7 +254,17 @@ def run(window, args, folder, done):
             pixels = progress.preview.grab().toImage()
             assert pixels.pixelColor(pixels.width() // 2, 0).alpha() == 0
             assert pixels.pixelColor(0, pixels.height() // 2).alpha() == 0
-            progress.preview.hide()
+            QTest.mouseClick(window.view.viewport(), Qt.MouseButton.LeftButton, pos=QPoint(30, 30))
+            assert progress.preview.isVisible()
+            progress.dock.close()
+            controller = window.panel_hovers.controllers["example.progress"]
+            controller.collapse(immediate=True)
+            progress.preview.reposition()
+            assert progress.preview.isVisible()
+            assert progress.preview.geometry().bottom() == window.height() - 9
+            controller.pin()
+            progress.controls["preview"].click()
+            assert not progress.preview.isVisible()
             invert()
 
         def invert():

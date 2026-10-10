@@ -2,8 +2,8 @@
 
 import math
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QEvent, QPointF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QTextOption
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -11,12 +11,51 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QScrollArea,
+    QSizePolicy,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from picer.plugins import SettingField
+
+
+class DetailLabel(QLabel):
+    """Let long paths and metadata wrap rather than impose a minimum column width."""
+
+    def __init__(self, text=""):
+        super().__init__(text)
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setWordWrap(True)
+        policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+
+    def minimumSizeHint(self):
+        return QSize(0, self.fontMetrics().height())
+
+    def sizeHint(self):
+        width = min(140, super().sizeHint().width())
+        return QSize(width, self.heightForWidth(width))
+
+
+def section(label):
+    group = QGroupBox()
+    layout = QVBoxLayout(group)
+    layout.setContentsMargins(0, 6, 0, 6)
+    heading = DetailLabel(label)
+    heading.setStyleSheet("color: #A2A2A6;")
+    layout.addWidget(heading)
+    return group, layout
+
+
+class DetailPanel(QWidget):
+    def __init__(self, callback):
+        super().__init__()
+        self.callback = callback
+
+    def eventFilter(self, obj, event):
+        return self.callback(obj, event)
 
 
 class Histogram(QWidget):
@@ -48,6 +87,10 @@ class Plugin:
         self.context = context
         self.metadata = None
         self.token = None
+        self.read_timer = QTimer()
+        self.read_timer.setSingleShot(True)
+        self.read_timer.setInterval(30)
+        self.read_timer.timeout.connect(self.read_metadata)
         self.fields = tuple(
             SettingField(key, label, "bool", True)
             for key, label in (
@@ -60,19 +103,23 @@ class Plugin:
             )
         )
         context.add_settings(self.fields, self.apply_settings)
-        self.panel = QWidget()
-        self.panel.setMinimumWidth(270)
+        self.panel = DetailPanel(self.resize_details)
+        self.panel.setMinimumWidth(180)
+        self.panel.setStyleSheet("QGroupBox { margin: 0; padding: 0; border: none; }")
         layout = QVBoxLayout(self.panel)
         layout.setContentsMargins(12, 12, 12, 12)
         top = QHBoxLayout()
-        self.title = QLabel("图片信息")
+        self.title = DetailLabel("图片信息")
         self.title.setTextFormat(Qt.TextFormat.PlainText)
         self.title.setWordWrap(True)
         top.addWidget(self.title, 1)
         layout.addLayout(top)
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll.viewport().installEventFilter(self.panel)
         body = QWidget()
+        body.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.body = QVBoxLayout(body)
         self.body.setContentsMargins(0, 0, 0, 0)
         self.groups = {}
@@ -83,19 +130,22 @@ class Plugin:
             ("color", "颜色"),
             ("extra", "其他元数据"),
         ):
-            group = QGroupBox(label)
-            table = QFormLayout(group)
+            group, rows = section(label)
+            table = QFormLayout()
+            table.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+            table.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
+            rows.addLayout(table)
             self.groups[key], self.tables[key] = group, table
             self.body.addWidget(group)
-        group = self.groups["histogram"] = QGroupBox("RGB 直方图（对数刻度）")
-        row = QVBoxLayout(group)
+        group, row = section("RGB 直方图（对数刻度）")
+        self.groups["histogram"] = group
         self.histogram = Histogram()
-        self.sample_label = QLabel()
+        self.sample_label = DetailLabel()
         row.addWidget(self.histogram)
         row.addWidget(self.sample_label)
         self.body.addWidget(group)
-        group = self.groups["rating"] = QGroupBox("星级 · 保存在插件配置，不修改原图")
-        row = QVBoxLayout(group)
+        group, row = section("星级 · 保存在插件配置，不修改原图")
+        self.groups["rating"] = group
         self.rating = QComboBox()
         self.rating.addItem("未评级", 0)
         for stars in range(1, 6):
@@ -103,18 +153,19 @@ class Plugin:
         self.rating.currentIndexChanged.connect(self.set_rating)
         row.addWidget(self.rating)
         self.body.addWidget(group)
-        self.warning = QLabel()
+        self.warning = DetailLabel()
         self.warning.setWordWrap(True)
         self.body.addWidget(self.warning)
         self.body.addStretch()
         self.scroll.setWidget(body)
         layout.addWidget(self.scroll, 1)
         # A separate layout region, never a scroll child or overlay over other details.
-        self.exif_box = QGroupBox("相机 EXIF")
+        self.exif_box, exif_layout = section("相机 EXIF")
         self.exif_box.setMaximumHeight(210)
-        exif_layout = QVBoxLayout(self.exif_box)
         self.exif_text = QTextEdit()
         self.exif_text.setReadOnly(True)
+        self.exif_text.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.exif_text.setWordWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
         exif_layout.addWidget(self.exif_text)
         layout.addWidget(self.exif_box, 0)
         self.exif_box.hide()
@@ -122,6 +173,17 @@ class Plugin:
         context.subscribe("image.changed", self.on_image)
         self.apply_settings()
         self.refresh()
+
+    def resize_details(self, obj, event):
+        if event.type() == QEvent.Type.Resize and hasattr(self, "tables"):
+            policy = (
+                QFormLayout.RowWrapPolicy.WrapAllRows
+                if obj.width() < 320
+                else QFormLayout.RowWrapPolicy.DontWrapRows
+            )
+            for table in self.tables.values():
+                table.setRowWrapPolicy(policy)
+        return False
 
     def apply_settings(self):
         for field in self.fields:
@@ -133,6 +195,7 @@ class Plugin:
         self.refresh()
 
     def refresh(self):
+        self.read_timer.stop()
         if self.token:
             self.token.cancel()
         path = self.context.current_path()
@@ -147,7 +210,10 @@ class Plugin:
         self.histogram.update()
         self.rating.setEnabled(False)
         if path:
-            self.token = self.context.request_metadata(self.show_metadata)
+            self.read_timer.start()
+
+    def read_metadata(self):
+        self.token = self.context.request_metadata(self.show_metadata)
 
     def show_metadata(self, data):
         if str(self.context.current_path()) != data["path"]:
@@ -155,11 +221,11 @@ class Plugin:
         self.metadata = data
         for key, table in self.tables.items():
             for label, value in data.get(key, {}).items():
-                widget = QLabel(str(value))
+                widget = DetailLabel(str(value))
                 widget.setTextFormat(Qt.TextFormat.PlainText)
                 widget.setWordWrap(True)
                 widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-                table.addRow(str(label), widget)
+                table.addRow(DetailLabel(str(label)), widget)
         self.histogram.channels = data.get("histogram", [])
         self.histogram.update()
         self.sample_label.setText(
@@ -194,5 +260,6 @@ class Plugin:
         self.context.set_setting("ratings", ratings)
 
     def deactivate(self):
+        self.read_timer.stop()
         if self.token:
             self.token.cancel()

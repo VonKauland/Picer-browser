@@ -1,4 +1,4 @@
-"""Orientation-aware navigation and asynchronous bounded thumbnail previews."""
+"""Live navigation with a persistent, independently docked thumbnail strip."""
 
 from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QImageReader, QTransform
@@ -59,7 +59,7 @@ class Plugin:
         self.buttons.addStretch(1)
         self.progress_row = QHBoxLayout()
         self.slider = RoundedSlider(Qt.Orientation.Horizontal)
-        self.slider.setTracking(False)
+        self.slider.setTracking(True)
         self.slider.valueChanged.connect(self.seek)
         self.count = QLabel("0/0")
         self.progress_row.addWidget(self.slider, 1)
@@ -70,6 +70,10 @@ class Plugin:
         self.timer = QTimer(self.panel)
         self.timer.timeout.connect(lambda: context.navigate(1))
         self.preview_token = None
+        self.refresh_timer = QTimer(self.panel)
+        self.refresh_timer.setSingleShot(True)
+        self.refresh_timer.setInterval(30)
+        self.refresh_timer.timeout.connect(self.refresh_preview)
         self.compact(False)
         context.subscribe("image.changed", self.on_image)
         self.apply_settings()
@@ -84,7 +88,7 @@ class Plugin:
     def apply_settings(self):
         self.timer.setInterval(self.values()["interval"] * 1000)
         if self.preview.isVisible():
-            self.show_preview()
+            self.refresh_timer.start()
 
     def compact(self, expanded):
         for button in self.controls.values():
@@ -101,7 +105,17 @@ class Plugin:
 
     def on_image(self, event):
         self.update_progress()
-        self.preview.hide()
+        if self.preview.isVisible():
+            paths = self.context.image_paths()
+            path = self.context.current_path()
+            self.preview.items = [
+                item
+                for item in self.preview.items
+                if 0 <= item[0] < len(paths) and str(paths[item[0]]) == item[1]
+            ]
+            self.preview.center_index = paths.index(path) if path in paths else 0
+            self.preview.update()
+            self.refresh_timer.start()
 
     def update_progress(self):
         paths = self.context.image_paths()
@@ -120,7 +134,8 @@ class Plugin:
             self.controls["slideshow"].setIcon(ui_icon("play"))
 
     def seek(self, index):
-        if self.context.image_paths():
+        paths = self.context.image_paths()
+        if paths and paths[index] != self.context.current_path():
             self.context.jump_to(index)
 
     def rotate(self):
@@ -135,6 +150,20 @@ class Plugin:
         self.controls["slideshow"].setIcon(ui_icon("pause" if self.timer.isActive() else "play"))
 
     def show_preview(self):
+        if self.preview.isVisible():
+            self.preview.hide()
+            self.refresh_timer.stop()
+            if self.preview_token:
+                self.preview_token.cancel()
+            return
+        if not self.context.image_paths():
+            return
+        self.preview.show()
+        self.refresh_preview()
+
+    def refresh_preview(self):
+        if not self.preview.isVisible():
+            return
         paths = self.context.image_paths()
         if not paths:
             return
@@ -146,10 +175,8 @@ class Plugin:
         start = max(0, min(index - count // 2, len(paths) - count))
         selected = tuple((i, paths[i]) for i in range(start, start + count))
         size = values["thumbnail_size"]
-        self.preview.items = []
         self.preview.thumbnail_size = size
         self.preview.center_index = index
-        self.preview.show()
         # Expansion compresses the controls first; anchor to the resulting card.
         self.preview.reposition()
 
@@ -177,6 +204,8 @@ class Plugin:
 
     def deactivate(self):
         self.timer.stop()
+        self.refresh_timer.stop()
         self.preview.close()
+        self.preview.deleteLater()
         if self.preview_token:
             self.preview_token.cancel()

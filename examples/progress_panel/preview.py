@@ -1,18 +1,15 @@
 """Transparent, feathered photo carousel with no tray or scrollbars."""
 
-from PySide6.QtCore import QEvent, QPoint, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QWidget
 
 
 class PreviewStrip(QWidget):
     def __init__(self, owner):
-        super().__init__(
-            owner.panel,
-            Qt.WindowType.Popup
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.NoDropShadowWindowHint,
-        )
+        # An independent host overlay survives dock hiding/reparenting and never
+        # receives Qt.Popup's implicit outside-click dismissal or mouse grab.
+        super().__init__(owner.dock.parentWidget())
         self.owner = owner
         self.items = []
         self.thumbnail_size = 80
@@ -25,8 +22,12 @@ class PreviewStrip(QWidget):
         self.layout_timer = QTimer(self)
         self.layout_timer.setSingleShot(True)
         self.layout_timer.timeout.connect(self.reposition)
+        self.anchor_timer = QTimer(self)
+        self.anchor_timer.setInterval(16)
+        self.anchor_timer.timeout.connect(self.reposition)
         owner.dock.installEventFilter(self)
         owner.dock.parentWidget().installEventFilter(self)
+        self.hide()
 
     def reposition(self):
         if self.isVisible():
@@ -36,16 +37,26 @@ class PreviewStrip(QWidget):
             if controller is None:
                 self.hide()
                 return
-            surface = controller.surface or self.owner.dock.widget()
-            origin = surface.mapToGlobal(QPoint())
-            self.resize(controller.bounds().width(), self.thumbnail_size + 18)
-            self.move(origin.x(), origin.y() - self.height() - 8)
+            width, height = controller.bounds().width(), self.thumbnail_size + 18
+            if controller.popup is not None:
+                top = controller.popup.geometry().top()
+            elif not self.owner.dock.isHidden():
+                top = self.owner.dock.geometry().top()
+            else:
+                top = self.parentWidget().height()
+            target = QRect(
+                (self.parentWidget().width() - width) // 2, top - height - 8, width, height
+            )
+            if target != self.geometry():
+                self.setGeometry(target)
+                self.raise_()
+                controller.strip.raise_()
 
     def eventFilter(self, obj, event):
         if event.type() in (QEvent.Type.Move, QEvent.Type.Resize) and self.isVisible():
             self.layout_timer.start(0)
-        if obj is self.owner.dock and event.type() in (QEvent.Type.Hide, QEvent.Type.Close):
-            self.hide()
+        if event.type() in (QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.Close):
+            self.layout_timer.start(0)
         return False
 
     def tile_rect(self, position):
@@ -101,8 +112,9 @@ class PreviewStrip(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             for position, item in enumerate(self.items):
                 if self.tile_rect(position).contains(event.position()):
-                    self.owner.context.jump_to(item[0])
-                    self.hide()
+                    paths = self.owner.context.image_paths()
+                    if 0 <= item[0] < len(paths) and str(paths[item[0]]) == item[1]:
+                        self.owner.context.jump_to(item[0])
                     return
 
     def wheelEvent(self, event):
@@ -119,12 +131,13 @@ class PreviewStrip(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
-            self.hide()
+            event.accept()
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.owner.context.jump_to(self.center_index)
-            self.hide()
         elif self.items and event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
-            current = next(i for i, item in enumerate(self.items) if item[0] == self.center_index)
+            current = next(
+                (i for i, item in enumerate(self.items) if item[0] == self.center_index), 0
+            )
             current = max(
                 0,
                 min(len(self.items) - 1, current + (1 if event.key() == Qt.Key.Key_Right else -1)),
@@ -136,8 +149,11 @@ class PreviewStrip(QWidget):
 
     def showEvent(self, event):
         self.owner.compact(True)
+        self.anchor_timer.start()
         super().showEvent(event)
 
     def hideEvent(self, event):
+        self.anchor_timer.stop()
+        self.layout_timer.stop()
         self.owner.compact(False)
         super().hideEvent(event)

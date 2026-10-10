@@ -1,7 +1,19 @@
 {
-  "id": "example.progress", "name": "浏览进度", "version": "1.3.0", "api_version": 1,
+  "id": "example.progress",
+  "name": "浏览进度",
+  "version": "1.4.0",
+  "api_version": 1,
   "type": "panel",
-  "panel_role": "progress", "entrypoint": "main:Plugin",
-  "description": "导航、旋转、幻灯片与可拖动进度；缩略预览随停靠方向排列。",
-  "permissions": ["ui.panels", "image.read", "image.navigate", "image.modify", "events.subscribe", "settings", "tasks"]
+  "panel_role": "progress",
+  "entrypoint": "main:Plugin",
+  "description": "实时拖动切图、旋转、幻灯片；独立保持展开的透明缩略预览。",
+  "permissions": [
+    "ui.panels",
+    "image.read",
+    "image.navigate",
+    "image.modify",
+    "events.subscribe",
+    "settings",
+    "tasks"
+  ]
 }

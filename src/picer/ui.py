@@ -42,6 +42,7 @@ ICON_PATHS = {
         '<rect x="3" y="14" width="7" height="7" rx="1"/>'
         '<rect x="14" y="14" width="7" height="7" rx="1"/>'
     ),
+    "list": '<path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/>',
     "play": '<path d="m7 3 14 9-14 9z"/>',
     "pause": '<path d="M8 4v16M16 4v16"/>',
     "close": '<path d="m5 5 14 14M19 5 5 19"/>',
