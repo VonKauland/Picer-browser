@@ -103,7 +103,11 @@ class DoublePage(QObject):
             host.loader.remember(key, image)
             self.second.setPixmap(QPixmap.fromImage(image))
             self.second.setScale(width / image.width())
-            self.second.setPos(host.source_size[0] + 12, 0)
+            if host.app_preferences["reading_direction"] == "rtl":
+                host.view.image_item.setPos(width + 12, 0)
+                self.second.setPos(0, 0)
+            else:
+                self.second.setPos(host.source_size[0] + 12, 0)
             self.second.show()
             self.pairs[first] = path
             if len(self.pairs) > 256:

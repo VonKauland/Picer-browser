@@ -185,6 +185,12 @@ class ApplicationSettings(StyledDialog):
         card = Card("导航")
         self.preference(card, "browse_folder", "浏览当前文件夹")
         self.preference(card, "wrap", "到末尾循环浏览")
+        self.preference(
+            card,
+            "reading_direction",
+            "浏览方向",
+            (("ltr", "从左到右"), ("rtl", "从右到左")),
+        )
         delay = self.preference(card, "key_repeat_delay_ms", "长按开始连击的延迟")
         delay.setSuffix(" ms")
         repeat = self.preference(card, "key_repeat_ms", "长按方向键切换间隔")
@@ -210,6 +216,13 @@ class ApplicationSettings(StyledDialog):
         layout.addWidget(card)
 
     def panels_page(self, layout):
+        card = Card("滚动条")
+        self.preference(card, "panel_scrollbars", "显示所有面板的滚动条")
+        note = QLabel("隐藏后仍可使用滚轮、触控板和键盘滚动；不会启用面板原本禁用的横向滚动条。")
+        note.setWordWrap(True)
+        note.setObjectName("muted")
+        card.body.addWidget(note)
+        layout.addWidget(card)
         card = Card("面板停靠位置")
         for plugin_id, controller in self.host.panel_hovers.controllers.items():
             row = QHBoxLayout()

@@ -1,7 +1,16 @@
 """Panel-local wheel gestures, without changing navigation or image zoom."""
 
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QAbstractSpinBox,
+    QApplication,
+    QComboBox,
+    QLineEdit,
+    QPlainTextEdit,
+    QPushButton,
+    QTextEdit,
+    QWidget,
+)
 
 
 class ParentEntry(QPushButton):
@@ -32,10 +41,11 @@ QPushButton#parentEntry:checked { background: #414145; border-color: #E8FF59; }
 
 
 class BrowserPanel(QWidget):
-    def __init__(self, resize_icons, up, back, forward):
+    def __init__(self, resize_icons, up, back, forward, context):
         super().__init__()
         self.resize_icons = resize_icons
         self.up, self.back, self.forward = up, back, forward
+        self.context = context
         self.wheel_remainder = 0
         self.scroll_remainder = 0
         QApplication.instance().installEventFilter(self)
@@ -46,27 +56,30 @@ class BrowserPanel(QWidget):
     def eventFilter(self, watched, event):
         if not isinstance(watched, QWidget) or not (watched is self or self.isAncestorOf(watched)):
             return False
+        editing = isinstance(
+            watched, (QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QAbstractSpinBox)
+        )
+        focused = QApplication.focusWidget()
+        editing |= isinstance(
+            focused, (QLineEdit, QPlainTextEdit, QTextEdit, QComboBox, QAbstractSpinBox)
+        ) and self.isAncestorOf(focused)
+        if (
+            editing
+            and event.type() == QEvent.Type.ShortcutOverride
+            and self.context.handle_browser_key(event)
+        ):
+            # Prevent the window QAction from stealing editable Enter/Backspace
+            # (including their user-remapped versions), then keep native KeyPress.
+            return True
         if event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease):
             if event.button() in (Qt.MouseButton.BackButton, Qt.MouseButton.ForwardButton):
                 if event.type() == QEvent.Type.MouseButtonRelease:
                     (self.back if event.button() == Qt.MouseButton.BackButton else self.forward)()
                 event.accept()
                 return True
-        if event.type() in (QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress) and not isinstance(
-            watched, QLineEdit
-        ):
-            if event.key() == Qt.Key.Key_Backspace:
-                if event.type() == QEvent.Type.KeyPress:
-                    self.up()
-                event.accept()
+        if event.type() in (QEvent.Type.ShortcutOverride, QEvent.Type.KeyPress) and not editing:
+            if self.context.handle_browser_key(event):
                 return True
-        if (
-            event.type() == QEvent.Type.KeyPress
-            and isinstance(watched, ParentEntry)
-            and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
-        ):
-            self.up()
-            return True
         if event.type() == QEvent.Type.Wheel:
             if not watched.property("browserViewport"):
                 return False

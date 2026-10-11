@@ -11,6 +11,8 @@ class BrowserModel(QSortFilterProxyModel):
     def __init__(self, context, parent):
         super().__init__(parent)
         self.files = PhotoModel(context, self)
+        self.search_text = ""
+        self.search_root = ""
         self.setSourceModel(self.files)
         self.setDynamicSortFilter(True)
 
@@ -20,7 +22,31 @@ class BrowserModel(QSortFilterProxyModel):
         return super().index(*args)
 
     def setRootPath(self, path):
+        self.search_root = str(path)
         return self.mapFromSource(self.files.setRootPath(path))
+
+    def set_search(self, text):
+        self.search_text = text.strip().casefold()
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, row, parent):
+        if self.search_text:
+            parent_path = self.files.filePath(parent)
+            at_root = (
+                Path(parent_path) == Path(self.search_root)
+                if parent_path and self.search_root
+                else parent_path == self.search_root
+            )
+            if at_root:
+                index = self.files.index(row, 0, parent)
+                return self.search_text in self.files.fileName(index).casefold()
+            if (
+                self.search_root
+                and parent_path
+                and Path(parent_path).is_relative_to(self.search_root)
+            ):
+                return False
+        return True
 
     def filePath(self, index):
         return self.files.filePath(self.mapToSource(index))

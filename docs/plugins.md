@@ -129,7 +129,7 @@ class Plugin:
 | 权限 | API | 行为 |
 | --- | --- | --- |
 | settings | `add_settings(fields, on_apply)` / `show_settings()` | 声明 SettingField 设置表单，在插件管理的内嵌设置页应用 |
-| image.navigate | `open_image(path)` / `navigate(offset)` / `jump_to(index)` | 打开或按当前目录顺序导航、按零起始位置跳转 |
+| image.navigate | `open_image(path)` / `navigate(offset)` / `jump_to(index)` | 打开或按浏览方向导航、按零起始文件索引绝对跳转 |
 | image.read | `image_paths()` | 当前目录顺序的 Path 元组快照 |
 | image.read + tasks | `request_metadata(callback)` | 后台读取原图元数据，丢弃过期结果 |
 | ui.panels | `frosted_surface(parent, popup=False)` | 创建共享玻璃界面；嵌在固定面板内时不透明，自动隐藏或弹出窗时使用毛玻璃 |
@@ -253,3 +253,9 @@ self.thumbnail_request.cancel()
 功能插件可使用 `add_command(..., checkable=True, checked=False)` 注册可勾选按钮，返回 `QAction`。原有调用方式兼容。`image.layout` 权限允许 `context.set_double_page(bool)`；`input.touch` 权限允许 `context.set_touch_enabled(bool)`。两种能力均由宿主管理，停用或异常时撤销；外部插件的权限仍不是 Python 沙箱。
 
 键盘默认值通过 `shortcut` 声明；用户在应用快捷键设置中可覆盖为多个键盘、鼠标或触控绑定。宿主保存默认声明与用户覆盖，停用时移除活动输入映射，保留设置供再次启用。预装实例见 `examples/double_page` 和 `examples/touch_support`。
+
+## 面板接入宿主可绑定操作（0.17）
+
+`ui.panels` 权限的面板可调用 `context.bind_panel_operation(name, callback)` 接入已定义的宿主操作，不额外注册功能按钮：`browser.parent`、`browser.selected`、`browser.favorite`、`slideshow.play`、`slideshow.stop`。回调均无参数。每个操作只能有一个提供者，停用 / 出错 / 卸载自动撤销；启用失败同样清理，键盘绑定仍保留。`context.handle_browser_key(event)` 让面板视图在 ShortcutOverride / KeyPress 阶段使用用户设置的父级 / 选中目录按键；文本编辑器应保留原生输入行为。回调只在 GUI 线程运行，通过宿主异常隔离调用。
+
+面板内部的 Qt 滚动区域由系统统一控制是否显示滚动条，不影响滚动能力；不覆盖原本禁止的横向滚动策略。自绘缩略条保持原有无滚动条设计。

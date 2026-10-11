@@ -1,5 +1,6 @@
 """A filesystem-backed tree panel; no recursive eager scans or private host access."""
 
+import random
 from pathlib import Path
 
 from PySide6.QtCore import QDir, QSize, QStandardPaths, Qt, QTimer
@@ -7,6 +8,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListView,
     QMenu,
     QMessageBox,
@@ -29,6 +31,7 @@ from .thumbnails import PhotoTree, configure_view
 
 class Plugin:
     def activate(self, context):
+        self.active = True
         self.context = context
         self.history = []
         self.history_index = -1
@@ -61,7 +64,9 @@ class Plugin:
             ),
         )
         context.add_settings(self.fields, self.apply_settings)
-        self.panel = BrowserPanel(self.resize_icons, self.go_up, self.go_back, self.go_forward)
+        self.panel = BrowserPanel(
+            self.resize_icons, self.go_up, self.go_back, self.go_forward, context
+        )
         self.panel.setMinimumWidth(220)
         layout = QVBoxLayout(self.panel)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -96,6 +101,22 @@ class Plugin:
         self.location = AddressBar(self.panel)
         self.location.pathRequested.connect(self.open_folder)
         layout.addWidget(self.location)
+        search_row = QHBoxLayout()
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("搜索当前文件夹")
+        self.search.setAccessibleName("搜索当前级的文件和文件夹")
+        self.search.setClearButtonEnabled(True)
+        self.search.textChanged.connect(lambda text: self.model.set_search(text))
+        search_row.addWidget(self.search, 1)
+        self.random_button = QPushButton()
+        self.random_button.setObjectName("circleButton")
+        self.random_button.setFixedSize(32, 32)
+        self.random_button.setIcon(ui_icon("shuffle"))
+        self.random_button.setToolTip("随机定位一个当前层文件夹")
+        self.random_button.setAccessibleName("随机定位文件夹")
+        self.random_button.clicked.connect(self.random_folder)
+        search_row.addWidget(self.random_button)
+        layout.addLayout(search_row)
         body = QHBoxLayout()
         body.setSpacing(6)
         self.tabs = navigation_tabs()
@@ -151,15 +172,58 @@ class Plugin:
         self.note.setWordWrap(True)
         layout.addWidget(self.note)
         self.dock = context.add_panel(self.panel, area="left")
+        for operation, callback in (
+            ("browser.parent", self.go_up),
+            ("browser.selected", self.open_selected),
+            ("browser.favorite", self.add_favorite),
+        ):
+            context.bind_panel_operation(operation, callback)
         self.return_path = None
         self.return_timer = QTimer(self.panel)
         self.return_timer.setInterval(30)
         self.return_timer.timeout.connect(self.restore_return_selection)
+        self.image_selection_path = None
+        self.image_timer = QTimer(self.panel)
+        self.image_timer.setInterval(30)
+        self.image_timer.timeout.connect(self.sync_image_selection)
+        context.subscribe("image.opened", self.on_image)
         context.subscribe("appearance.changed", self.on_appearance)
         self.on_appearance({"accent": context.accent_color()})
         self.apply_settings()
         self.favorites.reload()
         self.recent.reload()
+
+    def on_image(self, event):
+        path = self.context.current_path()
+        if path is None or str(path.parent) != self.location.text():
+            return
+        self.image_selection_path = str(path)
+        self.image_selection_attempts = 0
+        self.image_timer.start()
+        self.sync_image_selection()
+
+    def sync_image_selection(self):
+        path = self.image_selection_path
+        self.image_selection_attempts += 1
+        if not path or str(Path(path).parent) != self.location.text():
+            self.image_timer.stop()
+            self.image_selection_path = None
+            return
+        if self.image_selection_attempts > 100:
+            self.image_timer.stop()
+            return  # directoryLoaded can resume this request without busy polling.
+        index = self.model.index(path)
+        if not index.isValid() and self.search.text():
+            self.search.clear()
+            index = self.model.index(path)
+        if not index.isValid():
+            return
+        self.parent_entry.setChecked(False)
+        for view in (self.tree, self.tiles):
+            view.setCurrentIndex(index)
+            view.scrollTo(index, view.ScrollHint.EnsureVisible)
+        self.image_timer.stop()
+        self.image_selection_path = None
 
     def on_appearance(self, event):
         self.parent_entry.set_accent(event["accent"])
@@ -253,6 +317,20 @@ class Plugin:
         self.model.files.setNameFilters([f"*{suffix}" for suffix in sorted(supported_suffixes())])
         self.model.files.setNameFilterDisables(False)
         self.model.files.folderClassified.connect(self.folder_classified)
+        self.model.files.directoryLoaded.connect(self.directory_loaded)
+
+    def directory_loaded(self, path):
+        # A huge folder can finish after the bounded selection retry timer.
+        # Recheck only its current image; never navigate away from the browser's path.
+        if not self.active or self.model.stopped:
+            return
+        current = self.context.current_path()
+        if (
+            self.image_selection_path
+            and current is not None
+            and Path(path) == Path(self.location.text()) == current.parent
+        ):
+            self.on_image(None)
 
     def create_quick_menu(self):
         self.quick_menu = QMenu(self.panel)
@@ -320,13 +398,57 @@ class Plugin:
             if path not in paths:
                 self.context.set_setting("favorites", (paths + [path])[-64:])
             self.favorites.reload()
+            self.context.notify("已加入快速访问")
+
+    def open_selected(self):
+        if self.parent_entry.isChecked():
+            self.go_up()
+        elif self.pages.currentWidget() is self.files_page:
+            index = self.views.currentWidget().currentIndex()
+            if index.isValid() and self.model.isDir(index):
+                self.enter_folder(index)
+        else:
+            view = self.pages.currentWidget()
+            item = view.currentItem()
+            if item is not None:
+                self.open_folder(item.data(Qt.ItemDataRole.UserRole))
+
+    def random_folder(self):
+        path = self.location.text()
+        if not path:
+            return
+        # QFileSystemModel enumerates only the current level in its own worker.
+        # Select a source row so hidden search matches can also be located.
+        source = self.model.files
+        root = source.index(path)
+        folders = [
+            source.filePath(index)
+            for row in range(source.rowCount(root))
+            if source.isDir(index := source.index(row, 0, root))
+        ]
+        if not folders:
+            return
+        target = random.choice(folders)
+        self.search.clear()
+        self.tabs.setCurrentIndex(0)
+        index = self.model.index(target)
+        self.return_path = None
+        self.return_timer.stop()
+        self.image_timer.stop()
+        self.image_selection_path = None
+        self.parent_entry.setChecked(False)
+        for view in (self.tree, self.tiles):
+            view.setCurrentIndex(index)
+            view.scrollTo(index, view.ScrollHint.PositionAtCenter)
 
     def refresh(self):
+        query = self.search.text()
         # QFileSystemModel has no public refresh API. Recreate the lazy model
         # so cached directory contents and same-path thumbnails are reread.
         old = self.model
         self.model = BrowserModel(self.context, self.panel)
         self.configure_model()
+        self.model.set_search(self.search.text())
         for view in (self.tree, self.tiles):
             view.setModel(self.model)
         for column in (1, 2, 3):
@@ -335,6 +457,7 @@ class Plugin:
         old.stop()
         old.deleteLater()
         self.open_folder(self.location.text(), remember=False)
+        self.search.setText(query)
 
     def open_folder(self, directory, *, remember=True):
         if str(directory) == "":
@@ -365,8 +488,11 @@ class Plugin:
             else None
         )
         self.return_attempts = 0
+        self.image_timer.stop()
+        self.image_selection_path = None
         self.return_timer.stop()
         self.tabs.setCurrentIndex(0)
+        self.search.clear()
         self.location.setText(target)
         root = self.model.setRootPath(target)
         self.tree.setRootIndex(root)
@@ -383,6 +509,8 @@ class Plugin:
             self.model.files.folders.icon(target)
         if self.return_path:
             self.return_timer.start()
+        elif self.context.current_path() and str(self.context.current_path().parent) == target:
+            self.on_image(None)
         return True
 
     def restore_return_selection(self):
@@ -427,6 +555,8 @@ class Plugin:
                 self.history_index = target
 
     def select_entry(self, index):
+        self.image_timer.stop()
+        self.image_selection_path = None
         self.return_path = None
         self.return_timer.stop()
         self.parent_entry.setChecked(False)
@@ -452,6 +582,8 @@ class Plugin:
             QMessageBox.warning(self.panel, "无法打开", f"无法读取图片：{path.name}")
 
     def deactivate(self):
+        self.active = False
+        self.image_timer.stop()
         self.return_timer.stop()
         self.panel.stop()
         self.model.stop()

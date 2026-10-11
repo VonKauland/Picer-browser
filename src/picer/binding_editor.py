@@ -97,7 +97,8 @@ class BindingEditor(QWidget):
         body = QVBoxLayout(self)
         body.setContentsMargins(0, 0, 0, 0)
         note = QLabel(
-            "每个操作可添加多个输入。键盘在窗口内生效；鼠标与触控仅作用于图片画布。触控默认未分配。"
+            "每个操作可添加多个输入。目录键在文件浏览面板内生效；其他键盘操作在窗口内生效。"
+            "鼠标与触控仅作用于图片画布，触控默认未分配。"
         )
         note.setWordWrap(True)
         note.setObjectName("muted")

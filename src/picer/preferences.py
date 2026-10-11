@@ -10,6 +10,8 @@ DEFAULTS = {
     "auto_orient": True,
     "browse_folder": True,
     "wrap": True,
+    "reading_direction": "ltr",
+    "panel_scrollbars": True,
     "zoom_step": 25,
     "key_repeat_ms": 120,
     "key_repeat_delay_ms": 1000,
@@ -21,6 +23,7 @@ DEFAULTS = {
     "cache_mb": 512,
 }
 CHOICES = {
+    "reading_direction": {"ltr", "rtl"},
     "start": {"empty", "last"},
     "default_scale": {"fit", "actual"},
     "double_click": {"toggle", "fit", "actual"},

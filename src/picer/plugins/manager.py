@@ -61,6 +61,7 @@ class PluginManager(QObject):
         self.records: dict[str, PluginRecord] = {}
         self.commands: dict[str, QAction] = {}
         self.panels: dict[str, QDockWidget] = {}
+        self.panel_operations = {}
         self.settings_forms = {}
         self._panel_transition = False
         self._fullscreen = host.isFullScreen()
@@ -337,6 +338,9 @@ class PluginManager(QObject):
         was_enabled = record.state == "enabled"
         record.state = "disabled"
         self.settings_forms.pop(plugin_id, None)
+        self.panel_operations = {
+            name: entry for name, entry in self.panel_operations.items() if entry[0] != plugin_id
+        }
         self.host.touch_owners.discard(plugin_id)
         if not self.host.touch_owners and hasattr(self.host, "inputs"):
             self.host.inputs.touch_start = None
@@ -482,6 +486,39 @@ class PluginManager(QObject):
         self.update_commands()
         return action
 
+    def bind_panel_operation(self, plugin_id, name, callback):
+        if self.records[plugin_id].manifest.type != "panel":
+            raise PluginError("只有面板组件可以接入面板操作")
+        if name not in {
+            "browser.parent",
+            "browser.selected",
+            "browser.favorite",
+            "slideshow.play",
+            "slideshow.stop",
+        } or not callable(callback):
+            raise PluginError("未知面板操作或无效回调")
+        if name in self.panel_operations:
+            raise PluginError("该面板操作已经由其他面板提供")
+        self.panel_operations[name] = (plugin_id, callback)
+        label = {
+            "browser.parent": "打开父级文件夹",
+            "browser.selected": "打开选中文件夹",
+        }.get(name)
+        if label:
+            # Enter/Backspace belong to the browser. Do not steal Enter from
+            # the independent thumbnail overlay or from other editing widgets.
+            action = self.host.shortcut_actions[label]
+            self.host.removeAction(action)
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self.panels[plugin_id].widget().addAction(action)
+
+    def call_panel_operation(self, name, *args):
+        entry = self.panel_operations.get(name)
+        if entry is None or self.records[entry[0]].state != "enabled":
+            return False
+        self._invoke(entry[0], entry[1], *args)
+        return self.records[entry[0]].state == "enabled"
+
     def add_panel(self, plugin_id: str, widget: QWidget, area: str) -> None:
         if self.records[plugin_id].manifest.type != "panel":
             raise PluginError("只有面板组件可以注册面板")
@@ -537,6 +574,7 @@ class PluginManager(QObject):
         dock.setVisible(not self._fullscreen and visible is not False)
         dock.visibilityChanged.connect(lambda _: self._remember_panel(plugin_id))
         self.host.panel_hovers.register(dock, plugin_id, self)
+        self.host.panel_scrollbars.refresh()
         return dock
 
     def _remember_panel(self, plugin_id: str) -> None:

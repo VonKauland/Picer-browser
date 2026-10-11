@@ -1,5 +1,6 @@
 """An image browser with folder navigation and zoom controls."""
 
+from collections import deque
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QEvent, Qt, QUrl
@@ -30,13 +31,15 @@ from picer.animation import AnimationPlayer
 from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
+from picer.folder_navigation import FolderNavigation
 from picer.fullscreen import FullscreenChrome
 from picer.host_style import HostStyleFilter, mark_host, scope_style
-from picer.imaging import supported_suffixes
+from picer.imaging import read_image, supported_suffixes
 from picer.input_bindings import InputBindings
 from picer.loading import ImageLoader
 from picer.navigation import NavigationKeys
 from picer.notifications import NotificationBubble
+from picer.panel_scrollbars import PanelScrollbars
 from picer.panels import GlassBackdrop, PanelHovers
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
@@ -144,6 +147,7 @@ class MainWindow(QMainWindow):
         self.current_path: Path | None = None
         self.source_size = (0, 0)
         self.image_rotation = 0
+        self.image_edited = False
         self.navigation_request = None
         self.navigation_feedback = 0
         self.last_error = ""
@@ -168,6 +172,7 @@ class MainWindow(QMainWindow):
         self.supported_suffixes = supported_suffixes()
         self.animation = AnimationPlayer(self)
         self.loader = ImageLoader(self)
+        self.folder_navigation = FolderNavigation(self)
         self.touch_owners = set()
         self.double_page = DoublePage(self)
         self.animation.pixels.connect(self.animation_frame)
@@ -188,11 +193,44 @@ class MainWindow(QMainWindow):
         self.copy_action = self.add_action(
             edit_menu, "复制文件路径", "Ctrl+Shift+C", self.copy_path
         )
+        self.copy_image_action = self.add_action(
+            edit_menu, "复制当前图片", "Ctrl+C", self.copy_image
+        )
         self.settings_action = self.add_action(edit_menu, "设置…", "Ctrl+,", self.show_settings)
         self.previous_action = self.add_action(
             view_menu, "上一张", "Left", lambda: self.navigate(-1)
         )
         self.next_action = self.add_action(view_menu, "下一张", "Right", lambda: self.navigate(1))
+        self.first_action = self.add_action(
+            view_menu, "跳转至首图", "", lambda: self.jump_edge(False)
+        )
+        self.last_action = self.add_action(
+            view_menu, "跳转至尾图", "", lambda: self.jump_edge(True)
+        )
+        self.previous_folder_action = self.add_action(
+            view_menu, "上一个图片文件夹", "", lambda: self.folder_navigation.navigate(-1)
+        )
+        self.next_folder_action = self.add_action(
+            view_menu, "下一个图片文件夹", "", lambda: self.folder_navigation.navigate(1)
+        )
+        self.panel_action_names = {}
+        for label, shortcut, operation in (
+            ("打开父级文件夹", "Backspace", "browser.parent"),
+            ("打开选中文件夹", "Return", "browser.selected"),
+            ("将当前文件夹加入快速访问", "Ctrl+F", "browser.favorite"),
+            ("播放幻灯片", "", "slideshow.play"),
+            ("停止幻灯片", "", "slideshow.stop"),
+        ):
+            self.add_action(
+                view_menu,
+                label,
+                shortcut,
+                lambda checked=False, operation=operation: self.plugins.call_panel_operation(
+                    operation
+                ),
+            )
+            self.panel_action_names[label] = operation
+        self.add_action(view_menu, "切换浏览方向", "", self.toggle_reading_direction)
         view_menu.addSeparator()
         self.zoom_in_action = self.add_action(
             view_menu, "放大", "Ctrl+=", lambda: self.view.zoom(1.25)
@@ -204,7 +242,9 @@ class MainWindow(QMainWindow):
         self.actual_action = self.add_action(view_menu, "原始大小", "Ctrl+1", self.view.actual_size)
         view_menu.addSeparator()
         self.fullscreen_action = self.add_action(view_menu, "全屏", "F11", self.toggle_fullscreen)
-        self.add_action(view_menu, "退出全屏", "Esc", self.exit_fullscreen)
+        self.fullscreen_action.setText("切换全屏")
+        self.add_action(view_menu, "启用全屏", "", self.enter_fullscreen)
+        self.add_action(view_menu, "退出全屏", "", self.exit_fullscreen).setText("取消全屏")
         self.add_action(view_menu, "切换图片缩放", "", self.toggle_image_scale)
         self.add_action(help_menu, "关于揽映", "", self.show_about)
         self.add_action(plugin_menu, "插件管理…", "Ctrl+Shift+P", self.show_plugins)
@@ -215,6 +255,7 @@ class MainWindow(QMainWindow):
         mark_host(self)
         self.glass = GlassBackdrop(self)
         self.panel_hovers = PanelHovers(self)
+        self.panel_scrollbars = PanelScrollbars(self)
         self.plugins = PluginManager(
             self, self.paths_layout.root, load_external=load_external, load_examples=load_examples
         )
@@ -222,6 +263,7 @@ class MainWindow(QMainWindow):
         self.components = ComponentUI(self, plugin_menu)
         self.inputs = InputBindings(self)
         self.plugins.changed.connect(self.inputs.reload)
+        self.plugins.changed.connect(self.update_actions)
         self.apply_preferences()
         self.navigation_keys = NavigationKeys(self)
         self.notifications = NotificationBubble(self)
@@ -284,6 +326,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "navigation_keys") and self.navigation_keys.timer.isActive():
             self.navigation_keys.timer.setInterval(self.app_preferences["key_repeat_ms"])
         self.plugins.emit_appearance()
+        self.panel_scrollbars.refresh()
+        self.double_page.refresh()
         self.panel_hovers.update_progress_ring()
         self.update()
 
@@ -347,11 +391,79 @@ class MainWindow(QMainWindow):
         if self.current_path:
             QApplication.clipboard().setText(str(self.current_path))
 
+    def copy_image(self) -> None:
+        if self.current_path is None:
+            return
+        pixels = self.view.image_item.pixmap().toImage()
+        if (
+            self.image_edited
+            or self.animation.state.active
+            or pixels.width() == self.view.native_width
+        ):
+            QApplication.clipboard().setImage(pixels)
+            self.notify("已复制图片")
+            return
+        path, generation, rotation = self.current_path, self.loader.generation, self.image_rotation
+        revision = self.image_revision
+        auto_orient = self.app_preferences["auto_orient"]
+        self.notify("正在复制原图")
+
+        def finish(image, error):
+            if (
+                generation != self.loader.generation
+                or path != self.current_path
+                or revision != self.image_revision
+            ):
+                return
+            if error or image is None:
+                self.notify("复制图片失败")
+                return
+            if rotation:
+                image = image.transformed(QTransform().rotate(rotation))
+            QApplication.clipboard().setImage(image)
+            self.notify("已复制图片")
+
+        try:
+            cached = self.loader.cached(self.loader.key(path, 0))
+        except OSError:
+            cached = None
+        if cached is not None:
+            finish(cached, None)
+            return
+        self.loader.submit(
+            "full",
+            lambda token: read_image(path, auto_orient=auto_orient, token=token),
+            finish,
+        )
+
+    def jump_edge(self, last):
+        paths = list(reversed(self.paths)) if last else self.paths
+        for index, path in enumerate(paths):
+            if self.open_image(path):
+                if self.current_path != path:
+                    self.loader.folder_candidates = deque(paths[index + 1 :])
+                self.notify("已跳转至尾图" if last else "已跳转至首图")
+                return
+
+    def toggle_reading_direction(self):
+        values = self.plugins.preferences["ui"].setdefault("application", {})
+        values["reading_direction"] = (
+            "rtl" if self.app_preferences["reading_direction"] == "ltr" else "ltr"
+        )
+        self.plugins._save()
+        self.apply_preferences()
+        self.notify(
+            "浏览方向：从右到左"
+            if self.app_preferences["reading_direction"] == "rtl"
+            else "浏览方向：从左到右"
+        )
+
     @property
     def rotate_action(self):
         return self.plugins.commands.get("picer.transforms:rotate")
 
     def replace_image(self, image) -> None:
+        self.image_edited = True
         self.double_page.clear()
         self.loader.generation += 1
         self.loader.refine.stop()
@@ -409,6 +521,8 @@ class MainWindow(QMainWindow):
         self.notifications.dispose()
         self.navigation_keys.dispose()
         self.inputs.dispose()
+        self.panel_scrollbars.dispose()
+        self.folder_navigation.cancel()
         self.fullscreen_chrome.dispose()
         self.double_page.dispose()
         self.loader.shutdown()
@@ -428,6 +542,10 @@ class MainWindow(QMainWindow):
         if self.isFullScreen():
             self.exit_fullscreen()
         else:
+            self.enter_fullscreen()
+
+    def enter_fullscreen(self) -> None:
+        if not self.isFullScreen():
             self.was_maximized = self.isMaximized()
             self.showFullScreen()
             self.notify("已进入全屏")
@@ -457,7 +575,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.16.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.17.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -525,6 +643,7 @@ class MainWindow(QMainWindow):
         self.plugins.emit_image("indexed")
 
     def present_image(self, path, image, *, paths=None, preview=False):
+        self.image_edited = False
         feedback, self.navigation_feedback = self.navigation_feedback, 0
         self.animation.stop()
         self.double_page.clear()
@@ -617,6 +736,8 @@ class MainWindow(QMainWindow):
         """Skip unreadable images and wrap around at folder boundaries."""
         if self.current_path is None or len(self.paths) < 2:
             return
+        if self.app_preferences["reading_direction"] == "rtl":
+            offset = -offset
         self.navigation_feedback = 1 if offset > 0 else -1
         self.loader.folder_candidates.clear()
         self.loader.direction = 1 if offset > 0 else -1
@@ -652,8 +773,20 @@ class MainWindow(QMainWindow):
             self.fit_action,
             self.actual_action,
             self.copy_action,
+            self.copy_image_action,
+            self.first_action,
+            self.last_action,
+            self.previous_folder_action,
+            self.next_folder_action,
         ):
             action.setEnabled(self.current_path is not None)
+
+        for name, operation in self.panel_action_names.items():
+            entry = self.plugins.panel_operations.get(operation)
+            available = entry is not None and self.plugins.records[entry[0]].state == "enabled"
+            if operation == "slideshow.play":
+                available = available and len(self.paths) > 1
+            self.shortcut_actions[name].setEnabled(available)
 
         self.plugins.update_commands()
         self.panel_hovers.update_progress_ring()

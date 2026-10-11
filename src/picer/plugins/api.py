@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QThread
-from PySide6.QtGui import QIcon, QImage
+from PySide6.QtCore import QEvent, Qt, QThread
+from PySide6.QtGui import QIcon, QImage, QKeySequence
 from PySide6.QtWidgets import QWidget
 
 from picer.media_types import AnimationState
@@ -102,6 +102,29 @@ class PluginContext:
         """Register the component's single dockable panel on the GUI thread."""
         self._check("ui.panels")
         return self._manager.add_panel(self.plugin_id, widget, area)
+
+    def bind_panel_operation(self, name: str, callback: Callable) -> None:
+        """Provide a core browser/slideshow operation; automatically revoked on disable."""
+        self._check("ui.panels")
+        self._manager.bind_panel_operation(self.plugin_id, name, callback)
+
+    def handle_browser_key(self, event) -> bool:
+        """Respect configurable parent/selected keys before item-view defaults."""
+        self._check("ui.panels")
+        host = self._manager.host
+        if not hasattr(host, "inputs"):
+            return False
+        for key in ("打开父级文件夹", "打开选中文件夹"):
+            action = host.shortcut_actions[key]
+            sequence = QKeySequence(event.keyCombination())
+            if event.key() == Qt.Key.Key_Enter:
+                sequence = QKeySequence(event.modifiers().value | Qt.Key.Key_Return.value)
+            if action.isEnabled() and sequence in action.shortcuts():
+                if event.type() == QEvent.Type.KeyPress and not event.isAutoRepeat():
+                    action.trigger()
+                event.accept()
+                return True
+        return False
 
     def frosted_surface(self, parent=None, *, popup=False):
         self._check("ui.panels")

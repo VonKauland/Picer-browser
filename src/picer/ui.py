@@ -50,6 +50,7 @@ ICON_PATHS = {
     "pause": '<path d="M8 4v16M16 4v16"/>',
     "close": '<path d="m5 5 14 14M19 5 5 19"/>',
     "search": '<circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/>',
+    "shuffle": '<path d="M3 6h3l12 12h3M3 18h3L18 6h3M17 2l4 4-4 4M17 14l4 4-4 4"/>',
     "install": '<path d="M12 3v18M3 12h18"/>',
     "settings": (
         '<path d="M4 6h16M4 12h16M4 18h16"/>'

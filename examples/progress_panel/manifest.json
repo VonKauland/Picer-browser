@@ -1,7 +1,7 @@
 {
   "id": "example.progress",
   "name": "浏览进度",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "api_version": 1,
   "type": "panel",
   "panel_role": "progress",

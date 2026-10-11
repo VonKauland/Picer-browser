@@ -115,6 +115,10 @@ def verify(application: Path) -> None:
             raise RuntimeError("File browser home did not survive relocation")
         if preferences["ui"]["application"]["zoom_step"] != 30:
             raise RuntimeError("Application settings did not survive relocation")
+        if preferences["ui"]["application"]["panel_scrollbars"] is not False:
+            raise AssertionError("Panel scrollbar preference was not persisted")
+        if preferences["ui"]["application"]["reading_direction"] != "ltr":
+            raise AssertionError("Reading direction was not persisted")
         if preferences["ui"]["application"]["notification_ms"] != 1500:
             raise RuntimeError("Notification duration did not survive relocation")
         print(

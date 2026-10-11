@@ -863,6 +863,89 @@ def verify_input_features(window):
         "fullscreen slide, two-page plugin and multi-input bindings passed"
     )
     verify_notifications_and_click_seek(window, paths)
+    verify_browser_commands(window, paths)
+
+
+def verify_browser_commands(window, paths):
+    """Exercise configurable browser operations in the packaged EXE and on restart."""
+    from PySide6.QtWidgets import QApplication
+
+    from picer.input_bindings import default_bindings
+
+    defaults = default_bindings(window)
+    assert defaults["复制当前图片"] == [{"device": "keyboard", "value": "Ctrl+C"}]
+    assert not defaults["启用全屏"] and not defaults["退出全屏"]
+    siblings = window.paths_layout.cache / "smoke-folder-navigation"
+    sibling_paths = [siblings / name / "image.png" for name in ("A", "B")]
+    for path in sibling_paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        assert window.view.image_item.pixmap().toImage().save(str(path))
+    browser = window.plugins.records["example.files"].instance
+    original_folder = browser.location.text()
+    assert window.open_image(sibling_paths[0])
+    window.next_folder_action.trigger()
+    wait_for(lambda: window.current_path == sibling_paths[1])
+    assert browser.location.text() == original_folder
+    window.next_folder_action.trigger()
+    wait_for(lambda: window.folder_navigation.pending is None)
+    assert window.current_path == sibling_paths[1]
+    window.previous_folder_action.trigger()
+    wait_for(lambda: window.current_path == sibling_paths[0])
+    assert window.open_image(paths[0])
+    window.first_action.trigger()
+    assert window.current_path == paths[0]
+    window.last_action.trigger()
+    assert window.current_path == paths[-1]
+    window.copy_image_action.trigger()
+    assert QApplication.clipboard().image().width() == 90
+    window.shortcut_actions["切换浏览方向"].trigger()
+    assert window.app_preferences["reading_direction"] == "rtl"
+    window.previous_action.trigger()
+    assert window.current_path == paths[0]
+    window.shortcut_actions["切换浏览方向"].trigger()
+    progress = window.plugins.records["example.progress"].instance
+    window.shortcut_actions["播放幻灯片"].trigger()
+    assert progress.timer.isActive()
+    window.shortcut_actions["停止幻灯片"].trigger()
+    assert not progress.timer.isActive()
+    browser = window.plugins.records["example.files"].instance
+    child = paths[0].parent / "child"
+    child.mkdir(exist_ok=True)
+    browser.open_folder(str(paths[0].parent))
+    wait_for(lambda: browser.model.rowCount(browser.tree.rootIndex()) == len(paths) + 1)
+    browser.search.setText(paths[2].name)
+    assert browser.model.rowCount(browser.tree.rootIndex()) == 1
+    browser.random_button.click()
+    assert Path(browser.model.filePath(browser.tree.currentIndex())) == child
+    assert browser.location.text() == str(paths[0].parent)
+    window.first_action.trigger()
+    wait_for(lambda: Path(browser.model.filePath(browser.tree.currentIndex())) == paths[0])
+    window.next_action.trigger()
+    wait_for(lambda: Path(browser.model.filePath(browser.tree.currentIndex())) == paths[1])
+    favorites = browser.context.get_setting("favorites", [])
+    window.shortcut_actions["将当前文件夹加入快速访问"].trigger()
+    assert str(paths[0].parent) in browser.context.get_setting("favorites", [])
+    browser.context.set_setting("favorites", favorites)
+    browser.favorites.reload()
+    browser.open_folder(str(child))
+    window.next_action.trigger()
+    assert browser.location.text() == str(child)
+    window.shortcut_actions["打开父级文件夹"].trigger()
+    wait_for(lambda: Path(browser.model.filePath(browser.tree.currentIndex())) == child)
+    window.shortcut_actions["打开选中文件夹"].trigger()
+    assert browser.location.text() == str(child)
+    settings = ApplicationSettings(window)
+    settings.editors["panel_scrollbars"].setChecked(False)
+    settings.save()
+    assert browser.tree.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    info = window.plugins.records["example.info"].instance
+    assert info.scroll.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    print(
+        "Packaged sibling folder navigation/boundaries, pixel clipboard, first/last, "
+        "slideshow, reading direction, local search, "
+        "random folder selection, browser keyboard operations and synchronized selection, "
+        "persisted panel scrollbar preference passed"
+    )
 
 
 def verify_notifications_and_click_seek(window, paths):

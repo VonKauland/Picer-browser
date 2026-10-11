@@ -99,6 +99,8 @@ class Plugin:
         self.motion.finished.connect(self.finish_motion)
         self.timer = QTimer(self.panel)
         self.timer.timeout.connect(lambda: context.navigate(1))
+        context.bind_panel_operation("slideshow.play", self.play_slideshow)
+        context.bind_panel_operation("slideshow.stop", self.stop_slideshow)
         self.preview_tokens = {}
         self.refresh_timer = QTimer(self.panel)
         self.refresh_timer.setSingleShot(True)
@@ -263,10 +265,21 @@ class Plugin:
 
     def toggle_slideshow(self):
         if self.timer.isActive():
-            self.timer.stop()
-        elif len(self.context.image_paths()) > 1:
+            self.stop_slideshow()
+        else:
+            self.play_slideshow()
+
+    def play_slideshow(self):
+        if not self.timer.isActive() and len(self.context.image_paths()) > 1:
             self.timer.start()
-        self.controls["slideshow"].setIcon(ui_icon("pause" if self.timer.isActive() else "play"))
+            self.controls["slideshow"].setIcon(ui_icon("pause"))
+            self.context.notify("已开始播放幻灯片")
+
+    def stop_slideshow(self):
+        if self.timer.isActive():
+            self.timer.stop()
+            self.controls["slideshow"].setIcon(ui_icon("play"))
+            self.context.notify("已停止幻灯片")
 
     def show_preview(self):
         if self.preview_open:
