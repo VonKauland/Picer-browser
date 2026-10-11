@@ -817,7 +817,7 @@ def verify_input_features(window):
     assert not window.double_page.second.isVisible()
     settings = ApplicationSettings(window)
     editor = settings.binding_editor
-    assert editor.tabs.count() == 3
+    assert editor.tabs.count() == 4
     assert editor.assign("下一张", "keyboard", "Ctrl+Alt+N")
     settings.editors["key_repeat_delay_ms"].setValue(300)
     settings.editors["notification_ms"].setValue(1500)
@@ -864,6 +864,95 @@ def verify_input_features(window):
     )
     verify_notifications_and_click_seek(window, paths)
     verify_browser_commands(window, paths)
+    verify_gamepad(window, paths)
+
+
+def verify_gamepad(window, paths):
+    """Load the real system backend; simulate input without assuming CI has hardware."""
+    import sys
+    from types import SimpleNamespace
+
+    from picer.gamepad import GamepadSample, XInputBackend
+    from picer.input_bindings import binding_conflict
+
+    native = XInputBackend()
+    if sys.platform == "win32":
+        assert native.available, native.message
+        # Exercises native DLL lookup/calling convention even with no attached controller.
+        for index in range(4):
+            native.read(index)
+    assert binding_conflict(
+        {"device": "gamepad", "value": "RT"},
+        {"device": "gamepad", "value": "RT+A"},
+    )
+    assert not binding_conflict(
+        {"device": "gamepad", "value": "LB"},
+        {"device": "gamepad", "value": "RT+A"},
+    )
+    monitor = window.inputs.gamepad
+    monitor.timer.stop()
+    wait_for(lambda: not monitor.busy)
+    real_backend = monitor.backend
+    samples = [GamepadSample(), None, None, None]
+    monitor.backend = SimpleNamespace(
+        available=True,
+        guide_supported=True,
+        message="自动检查：模拟手柄输入。",
+        read=lambda index: samples[index],
+    )
+    try:
+        monitor.rebaseline()
+        monitor.timer.stop()
+        monitor.poll()
+        window.open_image(paths[0])
+        settings = ApplicationSettings(window)
+        settings.navigation.setCurrentRow(4)
+        editor = settings.binding_editor
+        editor.tabs.setCurrentIndex(3)
+        settings.show()
+        settings.activateWindow()
+        wait_for(settings.isActiveWindow)
+        assert monitor.capture is editor.gamepad_page
+        monitor.timer.stop()
+        monitor.poll()
+        samples[0] = GamepadSample(0x1000, right_trigger=100)
+        monitor.poll()
+        assert editor.gamepad_page.value() == "RT+A"
+        assert window.current_path == paths[0]
+        assert not editor.gamepad_page.diagram.grab().isNull()
+        assert editor.assign("下一张", "gamepad", "RT+A")
+        assert editor.assign("上一张", "gamepad", "LB")
+        assert editor.assign("复制当前图片", "gamepad", "Guide")
+        settings.save()
+        assert monitor.capture is None
+        window.activateWindow()
+        window.view.setFocus()
+        wait_for(window.isActiveWindow)
+        monitor.timer.stop()
+        samples[0] = GamepadSample()
+        monitor.poll()
+        samples[0] = GamepadSample(right_trigger=100)
+        monitor.poll()
+        assert window.current_path == paths[0]
+        samples[0] = GamepadSample(0x1000, right_trigger=100)
+        monitor.poll()
+        assert window.current_path == paths[1]
+        monitor.poll()
+        assert window.current_path == paths[1]
+        samples[0] = GamepadSample()
+        monitor.poll()
+        samples[0] = GamepadSample(0x0100)
+        monitor.poll()
+        assert window.current_path == paths[0]
+        print(
+            "Packaged XInput native backend, unbranded asymmetric diagram, isolated capture, "
+            "simulated shoulder chords/edge routing and persisted gamepad bindings passed; "
+            "physical controller not tested"
+        )
+    finally:
+        monitor.backend = real_backend
+        monitor.rebaseline()
+        monitor.refresh_interval()
 
 
 def verify_browser_commands(window, paths):

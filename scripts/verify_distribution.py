@@ -121,6 +121,10 @@ def verify(application: Path) -> None:
             raise AssertionError("Reading direction was not persisted")
         if preferences["ui"]["application"]["notification_ms"] != 1500:
             raise RuntimeError("Notification duration did not survive relocation")
+        if {"device": "gamepad", "value": "RT+A"} not in preferences["ui"]["input_bindings"][
+            "下一张"
+        ]:
+            raise RuntimeError("Gamepad shoulder chord did not survive relocation")
         print(
             "Folder layout, icons, function/skin/panel components, quick slots, fullscreen, "
             "cache, restart and relocation checks passed"

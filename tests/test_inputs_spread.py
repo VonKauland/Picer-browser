@@ -202,7 +202,7 @@ def test_multi_device_bindings_conflicts_restart_and_revoke(host, qtbot, tmp_pat
     editor = ApplicationSettings(host)
     qtbot.addWidget(editor)
     bindings = editor.binding_editor
-    assert bindings.tabs.count() == 3
+    assert bindings.tabs.count() == 4
     assert all(b["device"] != "touch" for values in bindings.profile.values() for b in values)
     assert bindings.assign("下一张", "keyboard", "D")
     assert bindings.assign("下一张", "keyboard", "Ctrl+N")

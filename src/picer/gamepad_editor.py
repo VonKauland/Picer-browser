@@ -1,0 +1,278 @@
+"""Unbranded asymmetric controller schematic and staged XInput selection."""
+
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from picer.gamepad import GAMEPAD_LABELS, SHOULDERS, normalize_gamepad
+
+# Front-facing, asymmetric sticks. No brand name or logo is embedded in the art.
+CENTERS = {
+    "LT": (192, 38),
+    "RT": (448, 38),
+    "LB": (194, 72),
+    "RB": (446, 72),
+    "LS": (186, 148),
+    "RS": (428, 230),
+    "Back": (286, 153),
+    "Start": (350, 153),
+    "Guide": (320, 105),
+    "Y": (484, 118),
+    "X": (450, 151),
+    "B": (518, 151),
+    "A": (484, 184),
+    "DpadUp": (244, 202),
+    "DpadDown": (244, 246),
+    "DpadLeft": (222, 224),
+    "DpadRight": (266, 224),
+    "LSUp": (186, 112),
+    "LSDown": (186, 184),
+    "LSLeft": (150, 148),
+    "LSRight": (222, 148),
+    "RSUp": (428, 194),
+    "RSDown": (428, 266),
+    "RSLeft": (392, 230),
+    "RSRight": (464, 230),
+}
+
+
+class GamepadMap(QWidget):
+    def __init__(self, page):
+        super().__init__(page)
+        self.page = page
+        self.setObjectName("gamepadMap")
+        self.setMinimumHeight(220)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setAccessibleName("手柄示意图，左摇杆在上，右摇杆在下；也可用下方列表选择按键")
+        self.setToolTip("点击按钮选择；摇杆外侧四个方向也可绑定。")
+
+    def transform(self):
+        scale = min(self.width() / 640, self.height() / 340)
+        return scale, (self.width() - 640 * scale) / 2, (self.height() - 340 * scale) / 2
+
+    def hit_test(self, point):
+        scale, x, y = self.transform()
+        point = QPointF((point.x() - x) / scale, (point.y() - y) / scale)
+        distances = {
+            key: (point - QPointF(*center)).manhattanLength() for key, center in CENTERS.items()
+        }
+        key = min(distances, key=distances.get)
+        return key if distances[key] <= 25 else None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            key = self.hit_test(event.position())
+            if key:
+                self.page.select_button(key)
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        scale, x, y = self.transform()
+        painter.translate(x, y)
+        painter.scale(scale, scale)
+        colors = self.page.host.skin_colors
+        accent, text = QColor(colors["accent"]), QColor(colors["text"])
+        shell = QPainterPath(QPointF(170, 86))
+        shell.cubicTo(208, 66, 432, 66, 470, 86)
+        shell.cubicTo(520, 96, 535, 133, 550, 186)
+        shell.cubicTo(586, 308, 545, 327, 500, 295)
+        shell.lineTo(440, 272)
+        shell.cubicTo(380, 262, 260, 262, 200, 272)
+        shell.lineTo(140, 295)
+        shell.cubicTo(95, 327, 54, 308, 90, 186)
+        shell.cubicTo(105, 133, 120, 96, 170, 86)
+        gradient = QLinearGradient(150, 75, 390, 305)
+        gradient.setColorAt(0, QColor("#555559"))
+        gradient.setColorAt(0.45, QColor("#343438"))
+        gradient.setColorAt(1, QColor("#222225"))
+        painter.setPen(QPen(QColor("#626267"), 1.2))
+        painter.setBrush(gradient)
+        painter.drawPath(shell)
+        selected = set(self.page.value().split("+"))
+        held = self.page.monitor.held[self.page.device.currentIndex()]
+        for key, center in CENTERS.items():
+            pos = QPointF(*center)
+            direction = key.startswith(("LS", "RS")) and len(key) > 2
+            chosen = key in selected
+            fill = accent if chosen else QColor("#444448" if key in held else "#28282B")
+            painter.setBrush(fill)
+            painter.setPen(QPen(accent if chosen or key in held else QColor("#65656B"), 1.3))
+            radius = (
+                28
+                if key in ("LS", "RS")
+                else 8
+                if direction
+                else 14
+                if key.startswith("Dpad")
+                else 18
+            )
+            if key in SHOULDERS:
+                rect = QRectF(pos.x() - 29, pos.y() - 11, 58, 22)
+                painter.drawRoundedRect(rect, 9, 9)
+            else:
+                rect = QRectF(pos.x() - radius, pos.y() - radius, radius * 2, radius * 2)
+                painter.drawEllipse(rect)
+            painter.setPen(QColor("#202022") if chosen else text)
+            label = {
+                "Guide": "○",
+                "Back": "▣",
+                "Start": "≡",
+                "DpadUp": "↑",
+                "DpadDown": "↓",
+                "DpadLeft": "←",
+                "DpadRight": "→",
+            }.get(key, key)
+            if direction:
+                label = ""
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+        painter.setPen(text)
+        painter.drawText(
+            QRectF(40, 313, 560, 24),
+            Qt.AlignmentFlag.AlignCenter,
+            "当前选择：" + self.page.display_value(),
+        )
+
+
+class GamepadPage(QWidget):
+    def __init__(self, host, parent=None):
+        super().__init__(parent)
+        self.host = host
+        self.monitor = host.inputs.gamepad
+        self.setObjectName("bindingPage")
+        layout = QVBoxLayout(self)
+        self.device = QComboBox()
+        self.device.setAccessibleName("识别输入的手柄设备")
+        self.device.setToolTip(
+            "选择用于识别按键的设备；保存的按键绑定适用于所有已连接 XInput 手柄。"
+        )
+        for index in range(4):
+            self.device.addItem(f"通用手柄 · {index + 1}号设备", index)
+        layout.addWidget(self.device)
+        self.diagram = GamepadMap(self)
+        layout.addWidget(self.diagram, 1)
+        row = QHBoxLayout()
+        self.modifiers = {}
+        row.addWidget(QLabel("组合肩键"))
+        for key in SHOULDERS:
+            check = QCheckBox(key)
+            check.setAccessibleName(key + "作为组合修饰键")
+            check.toggled.connect(self.update_selection)
+            self.modifiers[key] = check
+            row.addWidget(check)
+        row.addStretch()
+        layout.addLayout(row)
+        self.button = QComboBox()
+        self.button.setAccessibleName("待添加手柄按钮")
+        for key, label in GAMEPAD_LABELS.items():
+            self.button.addItem(label, key)
+        self.button.currentIndexChanged.connect(self.update_selection)
+        layout.addWidget(self.button)
+        self.status = QLabel()
+        self.status.setWordWrap(True)
+        self.status.setObjectName("muted")
+        layout.addWidget(self.status)
+        note = QLabel(
+            "按下手柄按钮识别，或点击示意图选择。默认未分配功能。\n肩键用作组合修饰键后，不可同时单独绑定；其余肩键不受影响。"
+        )
+        note.setWordWrap(True)
+        note.setObjectName("muted")
+        layout.addWidget(note)
+        self.device.currentIndexChanged.connect(self.device_changed)
+        self.subscribed = False
+        self.refresh_status()
+
+    def value(self):
+        base = self.button.currentData()
+        return normalize_gamepad(
+            "+".join(
+                [key for key, check in self.modifiers.items() if check.isChecked() and key != base]
+                + [base]
+            )
+        )
+
+    def display_value(self):
+        return "+".join(GAMEPAD_LABELS[part] for part in self.value().split("+"))
+
+    def update_selection(self, *_):
+        if hasattr(self, "button"):
+            base = self.button.currentData()
+            if base in self.modifiers and self.modifiers[base].isChecked():
+                self.modifiers[base].setChecked(False)
+            self.diagram.update()
+
+    def select_button(self, key):
+        self.button.setCurrentIndex(self.button.findData(key))
+
+    def set_value(self, value):
+        parts = normalize_gamepad(value).split("+")
+        if not parts or not parts[-1]:
+            return
+        self.select_button(parts[-1])
+        for key, check in self.modifiers.items():
+            check.setChecked(key in parts[:-1])
+
+    def identify(self, index, key):
+        if not self.isVisible() or index != self.device.currentIndex():
+            return
+        if QApplication.activePopupWidget() or QApplication.activeModalWidget() not in (
+            None,
+            self.window(),
+        ):
+            return
+        if QApplication.activeWindow() is not self.window():
+            return
+        current = self.monitor.held[index]
+        self.select_button(key)
+        for shoulder, check in self.modifiers.items():
+            check.setChecked(shoulder in current and shoulder != key)
+
+    def live_buttons(self, index, held):
+        if index == self.device.currentIndex() and self.isVisible():
+            self.diagram.update()
+
+    def device_changed(self, *_):
+        self.monitor.rebaseline()
+        self.refresh_status()
+        self.diagram.update()
+
+    def refresh_status(self):
+        for index in range(4):
+            suffix = "已连接" if self.monitor.connected[index] else "未连接"
+            self.device.setItemText(index, f"通用手柄 · {index + 1}号设备 · {suffix}")
+        backend = self.monitor.backend
+        text = backend.message
+        if backend.available and not backend.guide_supported:
+            text += " 当前驱动不支持识别引导键，该键可保存供兼容设备使用。"
+        self.status.setText(text)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self.subscribed:
+            self.monitor.status_changed.connect(self.refresh_status)
+            self.monitor.buttons_changed.connect(self.live_buttons)
+            self.monitor.pressed.connect(self.identify)
+            self.subscribed = True
+        self.monitor.set_capture(self)
+        self.refresh_status()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.monitor.release_capture(self)
+        if self.subscribed:
+            self.monitor.status_changed.disconnect(self.refresh_status)
+            self.monitor.buttons_changed.disconnect(self.live_buttons)
+            self.monitor.pressed.disconnect(self.identify)
+            self.subscribed = False

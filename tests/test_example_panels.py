@@ -574,7 +574,13 @@ def test_information_resizes_long_fields_without_horizontal_overflow(
                 label = table.itemAt(row, role).widget()
                 assert isinstance(label, QLabel) and label.wordWrap()
                 assert label.width() <= viewport.width()
-                assert label.height() >= label.heightForWidth(label.width())
+                assert label.height() >= label.heightForWidth(label.width()), (
+                    label.text()[:80],
+                    label.minimumSizeHint(),
+                    label.sizeHint(),
+                    label.fontMetrics().height(),
+                    label.heightForWidth(100000),
+                )
     if width == 220:
         assert plugin.dock.width() <= 240
     assert not plugin.exif_box.isHidden()

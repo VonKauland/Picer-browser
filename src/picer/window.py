@@ -575,7 +575,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.17.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.18.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

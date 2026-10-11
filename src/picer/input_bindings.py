@@ -4,6 +4,8 @@ from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QApplication
 
+from picer.gamepad import GamepadMonitor, activated_bindings, gamepad_conflict, normalize_gamepad
+
 ZONES = ("L1", "Center", "R1", "L2", "R2")
 MOUSE = ("Left", "DoubleLeft", "Middle", "Right", "Back", "Forward", "WheelUp", "WheelDown")
 MODIFIERS = (
@@ -34,6 +36,8 @@ def normalize(device, value):
         return value
     if device == "touch" and value in ZONES:
         return value
+    if device == "gamepad":
+        return normalize_gamepad(value)
     return ""
 
 
@@ -100,6 +104,8 @@ def read_bindings(host):
 def binding_conflict(first, second):
     if first["device"] != second["device"]:
         return False
+    if first["device"] == "gamepad":
+        return gamepad_conflict(first["value"], second["value"])
     if first["device"] != "keyboard":
         return first["value"] == second["value"]
     a, b = QKeySequence(first["value"]), QKeySequence(second["value"])
@@ -131,6 +137,8 @@ class InputBindings(QObject):
         self.pending.setSingleShot(True)
         self.pending.timeout.connect(lambda: self.dispatch("mouse", self.pending_value))
         self.host.view.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents)
+        self.gamepad = GamepadMonitor(self)
+        self.gamepad.inputs_changed.connect(self.gamepad_changed)
         QApplication.instance().installEventFilter(self)
         self.reload()
 
@@ -144,6 +152,27 @@ class InputBindings(QObject):
             )
             for binding in bindings:
                 self.mapping[(binding["device"], binding["value"])] = key
+        self.gamepad.set_interest(any(device == "gamepad" for device, _ in self.mapping))
+
+    def gamepad_changed(self, index, current, previous):
+        # Settings capture is isolated; never execute commands while assigning inputs.
+        if (
+            self.gamepad.capture is not None
+            or not self.host.isActiveWindow()
+            or QApplication.activePopupWidget()
+            or QApplication.activeModalWidget()
+        ):
+            return
+        from PySide6.QtWidgets import QAbstractSpinBox, QLineEdit, QPlainTextEdit, QTextEdit
+
+        focus = QApplication.focusWidget()
+        while focus is not None and focus is not self.host:
+            if isinstance(focus, (QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox)):
+                return
+            focus = focus.parentWidget()
+        values = [value for device, value in self.mapping if device == "gamepad"]
+        for value in activated_bindings(current, previous, values):
+            self.dispatch("gamepad", value)
 
     def dispatch(self, device, value):
         if device == "touch" and not self.touch_owners:
@@ -160,6 +189,7 @@ class InputBindings(QObject):
         if kind in (QEvent.Type.ApplicationDeactivate, QEvent.Type.WindowDeactivate):
             self.pending.stop()
             self.touch_start = self.mouse_start = None
+            self.gamepad.rebaseline()
         if (
             obj is not self.host.view.viewport()
             or QApplication.activePopupWidget()
@@ -240,5 +270,6 @@ class InputBindings(QObject):
 
     def dispose(self):
         self.pending.stop()
+        self.gamepad.dispose()
         self.touch_owners.clear()
         QApplication.instance().removeEventFilter(self)

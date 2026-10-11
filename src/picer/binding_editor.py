@@ -32,6 +32,8 @@ from picer.input_bindings import (
 )
 from picer.ui import Card
 
+DEVICES = ("keyboard", "mouse", "touch", "gamepad")
+
 
 class TouchMap(QWidget):
     def __init__(self, combo, host):
@@ -98,7 +100,7 @@ class BindingEditor(QWidget):
         body.setContentsMargins(0, 0, 0, 0)
         note = QLabel(
             "每个操作可添加多个输入。目录键在文件浏览面板内生效；其他键盘操作在窗口内生效。"
-            "鼠标与触控仅作用于图片画布，触控默认未分配。"
+            "鼠标与触控仅作用于图片画布；触控与手柄默认未分配。"
         )
         note.setWordWrap(True)
         note.setObjectName("muted")
@@ -172,6 +174,10 @@ class BindingEditor(QWidget):
         layout.addWidget(TouchMap(self.touch, host))
         layout.addWidget(self.touch)
         self.tabs.addTab(touch, "触控")
+        from picer.gamepad_editor import GamepadPage
+
+        self.gamepad_page = GamepadPage(host)
+        self.tabs.addTab(self.gamepad_page, "手柄")
         card.body.addWidget(self.tabs)
         add = QPushButton("添加绑定")
         add.clicked.connect(self.add_current)
@@ -179,6 +185,7 @@ class BindingEditor(QWidget):
         self.bindings = QListWidget()
         self.bindings.setMinimumHeight(85)
         self.bindings.setMaximumHeight(115)
+        self.bindings.currentItemChanged.connect(self.select_binding)
         card.body.addWidget(self.bindings)
         remove = QPushButton("移除选中绑定")
         remove.clicked.connect(self.remove_current)
@@ -218,10 +225,15 @@ class BindingEditor(QWidget):
         self.bindings.clear()
         if self.current_key is None:
             return
-        device = ("keyboard", "mouse", "touch")[self.tabs.currentIndex()]
+        device = DEVICES[self.tabs.currentIndex()]
         for binding in self.materialize().get(self.current_key, []):
             if binding["device"] == device:
-                item = QListWidgetItem(binding["value"])
+                value = binding["value"]
+                if device == "gamepad":
+                    from picer.gamepad import GAMEPAD_LABELS
+
+                    value = "+".join(GAMEPAD_LABELS[p] for p in value.split("+"))
+                item = QListWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, binding)
                 self.bindings.addItem(item)
 
@@ -231,6 +243,12 @@ class BindingEditor(QWidget):
             values = [b["value"] for b in profile.get(key, []) if b["device"] == "keyboard"]
             editor.setKeySequence(QKeySequence(values[0] if values else ""))
         self.show_bindings()
+
+    def select_binding(self, item, previous=None):
+        if item is not None:
+            binding = item.data(Qt.ItemDataRole.UserRole)
+            if binding["device"] == "gamepad":
+                self.gamepad_page.set_value(binding["value"])
 
     def reset(self):
         self.set_profile(default_bindings(self.host))
@@ -247,15 +265,27 @@ class BindingEditor(QWidget):
             (k, b)
             for k, entries in profile.items()
             for b in entries
-            if k != key and binding_conflict(binding, b)
+            if (k != key or device == "gamepad" and b != binding) and binding_conflict(binding, b)
         ]
         owner = conflicts[0][0] if conflicts else None
         if owner is not None:
-            label = self.labels.get(owner, owner)
+            label = "、".join(dict.fromkeys(self.labels.get(k, k) for k, _ in conflicts))
+            message = f"{value} 与「{label}」的现有绑定冲突。"
+            if device == "gamepad":
+                from picer.gamepad import SHOULDERS, modifier_shoulders
+
+                if any(
+                    value in SHOULDERS
+                    and value in modifier_shoulders(b["value"])
+                    or b["value"] in SHOULDERS
+                    and b["value"] in modifier_shoulders(value)
+                    for _, b in conflicts
+                ):
+                    message += "肩键不能同时作为组合修饰键和单独绑定。"
             reply = QMessageBox.question(
                 self,
                 "快捷键冲突",
-                f"{value} 已绑定到「{label}」。是否覆盖原绑定？",
+                message + "是否覆盖全部冲突绑定？",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -271,7 +301,10 @@ class BindingEditor(QWidget):
         return True
 
     def add_current(self):
-        device = ("keyboard", "mouse", "touch")[self.tabs.currentIndex()]
+        device = DEVICES[self.tabs.currentIndex()]
+        if device == "gamepad":
+            self.assign(self.current_key, device, self.gamepad_page.value())
+            return
         value = (
             self.keyboard_add.keySequence().toString(QKeySequence.SequenceFormat.PortableText)
             if device == "keyboard"
@@ -309,7 +342,7 @@ class BindingEditor(QWidget):
                             bindings.remove(binding)
                             continue
                         QMessageBox.warning(
-                            self, "快捷键冲突", "同一操作中的快捷键不能互为前缀，请修改后保存。"
+                            self, "快捷键冲突", "同一操作中的输入互相冲突，请修改后保存。"
                         )
                         return None
                     label = ", ".join(self.labels.get(owner, owner) for owner, _ in conflicts)
