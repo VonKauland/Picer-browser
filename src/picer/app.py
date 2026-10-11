@@ -72,6 +72,9 @@ def main() -> int:
                 result = app.exec()
     else:
         result = app.exec()
+    window.double_page.dispose()
+    window.inputs.dispose()
+    window.fullscreen_chrome.dispose()
     window.loader.shutdown()
     window.animation.shutdown()
     window.plugins.shutdown()

@@ -60,6 +60,8 @@ class ImageLoader(QObject):
                 if lane == "full":
                     worker.token.cancel()
         elif self.requested == self.host.current_path:
+            if self.host.double_page.second.isVisible():
+                self.host.double_page.refine.start()
             self.refine.start()
             self.prefetch_timer.start()
 

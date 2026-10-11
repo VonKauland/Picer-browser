@@ -353,7 +353,10 @@ def test_internal_grip_resizes_without_title_or_separator(window, tmp_path, qtbo
     qtbot.wait(50)
     restored = restarted.plugins.panels["example.files"]
     assert restarted.dockWidgetArea(restored) == area
-    assert (restored.height() if area == DOCK_AREAS["bottom"] else restored.width()) == after
+    qtbot.waitUntil(
+        lambda: (restored.height() if area == DOCK_AREAS["bottom"] else restored.width()) == after,
+        timeout=2000,
+    )
     restarted.plugins.shutdown()
 
 

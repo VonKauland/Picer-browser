@@ -1,11 +1,10 @@
 """Application settings, distinct from component settings in plugin management."""
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices, QKeySequence
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
-    QKeySequenceEdit,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -184,6 +183,8 @@ class ApplicationSettings(StyledDialog):
         card = Card("导航")
         self.preference(card, "browse_folder", "浏览当前文件夹")
         self.preference(card, "wrap", "到末尾循环浏览")
+        delay = self.preference(card, "key_repeat_delay_ms", "长按开始连击的延迟")
+        delay.setSuffix(" ms")
         repeat = self.preference(card, "key_repeat_ms", "长按方向键切换间隔")
         repeat.setSuffix(" ms")
         note = QLabel(
@@ -238,30 +239,11 @@ class ApplicationSettings(StyledDialog):
         layout.addWidget(note)
 
     def shortcuts_page(self, layout):
-        search = QLineEdit()
-        search.setPlaceholderText("搜索快捷键")
-        layout.addWidget(search)
-        card = Card("操作与快捷键")
-        rows = []
-        for name, action in self.host.shortcut_actions.items():
-            editor = QKeySequenceEdit(action.shortcut())
-            editor.setFixedWidth(220)
-            editor.setAccessibleName(name)
-            self.shortcut_editors[name] = editor
-            widget = QWidget()
-            widget.setObjectName("cardContent")
-            row = QHBoxLayout(widget)
-            row.setContentsMargins(0, 0, 0, 0)
-            row.addWidget(QLabel(name), 1)
-            row.addWidget(editor)
-            card.body.addWidget(widget)
-            rows.append((name, widget))
-        search.textChanged.connect(
-            lambda text: [
-                widget.setVisible(text.casefold() in name.casefold()) for name, widget in rows
-            ]
-        )
-        layout.addWidget(card)
+        from picer.binding_editor import BindingEditor
+
+        self.binding_editor = BindingEditor(self.host)
+        self.shortcut_editors = self.binding_editor.primary_editors
+        layout.addWidget(self.binding_editor)
 
     def storage_page(self, layout):
         card = Card("应用数据")
@@ -326,25 +308,17 @@ class ApplicationSettings(StyledDialog):
             else:
                 editor.setValue(value)
         self.skin.setCurrentIndex(0)
-        for name, editor in self.shortcut_editors.items():
-            editor.setKeySequence(QKeySequence(self.host.default_shortcuts[name]))
+        self.binding_editor.reset()
         self.reset_layout()
 
     def save(self):
-        shortcuts, used = {}, set()
-        for name, editor in self.shortcut_editors.items():
-            value = editor.keySequence().toString(QKeySequence.SequenceFormat.PortableText)
-            if value and value in used:
-                QMessageBox.warning(self, "设置未保存", "两个操作不能使用同一个快捷键。")
-                return
-            if value:
-                used.add(value)
-            shortcuts[name] = value
-        for action in self.manager.commands.values():
-            value = action.shortcut().toString(QKeySequence.SequenceFormat.PortableText)
-            if value and value in used:
-                QMessageBox.warning(self, "设置未保存", f"快捷键已被组件使用：{action.text()}")
-                return
+        bindings = self.binding_editor.validated()
+        if bindings is None:
+            return
+        shortcuts = {
+            key: next((b["value"] for b in bindings.get(key, []) if b["device"] == "keyboard"), "")
+            for key in self.host.shortcut_actions
+        }
         try:
             values = {}
             for key, editor in self.editors.items():
@@ -371,6 +345,7 @@ class ApplicationSettings(StyledDialog):
             return
         ui = self.manager.preferences["ui"]
         ui["application"], ui["shortcuts"] = values, shortcuts
+        ui["input_bindings"] = bindings
         if not isinstance(ui.get("panels"), dict):
             ui["panels"] = {}
         for key, area in self.panel_editors.items():

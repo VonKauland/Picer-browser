@@ -30,8 +30,10 @@ from picer.animation import AnimationPlayer
 from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
+from picer.fullscreen import FullscreenChrome
 from picer.host_style import HostStyleFilter, mark_host, scope_style
 from picer.imaging import supported_suffixes
+from picer.input_bindings import InputBindings
 from picer.loading import ImageLoader
 from picer.navigation import NavigationKeys
 from picer.panels import GlassBackdrop, PanelHovers
@@ -40,6 +42,7 @@ from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
 from picer.plugins.skins import COLORS
 from picer.preferences import DEFAULTS, read_preferences
+from picer.spread import DoublePage
 from picer.thumbnails import ThumbnailService
 
 
@@ -63,7 +66,7 @@ class ImageView(QGraphicsView):
     def fit_image(self) -> None:
         self.fit_mode = True
         if not self.image_item.pixmap().isNull():
-            self.fitInView(self.image_item, Qt.AspectRatioMode.KeepAspectRatio)
+            self.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def zoom(self, factor: float) -> None:
         if self.image_item.pixmap().isNull():
@@ -148,7 +151,11 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(container)
         layout.setContentsMargins(6, 0, 6, 6)
         layout.setSpacing(0)
-        self.setMenuWidget(self.title_bar)
+        self.chrome_slot = QWidget(self)
+        self.chrome_slot.setFixedHeight(48)
+        self.title_bar.setParent(self.chrome_slot)
+        self.setMenuWidget(self.chrome_slot)
+        self.fullscreen_chrome = FullscreenChrome(self)
         layout.addWidget(self.view, 1)
         self.setCentralWidget(container)
         self.empty_label = QLabel("打开图片，开始浏览\nCtrl+O  ·  或将图片拖入窗口", self.view)
@@ -159,6 +166,8 @@ class MainWindow(QMainWindow):
         self.supported_suffixes = supported_suffixes()
         self.animation = AnimationPlayer(self)
         self.loader = ImageLoader(self)
+        self.touch_owners = set()
+        self.double_page = DoublePage(self)
         self.animation.pixels.connect(self.animation_frame)
         self.animation.changed.connect(self.animation_changed)
         self.animation.failed.connect(lambda error: setattr(self, "last_error", error))
@@ -194,6 +203,7 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         self.fullscreen_action = self.add_action(view_menu, "全屏", "F11", self.toggle_fullscreen)
         self.add_action(view_menu, "退出全屏", "Esc", self.exit_fullscreen)
+        self.add_action(view_menu, "切换图片缩放", "", self.toggle_image_scale)
         self.add_action(help_menu, "关于揽映", "", self.show_about)
         self.add_action(plugin_menu, "插件管理…", "Ctrl+Shift+P", self.show_plugins)
         plugin_menu.addSeparator()
@@ -208,6 +218,8 @@ class MainWindow(QMainWindow):
         )
         self.plugins.changed.connect(self.panel_hovers.layout_strips)
         self.components = ComponentUI(self, plugin_menu)
+        self.inputs = InputBindings(self)
+        self.plugins.changed.connect(self.inputs.reload)
         self.apply_preferences()
         self.navigation_keys = NavigationKeys(self)
         self.update_actions()
@@ -224,9 +236,8 @@ class MainWindow(QMainWindow):
         action.triggered.connect(callback)
         menu.addAction(action)
         self.addAction(action)
-        if shortcut:
-            self.shortcut_actions[text] = action
-            self.default_shortcuts[text] = shortcut
+        self.shortcut_actions[text] = action
+        self.default_shortcuts[text] = shortcut
         return action
 
     def apply_skin(self, style: str | None, colors: dict[str, str], *, chrome="standard") -> None:
@@ -262,6 +273,8 @@ class MainWindow(QMainWindow):
         self.thumbnails.trim()
         self.apply_host_style()
         self.restore_shortcuts(self.plugins.preferences["ui"].get("shortcuts", {}))
+        if hasattr(self, "inputs"):
+            self.inputs.reload()
         for surface in tuple(self.glass.surfaces):
             surface.update()
         self.title_bar.arrange()
@@ -271,7 +284,7 @@ class MainWindow(QMainWindow):
         self.panel_hovers.update_progress_ring()
         self.update()
 
-    def restore_shortcuts(self, shortcuts):
+    def restore_shortcuts(self, shortcuts, bindings=None):
         if isinstance(shortcuts, dict):
             used = set()
             for name, action in self.shortcut_actions.items():
@@ -281,7 +294,18 @@ class MainWindow(QMainWindow):
                     normalized = sequence.toString(QKeySequence.SequenceFormat.PortableText)
                     if normalized and normalized in used:
                         sequence = QKeySequence()
-                    action.setShortcut(sequence)
+                    entries = bindings.get(name) if isinstance(bindings, dict) else None
+                    if isinstance(entries, list):
+                        from picer.input_bindings import normalize
+
+                        values = [
+                            normalize("keyboard", b.get("value"))
+                            for b in entries[:32]
+                            if isinstance(b, dict) and b.get("device") == "keyboard"
+                        ]
+                        action.setShortcuts([QKeySequence(v) for v in values if v])
+                    else:
+                        action.setShortcut(sequence)
                     if normalized:
                         used.add(normalized)
         shortcut = self.open_action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
@@ -307,6 +331,7 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "plugins"):
+            self.fullscreen_chrome.sync()
             self.plugins.fullscreen_changed(self.isFullScreen())
 
     def choose_folder(self) -> None:
@@ -324,6 +349,7 @@ class MainWindow(QMainWindow):
         return self.plugins.commands.get("picer.transforms:rotate")
 
     def replace_image(self, image) -> None:
+        self.double_page.clear()
         self.loader.generation += 1
         self.loader.refine.stop()
         self.animation.stop()
@@ -340,6 +366,7 @@ class MainWindow(QMainWindow):
     def rotate_image(self):
         if self.current_path is None:
             return
+        self.double_page.clear()
         self.image_rotation = (self.image_rotation + 90) % 360
         image = self.view.image_item.pixmap().toImage().transformed(QTransform().rotate(90))
         self.view.native_width = self.source_size[1 if self.image_rotation % 180 else 0]
@@ -373,11 +400,21 @@ class MainWindow(QMainWindow):
             ui["last_image"] = str(self.current_path)
         self.plugins._save()
         self.navigation_keys.dispose()
+        self.inputs.dispose()
+        self.fullscreen_chrome.dispose()
+        self.double_page.dispose()
         self.loader.shutdown()
         self.animation.shutdown()
         self.plugins.shutdown()
         self.thumbnails.shutdown()
         super().closeEvent(event)
+
+    def toggle_image_scale(self):
+        mode = self.app_preferences["double_click"]
+        if mode == "fit" or (mode == "toggle" and not self.view.fit_mode):
+            self.view.fit_image()
+        else:
+            self.view.actual_size()
 
     def toggle_fullscreen(self) -> None:
         if self.isFullScreen():
@@ -408,7 +445,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.14.2\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.15.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -471,10 +508,12 @@ class MainWindow(QMainWindow):
         self.path_positions = {path: index for index, path in enumerate(paths)}
         self.image_path_snapshot = tuple(paths)
         self.update_actions()
+        self.double_page.refresh()
         self.plugins.emit_image("indexed")
 
     def present_image(self, path, image, *, paths=None, preview=False):
         self.animation.stop()
+        self.double_page.clear()
         self.current_path = path
         self.navigation_request = None
         if not self.app_preferences["browse_folder"]:
@@ -513,6 +552,7 @@ class MainWindow(QMainWindow):
         self.title_bar.set_filename(path.name)
         self.update_actions()
         self.image_revision += 1
+        self.double_page.refresh()
         self.plugins.emit_image("opened")
         if self.app_preferences["focus_image"]:
             self.view.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -524,7 +564,7 @@ class MainWindow(QMainWindow):
             image = image.transformed(QTransform().rotate(self.image_rotation))
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
         self.view.image_item.setScale(self.view.native_width / image.width())
-        self.view.scene.setSceneRect(self.view.image_item.sceneBoundingRect())
+        self.view.scene.setSceneRect(self.view.scene.itemsBoundingRect())
         if self.view.fit_mode:
             self.view.fit_image()
         else:
@@ -559,20 +599,22 @@ class MainWindow(QMainWindow):
             return
         self.loader.folder_candidates.clear()
         self.loader.direction = 1 if offset > 0 else -1
-        self.continue_navigation(offset, len(self.paths) - 1)
+        self.continue_navigation(self.double_page.offset(offset), len(self.paths) - 1)
 
     def continue_navigation(self, offset, budget):
         paths = self.paths
         requested = self.loader.requested or self.current_path
         index = self.path_positions.get(requested, self.path_positions.get(self.current_path, 0))
         for step in range(1, budget + 1):
-            target = index + offset * step
+            target = index + offset + (step - 1) * (1 if offset > 0 else -1)
             if not self.app_preferences["wrap"] and not 0 <= target < len(paths):
                 return
             path = paths[target % len(paths)]
             if self.loader.open(path):
                 self.navigation_request = (
-                    None if self.current_path == path else (path, offset, budget - step)
+                    None
+                    if self.current_path == path
+                    else (path, 1 if offset > 0 else -1, budget - step)
                 )
                 return
         self.loader.requested = self.current_path

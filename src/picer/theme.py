@@ -66,6 +66,9 @@ QScrollBar::handle { background: #454549; border-radius: 4px;
 min-height: 24px; min-width: 24px; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QWidget#bindingPage, QWidget#touchMap, QTabWidget#inputTabs QStackedWidget {
+background: transparent; border: none; }
+QTabWidget::pane { border: none; background: transparent; }
 QTabBar::tab { background: transparent; color: #A2A2A6; padding: 10px 18px;
 border-bottom: 2px solid transparent; }
 QTabBar::tab:selected { color: #F3F3F0; border-bottom: 2px solid #E8FF59; }

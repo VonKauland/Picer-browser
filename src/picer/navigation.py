@@ -22,14 +22,26 @@ class NavigationKeys(QObject):
         self.timer = QTimer(self)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self.repeat)
+        self.delay = QTimer(self)
+        self.delay.setSingleShot(True)
+        self.delay.timeout.connect(self.begin_repeat)
         QApplication.instance().installEventFilter(self)
         host.previous_action.setAutoRepeat(False)
         host.next_action.setAutoRepeat(False)
 
     def stop(self):
         self.timer.stop()
+        self.delay.stop()
         self.held = None
         self.host.loader.set_rapid(False)
+
+    def begin_repeat(self):
+        if self.held is not None and self.allowed_focus():
+            self.host.loader.set_rapid(True)
+            self.repeat()
+            self.timer.start(self.host.app_preferences["key_repeat_ms"])
+        else:
+            self.stop()
 
     def repeat(self):
         if self.allowed_focus():
@@ -80,7 +92,7 @@ class NavigationKeys(QObject):
             (
                 offset
                 for offset, action in ((-1, self.host.previous_action), (1, self.host.next_action))
-                if action.isEnabled() and sequence == action.shortcut()
+                if action.isEnabled() and sequence in action.shortcuts()
             ),
             0,
         )
@@ -88,10 +100,10 @@ class NavigationKeys(QObject):
             return False
         event.accept()
         if kind == QEvent.Type.KeyPress and not event.isAutoRepeat() and self.held != event.key():
+            self.stop()
             self.held, self.direction = event.key(), direction
-            self.host.loader.set_rapid(True)
             self.host.navigate(direction)
-            self.timer.start(self.host.app_preferences["key_repeat_ms"])
+            self.delay.start(self.host.app_preferences["key_repeat_delay_ms"])
         return True
 
     def dispose(self):

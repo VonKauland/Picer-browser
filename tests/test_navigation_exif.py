@@ -44,10 +44,11 @@ def test_held_navigation_obeys_ms_setting_and_stops_on_release(host, qtbot, tmp_
     dialog.save()
     host.view.setFocus()
     qtbot.keyPress(host.view, Qt.Key.Key_Right)
-    assert host.current_path == paths[1] and host.loader.rapid
+    assert host.current_path == paths[1] and not host.loader.rapid
+    assert host.navigation_keys.delay.isActive()
     qtbot.wait(120)
     assert host.current_path == paths[1]
-    qtbot.waitUntil(lambda: host.current_path == paths[2])
+    qtbot.waitUntil(lambda: host.current_path == paths[2], timeout=1500)
     repeat = QKeyEvent(
         QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier, "", True
     )

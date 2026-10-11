@@ -11,6 +11,7 @@ DEFAULTS = {
     "wrap": True,
     "zoom_step": 25,
     "key_repeat_ms": 120,
+    "key_repeat_delay_ms": 1000,
     "double_click": "toggle",
     "glass": True,
     "glass_strength": 70,
@@ -26,6 +27,7 @@ CHOICES = {
 }
 RANGES = {
     "key_repeat_ms": (30, 2000),
+    "key_repeat_delay_ms": (0, 5000),
     "zoom_step": (5, 100),
     "glass_strength": (0, 100),
     "cache_mb": (16, 16384),

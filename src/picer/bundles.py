@@ -9,6 +9,8 @@ from picer.plugins.api import PluginError
 from picer.plugins.manifest import Manifest
 
 EXAMPLES = (
+    ("double_page", "double-page.zip", "example.doublepage", True),
+    ("touch_support", "touch-support.zip", "example.touch", True),
     ("file_browser", "file-browser.zip", "example.files", True),
     ("info_panel", "info-panel.zip", "example.info", True),
     ("progress_panel", "progress-panel.zip", "example.progress", True),

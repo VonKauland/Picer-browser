@@ -162,7 +162,9 @@ def test_duplicate_shortcut_does_not_save_preferences(window, qtbot, monkeypatch
     editors[1].setKeySequence(QKeySequence("Ctrl+Shift+Z"))
     dialog.editors["zoom_step"].setValue(50)
     warnings = []
-    monkeypatch.setattr("picer.settings.QMessageBox.warning", lambda *args: warnings.append(args))
+    monkeypatch.setattr(
+        "picer.binding_editor.QMessageBox.question", lambda *args: warnings.append(args)
+    )
     dialog.save()
     assert warnings
     assert window.view.zoom_step == DEFAULTS["zoom_step"]

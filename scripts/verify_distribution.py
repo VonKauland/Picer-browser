@@ -62,6 +62,10 @@ def verify(application: Path) -> None:
         "examples/info-panel.zip",
         "examples/file-browser.zip",
         "examples/progress-panel.zip",
+        "examples/double-page.zip",
+        "examples/touch-support.zip",
+        "plugins/example.doublepage/main.py",
+        "plugins/example.touch/main.py",
         "README.txt",
         "distribution.json",
     ):

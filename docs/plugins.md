@@ -247,3 +247,9 @@ self.thumbnail_request = context.request_thumbnail(
 # 在面板切换目录等操作中取消不再需要的结果：
 self.thumbnail_request.cancel()
 ```
+
+## 显示布局与触控输入扩展（API v1）
+
+功能插件可使用 `add_command(..., checkable=True, checked=False)` 注册可勾选按钮，返回 `QAction`。原有调用方式兼容。`image.layout` 权限允许 `context.set_double_page(bool)`；`input.touch` 权限允许 `context.set_touch_enabled(bool)`。两种能力均由宿主管理，停用或异常时撤销；外部插件的权限仍不是 Python 沙箱。
+
+键盘默认值通过 `shortcut` 声明；用户在应用快捷键设置中可覆盖为多个键盘、鼠标或触控绑定。宿主保存默认声明与用户覆盖，停用时移除活动输入映射，保留设置供再次启用。预装实例见 `examples/double_page` 和 `examples/touch_support`。

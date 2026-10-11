@@ -21,6 +21,8 @@ PERMISSIONS = {
     "ui.panels",
     "image.read",
     "image.navigate",
+    "image.layout",
+    "input.touch",
     "image.modify",
     "events.subscribe",
     "settings",
@@ -69,11 +71,32 @@ class PluginContext:
         requires_image: bool = True,
         menu: str = "插件",
         icon: QIcon | None = None,
-    ) -> None:
+        checkable: bool = False,
+        checked: bool = False,
+    ):
         self._check("ui.commands")
-        self._manager.add_command(
+        action = self._manager.add_command(
             self.plugin_id, command_id, label, callback, shortcut, requires_image, menu, icon
         )
+        action.setCheckable(checkable)
+        action.setChecked(checked)
+        return action
+
+    def set_double_page(self, enabled: bool):
+        self._check("image.layout")
+        if type(enabled) is not bool:
+            raise PluginError("双页状态必须为布尔值")
+        self._manager.host.double_page.set_enabled(self.plugin_id, enabled)
+
+    def set_touch_enabled(self, enabled: bool):
+        self._check("input.touch")
+        if type(enabled) is not bool:
+            raise PluginError("触控状态必须为布尔值")
+        owners = self._manager.host.touch_owners
+        owners.add(self.plugin_id) if enabled else owners.discard(self.plugin_id)
+        host = self._manager.host
+        if not owners and hasattr(host, "inputs"):
+            host.inputs.touch_start = None
 
     def add_panel(self, widget: QWidget, *, area: str = "right"):
         """Register the component's single dockable panel on the GUI thread."""

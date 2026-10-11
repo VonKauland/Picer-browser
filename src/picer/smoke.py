@@ -233,7 +233,9 @@ def verify_held_keys(window):
     wait_for(window.isActiveWindow)
     QTest.keyPress(window.view, Qt.Key.Key_Right)
     try:
-        assert window.loader.rapid and window.current_path != previous
+        assert not window.loader.rapid and window.current_path != previous
+        assert window.navigation_keys.delay.isActive()
+        wait_for(lambda: window.loader.rapid)
         wait_for(lambda: window.current_path == previous)
     finally:
         QTest.keyRelease(window.view, Qt.Key.Key_Right)
@@ -704,6 +706,7 @@ def run(window, args, folder, done):
         def hover():
             if not args.file_panel_archive:
                 verify_media(window)
+                verify_input_features(window)
                 done(0)
                 return
             controller = window.panel_hovers.controllers["example.files"]
@@ -759,9 +762,84 @@ def run(window, args, folder, done):
                 "hidden-strip drag/pin and grips passed"
             )
             verify_media(window)
+            verify_input_features(window)
             done(0)
 
         QTimer.singleShot(25, lambda: guarded(metadata_ready))
     except Exception:
         traceback.print_exc()
         done(1)
+
+
+def verify_input_features(window):
+    """Execute the new controls and packaged preinstalled functions in the EXE."""
+    assert window.title_bar.brand.isHidden()
+    for key in ("example.doublepage", "example.touch"):
+        assert window.plugins.records[key].state == "enabled"
+    directory = window.paths_layout.cache / "smoke-spread"
+    directory.mkdir(exist_ok=True)
+    paths = [directory / f"{i:02}.png" for i in range(5)]
+    for i, path in enumerate(paths):
+        image = QImage(90, 130, QImage.Format.Format_RGB32)
+        image.fill(0x334455 + i * 0x110000)
+        assert image.save(str(path))
+    assert window.open_image(paths[0])
+    wait_for(lambda: window.current_path == paths[0])
+    double = window.plugins.commands["example.doublepage:toggle"]
+    if not double.isChecked():
+        double.trigger()
+    wait_for(window.double_page.second.isVisible)
+    assert window.double_page.path == paths[1]
+    window.navigate(1)
+    wait_for(lambda: window.double_page.path == paths[3] and window.double_page.second.isVisible())
+    assert window.current_path == paths[2]
+    window.navigate(-1)
+    assert window.current_path == paths[0]
+    double.trigger()
+    assert not window.double_page.second.isVisible()
+    settings = ApplicationSettings(window)
+    editor = settings.binding_editor
+    assert editor.tabs.count() == 3
+    assert editor.assign("下一张", "keyboard", "Ctrl+Alt+N")
+    settings.editors["key_repeat_delay_ms"].setValue(300)
+    assert editor.assign("下一张", "mouse", "Ctrl+Forward")
+    assert editor.assign("下一张", "touch", "R1")
+    settings.save()
+    assert len(window.next_action.shortcuts()) >= 2
+    assert window.inputs.dispatch("touch", "R1")
+    assert window.current_path == paths[1]
+    # Qt routes synthetic touch through native screen coordinates. Keep the
+    # target on-screen even on small/offscreen CI displays.
+    available = window.screen().availableGeometry()
+    window.move(available.topLeft())
+    window.resize(
+        max(window.minimumWidth(), min(800, available.width())), min(600, available.height())
+    )
+    window.activateWindow()
+    window.view.setFocus()
+    QTest.qWait(80)
+    device = QTest.createTouchDevice()
+    viewport = window.view.viewport()
+    point = QPoint(int(viewport.width() * 0.85), int(viewport.height() * 0.2))
+    QTest.touchEvent(viewport, device).press(0, point, viewport).commit()
+    QTest.touchEvent(viewport, device).release(0, point, viewport).commit()
+    wait_for(lambda: window.current_path == paths[2])
+    touch = window.plugins.commands["example.touch:toggle"]
+    touch.trigger()
+    assert not window.inputs.dispatch("touch", "R1")
+    touch.trigger()
+    window.toggle_fullscreen()
+    wait_for(window.isFullScreen)
+    QTest.qWait(100)
+    assert window.menuWidget().height() == 0 and window.title_bar.y() == -48
+    edge = window.fullscreen_chrome.edge
+    QTest.mouseMove(edge, QPoint(10, 1))
+    wait_for(lambda: window.title_bar.y() == 0)
+    window.fullscreen_chrome.reveal(False)
+    wait_for(lambda: window.title_bar.y() == -48)
+    window.exit_fullscreen()
+    assert window.menuWidget().height() == 48 and window.title_bar.y() == 0
+    print(
+        "Packaged icon-only chrome, fullscreen slide, two-page plugin "
+        "and multi-input bindings passed"
+    )

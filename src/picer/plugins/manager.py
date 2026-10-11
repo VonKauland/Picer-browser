@@ -87,7 +87,10 @@ class PluginManager(QObject):
         except (OSError, ValueError, UnicodeError) as error:
             self.diagnostics.append(f"配置读取失败：{error}")
         # Restore core bindings before loading plugins that may use a freed shortcut.
-        self.host.restore_shortcuts(self.preferences["ui"].get("shortcuts", {}))
+        self.host.restore_shortcuts(
+            self.preferences["ui"].get("shortcuts", {}),
+            self.preferences["ui"].get("input_bindings"),
+        )
         try:
             self.log_handler = RotatingFileHandler(
                 self.log_file, maxBytes=256 * 1024, backupCount=2, encoding="utf-8"
@@ -327,6 +330,10 @@ class PluginManager(QObject):
         was_enabled = record.state == "enabled"
         record.state = "disabled"
         self.settings_forms.pop(plugin_id, None)
+        self.host.touch_owners.discard(plugin_id)
+        if not self.host.touch_owners and hasattr(self.host, "inputs"):
+            self.host.inputs.touch_start = None
+        self.host.double_page.set_enabled(plugin_id, False)
         if record.manifest.type == "skin" and was_enabled:
             self.host.apply_skin(None, COLORS)
         self.host.panel_hovers.unregister(plugin_id)
@@ -412,10 +419,30 @@ class PluginManager(QObject):
             raise PluginError(f"重复命令：{key}")
         if menu not in self.host.plugin_menus or not label or not callable(callback):
             raise PluginError("菜单、标签或回调无效")
+        default_shortcut = shortcut
+        saved = self.preferences["ui"].get("input_bindings", {})
+        bindings = saved.get(key) if isinstance(saved, dict) else None
+        sequences = [shortcut] if shortcut else []
+        if isinstance(bindings, list):
+            from picer.input_bindings import normalize
+
+            sequences = [
+                normalize("keyboard", b.get("value"))
+                for b in bindings
+                if isinstance(b, dict) and b.get("device") == "keyboard"
+            ]
+            sequences = [value for value in sequences if value]
+        shortcut = sequences[0] if sequences else ""
         sequence = QKeySequence(shortcut)
         if shortcut and (
             sequence.isEmpty()
-            or any(sequence == existing.shortcut() for existing in self.host.actions())
+            or any(
+                QKeySequence(value).matches(previous) != QKeySequence.SequenceMatch.NoMatch
+                or previous.matches(QKeySequence(value)) != QKeySequence.SequenceMatch.NoMatch
+                for value in sequences
+                for existing in self.host.actions()
+                for previous in existing.shortcuts()
+            )
         ):
             raise PluginError(f"快捷键无效或冲突：{shortcut}")
         if icon is not None and not isinstance(icon, QIcon):
@@ -423,7 +450,8 @@ class PluginManager(QObject):
         action = QAction(label, self.host)
         if icon is not None:
             action.setIcon(icon)
-        action.setShortcut(sequence)
+        action.setShortcuts([QKeySequence(value) for value in sequences])
+        action.setProperty("default_shortcut", default_shortcut)
         action.setProperty("plugin_id", plugin_id)
         action.setProperty("requires_image", requires_image)
         action.triggered.connect(lambda: self._invoke(plugin_id, callback))
@@ -433,6 +461,7 @@ class PluginManager(QObject):
         self.host.addAction(action)
         self.commands[key] = action
         self.update_commands()
+        return action
 
     def add_panel(self, plugin_id: str, widget: QWidget, area: str) -> None:
         if self.records[plugin_id].manifest.type != "panel":

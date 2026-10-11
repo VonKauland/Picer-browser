@@ -50,6 +50,7 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
         ROOT / "docs" / "example-components.md", application / "docs" / "example-components.md"
     )
     shutil.copy2(ROOT / "docs" / "media.md", application / "docs" / "media.md")
+    shutil.copy2(ROOT / "docs" / "input.md", application / "docs" / "input.md")
     (application / "README.txt").write_text(
         "揽映 Picer 图片浏览器\n\n"
         "请保留完整文件夹，双击 Picer.exe 启动，无需安装 Python。\n"
