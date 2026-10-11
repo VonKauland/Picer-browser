@@ -278,6 +278,8 @@ class ImageLoader(QObject):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
+        if not self.options:
+            return  # Shared thumbnails always use EXIF orientation.
         self.pending_thumbnail = (path, thumbnail)
         self.thumbnail_timer.start()
 
@@ -286,10 +288,7 @@ class ImageLoader(QObject):
             return
         path, thumbnail = self.pending_thumbnail
         self.pending_thumbnail = None
-        cache = self.host.thumbnail_cache
-        self.submit(
-            "full", lambda token: cache.thumbnail(path, thumbnail), lambda result, error: None
-        )
+        self.host.thumbnails.seed(path, thumbnail)
 
     def load_full(self):
         path, generation, options = self.requested, self.generation, self.options

@@ -1,6 +1,7 @@
 """Live navigation with a persistent, independently docked thumbnail strip."""
 
 from PySide6.QtCore import QEasingCurve, QSize, Qt, QTimer, QVariantAnimation
+from PySide6.QtGui import QImage
 from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
@@ -10,7 +11,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from picer.imaging import read_image
 from picer.plugins import RoundedSlider, SettingField, ui_icon
 
 from .preview import PreviewStrip
@@ -21,7 +21,6 @@ class Plugin:
         self.context = context
         self.fields = (
             SettingField("thumbnail_size", "预览图片大小（像素）", "int", 80, 48, 200),
-            SettingField("thumbnail_count", "预览图片数量", "int", 9, 3, 30),
             SettingField("interval", "幻灯片间隔（秒）", "int", 3, 1, 30),
         )
         context.add_settings(self.fields, self.apply_settings)
@@ -100,11 +99,13 @@ class Plugin:
         self.motion.finished.connect(self.finish_motion)
         self.timer = QTimer(self.panel)
         self.timer.timeout.connect(lambda: context.navigate(1))
-        self.preview_token = None
+        self.preview_tokens = {}
         self.refresh_timer = QTimer(self.panel)
         self.refresh_timer.setSingleShot(True)
         self.refresh_timer.setInterval(30)
-        self.refresh_timer.timeout.connect(self.refresh_preview)
+        self.refresh_timer.timeout.connect(
+            lambda: self.refresh_preview(center=self.preview.center_index)
+        )
         self.compact(False, animate=False)
         context.subscribe("appearance.changed", self.on_appearance)
         context.subscribe("image.changed", self.on_image)
@@ -272,8 +273,7 @@ class Plugin:
             self.preview_open = False
             self.compact(False)
             self.refresh_timer.stop()
-            if self.preview_token:
-                self.preview_token.cancel()
+            self.cancel_previews()
             return
         if not self.context.image_paths():
             return
@@ -282,43 +282,60 @@ class Plugin:
         self.compact(True)
         self.refresh_preview()
 
-    def refresh_preview(self):
+    def cancel_previews(self):
+        for token in self.preview_tokens.values():
+            token.cancel()
+        self.preview_tokens.clear()
+
+    def refresh_preview(self, *, center=None):
         if not self.preview_open:
             return
         paths = self.context.image_paths()
         if not paths:
-            return
-        if self.preview_token:
-            self.preview_token.cancel()
-        values = self.values()
-        index = self.context.image_index()
-        count = min(len(paths), values["thumbnail_count"])
-        start = max(0, min(index - count // 2, len(paths) - count))
-        selected = tuple((i, paths[i]) for i in range(start, start + count))
-        size = values["thumbnail_size"]
-        self.preview.thumbnail_size = size
-        self.preview.center_index = index
-        # Expansion compresses the controls first; anchor to the resulting card.
-        self.preview.reposition()
-
-        def work(token):
-            thumbnails = []
-            for image_index, path in selected:
-                token.checkpoint()
-                try:
-                    image = read_image(path, edge=size, token=token)
-                except (OSError, ValueError, RuntimeError):
-                    continue
-                thumbnails.append((image_index, str(path), image))
-            return thumbnails
-
-        def render(thumbnails):
-            if not self.preview.isVisible():
-                return
-            self.preview.items = thumbnails
+            self.cancel_previews()
+            self.preview.items = []
             self.preview.update()
+            return
+        index = self.context.image_index() if center is None else center
+        self.preview.center_index = index = max(0, min(len(paths) - 1, index))
+        size = self.values()["thumbnail_size"]
+        changed_size = self.preview.thumbnail_size != size
+        self.preview.thumbnail_size = size
+        self.preview.reposition()
+        # Virtualize the entire folder: only visible tiles plus two neighbours
+        # need pixels. There is no total count setting or folder-size cap.
+        radius = max(2, (self.preview.width() + 2 * (size + 8) - 1) // (2 * (size + 8)) + 1)
+        start, stop = max(0, index - radius), min(len(paths), index + radius + 1)
+        wanted = {i: str(paths[i]) for i in range(start, stop)}
+        old = {} if changed_size else {i: (path, image) for i, path, image in self.preview.items}
+        for key in tuple(self.preview_tokens):
+            if key[0] not in wanted or wanted[key[0]] != key[1] or key[2] != size:
+                self.preview_tokens.pop(key).cancel()
+        self.preview.items = [
+            (i, path, old[i][1] if i in old and old[i][0] == path else QImage())
+            for i, path in wanted.items()
+        ]
+        self.preview.update()
+        # Submit distant tiles first: priority insertion makes the center load first.
+        for i in sorted(wanted, key=lambda i: abs(i - index), reverse=True):
+            path = wanted[i]
+            key = (i, path, size)
+            if key in self.preview_tokens:
+                continue
 
-        self.preview_token = self.context.run_task(work, render)
+            def render(image, key=key):
+                self.preview_tokens.pop(key, None)
+                if not self.preview_open:
+                    return
+                self.preview.items = [
+                    (i, path, image if (i, path) == key[:2] else pixels)
+                    for i, path, pixels in self.preview.items
+                ]
+                self.preview.update()
+
+            self.preview_tokens[key] = self.context.request_thumbnail(
+                path, render, edge=size, priority=True
+            )
 
     def deactivate(self):
         self.motion.stop()
@@ -328,5 +345,4 @@ class Plugin:
         self.refresh_timer.stop()
         self.preview.close()
         self.preview.deleteLater()
-        if self.preview_token:
-            self.preview_token.cancel()
+        self.cancel_previews()

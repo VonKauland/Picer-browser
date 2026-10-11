@@ -59,7 +59,7 @@ def test_ring_follows_hidden_preview_resize_animation_and_cleanup(window, qtbot,
     strip = controller.strip
     assert strip.isVisible() and strip.size().width() == strip.size().height() == RING_SIZE
     assert abs(strip.geometry().center().x() - window.rect().center().x()) <= 1
-    assert window.height() - 1 - strip.geometry().bottom() == 6
+    assert window.height() - 1 - strip.geometry().bottom() == 14
     progress.show_preview()
     qtbot.waitUntil(lambda: progress.expansion == 1)
     qtbot.waitUntil(

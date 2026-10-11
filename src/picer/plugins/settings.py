@@ -61,7 +61,7 @@ class SettingsForm(QWidget):
             ),
             "example.info": (("显示内容", {field.key for field in self.fields}),),
             "example.progress": (
-                ("缩略预览", {"thumbnail_size", "thumbnail_count"}),
+                ("缩略预览", {"thumbnail_size"}),
                 ("幻灯片", {"interval"}),
             ),
         }.get(plugin_id, (("组件选项", {field.key for field in self.fields}),))

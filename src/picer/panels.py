@@ -350,9 +350,10 @@ class RevealEffect(QGraphicsBlurEffect):
 
 
 class HiddenStrip(QWidget):
-    def __init__(self, controller):
+    def __init__(self, controller, *, ring=None):
         super().__init__(controller.host)
         self.controller = controller
+        self.ring = controller.dock.property("progressPanel") if ring is None else ring
         self.origin = None
         self.dragging = False
         self.setProperty("pluginSurface", True)
@@ -414,7 +415,7 @@ class HiddenStrip(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        if self.controller.dock.property("progressPanel"):
+        if self.ring:
             host = self.controller.host
             index = host.path_positions.get(host.current_path, -1)
             fraction = (index + 1) / len(host.paths) if host.paths and index >= 0 else 0
@@ -462,6 +463,7 @@ class HiddenPanel(QObject):
         self.collection, self.host, self.dock = collection, collection.host, dock
         self.plugin_id, self.manager = plugin_id, manager
         self.strip = HiddenStrip(self)
+        self.indicator = HiddenStrip(self, ring=False) if dock.property("progressPanel") else None
         self.popup = None
         self.surface = None
         self.progress = 0.0
@@ -754,6 +756,12 @@ class HiddenPanel(QObject):
             self.popup.geometry().contains(cursor)
             or self.strip.geometry().contains(cursor)
             or self.strip.origin is not None
+            or (
+                self.indicator
+                and (
+                    self.indicator.geometry().contains(cursor) or self.indicator.origin is not None
+                )
+            )
             or popup_active
         ):
             self.leave_timer.start()
@@ -800,6 +808,9 @@ class HiddenPanel(QObject):
             self.collection.show_drop_hint(None)
         self.strip.hide()
         self.strip.deleteLater()
+        if self.indicator:
+            self.indicator.hide()
+            self.indicator.deleteLater()
 
 
 class DockDropHint(QWidget):
@@ -901,7 +912,7 @@ class PanelHovers(QObject):
                 RING_SIZE,
                 RING_SIZE,
             )
-        bottom = self.host.height() - RING_SIZE - 6
+        bottom = self.host.height() - RING_SIZE - 14
         if controller.popup and not resting:
             bottom -= round((controller.current_extent() + 8) * controller.progress)
         return QRect((self.host.width() - RING_SIZE) // 2, bottom, RING_SIZE, RING_SIZE)
@@ -923,6 +934,12 @@ class PanelHovers(QObject):
             record = controller.manager.records.get(controller.plugin_id)
             hidden = controller.dock.isHidden() and record is not None and record.state == "enabled"
             controller.strip.setVisible(hidden and self.host.isVisible())
+            if controller.indicator:
+                controller.indicator.setVisible(hidden and self.host.isVisible())
+                controller.indicator.setGeometry(
+                    (self.host.width() - 84) // 2, self.host.height() - 9, 84, 5
+                )
+                controller.indicator.raise_()
             if hidden:
                 areas.setdefault(controller.area, []).append(controller)
         for area, controllers in areas.items():

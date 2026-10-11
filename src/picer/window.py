@@ -40,6 +40,7 @@ from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
 from picer.plugins.skins import COLORS
 from picer.preferences import DEFAULTS, read_preferences
+from picer.thumbnails import ThumbnailService
 
 
 class ImageView(QGraphicsView):
@@ -115,6 +116,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.paths_layout = AppPaths.resolve(plugin_root)
         self.thumbnail_cache = ThumbnailCache(self.paths_layout.cache)
+        self.thumbnails = ThumbnailService(self.thumbnail_cache, self)
         self.current_thumbnail = QImage()
         self.setWindowIcon(QIcon(str(self.paths_layout.icon)))
         self.setWindowTitle("揽映")
@@ -249,6 +251,8 @@ class MainWindow(QMainWindow):
         if self.app_preferences["density"] == "compact":
             style += "\nQWidget { font-size: 12px; } QMenu::item { padding: 6px 24px 6px 12px; }"
         self.setStyleSheet(scope_style(style))
+        for button in self.title_bar.control_buttons.values():
+            button.update()
 
     def apply_preferences(self):
         self.app_preferences = read_preferences(self.plugins)
@@ -372,6 +376,7 @@ class MainWindow(QMainWindow):
         self.loader.shutdown()
         self.animation.shutdown()
         self.plugins.shutdown()
+        self.thumbnails.shutdown()
         super().closeEvent(event)
 
     def toggle_fullscreen(self) -> None:
@@ -394,6 +399,7 @@ class MainWindow(QMainWindow):
     def clear_thumbnail_cache(self) -> None:
         try:
             self.loader.clear_cache()
+            self.thumbnails.discard_seeds()
             self.thumbnail_cache.clear()
         except OSError as error:
             QMessageBox.warning(self, "清理缓存失败", str(error))
@@ -402,7 +408,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.13.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.14.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

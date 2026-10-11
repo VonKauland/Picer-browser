@@ -70,6 +70,7 @@ class PluginManager(QObject):
         self._closed = False
         self.jobs: dict[int, Worker] = {}
         self._next_job = 0
+        self.thumbnail_requests = {}
         self.logger = logging.getLogger(f"picer.plugins.{id(self)}")
         self.logger.propagate = False
         self.log_handler = None
@@ -333,6 +334,8 @@ class PluginManager(QObject):
         if dock is not None:
             self.host.removeDockWidget(dock)
             dock.deleteLater()
+        for token in self.thumbnail_requests.pop(plugin_id, ()):
+            token.cancel()
         for worker in self.jobs.values():
             if worker.plugin_id == plugin_id:
                 worker.token.cancel()
@@ -608,6 +611,24 @@ class PluginManager(QObject):
         worker.signals.finished.connect(finish, Qt.ConnectionType.QueuedConnection)
         QThreadPool.globalInstance().start(worker)
         return worker.token
+
+    def request_thumbnail(self, context, path, on_result, edge, priority):
+        tokens = self.thumbnail_requests.setdefault(context.plugin_id, set())
+        tokens.difference_update(
+            token for token in tuple(tokens) if token.finished or token.cancelled
+        )
+        if len(tokens) >= 512:
+            raise PluginError("缩略图请求队列已满")
+
+        def deliver(image):
+            tokens.discard(token)
+            record = self.records.get(context.plugin_id)
+            if record and record.context is context and record.state == "enabled":
+                self._invoke(context.plugin_id, on_result, image)
+
+        token = self.host.thumbnails.request(path, deliver, edge=edge, priority=priority)
+        tokens.add(token)
+        return token
 
     def get_setting(self, plugin_id: str, key: str, default: Any) -> Any:
         values = self.preferences["settings"].get(plugin_id, {})

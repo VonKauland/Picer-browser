@@ -202,6 +202,20 @@ class PluginContext:
         self._check("image.read")
         return self._manager.host.current_thumbnail.copy()
 
+    def request_thumbnail(self, path, on_result: Callable, *, edge=128, priority=False):
+        """Shared asynchronous thumbnail; returns a cancel token, GUI callback gets QImage.
+
+        Not bound to the viewer image revision. Disable/revoke cancels delivery.
+        All sizes reuse one auto-oriented 256px master in cache/thumbnails.
+        """
+        self._check("image.read")
+        self._check("tasks")
+        if not isinstance(path, (str, Path)) or not callable(on_result):
+            raise PluginError("缩略图路径或回调无效")
+        if type(edge) is not int or not 16 <= edge <= 256 or type(priority) is not bool:
+            raise PluginError("缩略图尺寸须为 16 至 256 像素")
+        return self._manager.request_thumbnail(self, path, on_result, edge, priority)
+
     def cache_directory(self) -> Path:
         """Private writable cache namespace, separate from persistent settings."""
         self._check("cache")

@@ -223,3 +223,25 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 ### 结构化 EXIF（0.13）
 
 `request_metadata` 保留原 `exif` 字典，并增加 `exif_sections`：`基础信息` 为标签 / 值映射，`详细信息` 为分组 / 标签 / 值映射。无相机标签的图片不显示 EXIF 区域，缺少个别字段显示 `未记录`。RAW 标签解析独立于像素解码，无法生成直方图时仍可返回相机信息与警告。
+
+### 共享缩略图缓存（0.14 起，API v1 兼容扩展）
+
+所有缩略图功能应使用 `context.request_thumbnail(path, on_result, edge=128, priority=False)`。
+需声明 `image.read` 和 `tasks` 权限；在 GUI 线程请求，回调同样在 GUI 线程收到 QImage。
+`edge` 为 16～256 像素，`priority=True` 用于优先显示当前可见预览。返回的 token 可调用 `cancel()`。
+切换主图不会自动取消请求；插件应在视图变化时取消旧请求。停用、卸载或上下文撤销会自动取消回调。
+缺失、损坏或不支持的图片返回空 QImage，不使插件停用；插件可画占位图。
+
+宿主统一在 `cache/thumbnails/` 持久化自动应用 EXIF 方向的 256px 母图，各显示尺寸共享母图；内存缓存最多 256 张 / 32 MiB。
+磁盘缓存最多 4096 张，同时遵守应用设置中的缓存容量。源路径、修改时间与文件大小参与索引；文件更新自动失效。
+同时请求同一文件会合并解码，专用线程池最多解码 2 张；宿主已读图片的缓存写入使用另一个串行队列，避免挤占主图加载或原图精修线程。可见预览优先，逐张返回，无整批等待。
+视图可保留 QIcon 等绘制对象，但不应另建源图解码或持久化缩略图缓存；`cache_directory()` 继续用于插件其他临时数据。
+**帮助 → 清理图片缓存** 清理共享内存和磁盘缓存；正在解码的旧任务不会重新写入已清理的缓存。
+
+```python
+self.thumbnail_request = context.request_thumbnail(
+    image_path, self.display_thumbnail, edge=80, priority=True
+)
+# 在面板切换目录等操作中取消不再需要的结果：
+self.thumbnail_request.cancel()
+```

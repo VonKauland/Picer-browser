@@ -26,7 +26,7 @@
 - Preserve panel motion: 420 ms OutBack (overshoot 0.55) expansion, 300 ms InOutCubic collapse, 220 ms leave delay and continuous reversal. Visual restyling must not change these animations.
 - Popup menus and comboboxes must have transparent rounded corners and no native white frame. Use RoundedSlider for default progress/settings sliders; render tests must check both orientations, inverted appearance and range endpoints while retaining Qt input behavior.
 
-- Bottom progress uses a centered one-third-width overlay and must not reserve a dock row. Side docks reach the bottom. Expose fixed/auto-hide only on grips and indicator strips. Transparent preview thumbnails retain configurable size/count, individual shadows, edge feathering and no scrollbar.
+- Bottom progress uses a centered one-third-width overlay and must not reserve a dock row. Side docks reach the bottom. Expose fixed/auto-hide only on grips and indicator strips. Transparent preview thumbnails retain configurable size and unrestricted total folder browsing, individual shadows, edge feathering and no scrollbar.
 
 - File browser: neutral frosted folder icons classify direct decodable images asynchronously; keep cache/watches bounded and stop them on disable. Selected row/tile outlines encompass the whole background, never tint folder icons. Keep parent entry pinned first, directories before files in every sort direction, single-click selection and double-click folder entry. Side keys navigate history; Backspace goes up but must keep text editing intact.
 - Preview reveal/compact motion shares one reversible timeline (280 ms OutCubic open, 220 ms InOutCubic close). Keep independent preview docking and existing edge-hover motion; verify intermediate frames, reversal and cleanup.
@@ -37,3 +37,6 @@
 
 - Held image navigation uses the saved millisecond interval, ignores OS repeats and stops on release/deactivation or editing focus. Rapid mode pauses full refinement and prefers 960px previews; use a separate bounded neighbour prefetch pool and keep stale-result/cancellation rules.
 - EXIF tables stay bottom-anchored with wrapping columns and upward details expansion. Preserve original metadata SDK fields; parse RAW camera tags independently of pixel/histogram decoding and never invent missing camera/lens values.
+
+- All thumbnails use the host ThumbnailService/ThumbnailCache via request_thumbnail; keep a shared 256px oriented master, coalesced decode, memory/disk limits, per-consumer cancellation and plugin revocation. Preview virtualizes visible neighbours without imposing a total image count cap; old thumbnail_count values are ignored. Window controls remain 32px and share the effective user accent; fullscreen precedes minimize/maximize/close.
+- The hidden bottom progress ring coexists with its original 84x5 indicator; keep both hover/pin entry points, avoid overlap, clean up both and preserve existing animation timings.

@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QTreeView,
 )
 
-from picer.imaging import read_image
 from picer.plugins import ui_icon
 from picer.ui import colors_for
 
@@ -41,7 +40,7 @@ class PhotoModel(QFileSystemModel):
         self.context = context
         self.cache = OrderedDict()
         self.pending = {}
-        self.token = None
+        self.tokens = {}
         self.busy = False
         self.stopped = False
         self.placeholder = ui_icon("image")
@@ -78,7 +77,7 @@ class PhotoModel(QFileSystemModel):
             if key in self.cache:
                 self.cache.move_to_end(key)
                 return self.cache[key]
-            if not self.stopped and len(self.pending) < 256:
+            if not self.stopped and key not in self.tokens and len(self.pending) < 256:
                 self.pending[key] = None
                 if not self.busy and not self.timer.isActive():
                     self.timer.start(0)
@@ -86,32 +85,18 @@ class PhotoModel(QFileSystemModel):
         return super().data(index, role)
 
     def load_batch(self):
-        if self.stopped or self.busy or not self.pending:
+        if self.stopped or not self.pending:
             return
-        keys = tuple(self.pending)[:24]
+        keys = tuple(self.pending)[: max(0, 8 - len(self.tokens))]
         for key in keys:
             self.pending.pop(key, None)
-        self.busy = True
+        for key in keys:
 
-        def work(token):
-            images = []
-            for key in keys:
-                token.checkpoint()
-                try:
-                    image = read_image(key[0], edge=128, token=token)
-                except (OSError, ValueError, RuntimeError):
-                    from PySide6.QtGui import QImage
-
-                    image = QImage()
-                images.append((key, image))
-            return images
-
-        def render(images):
-            if self.stopped:
-                return
-            self.busy = False
-            for key, image in images:
-                self.pending.pop(key, None)
+            def render(image, key=key):
+                self.tokens.pop(key, None)
+                self.busy = bool(self.tokens)
+                if self.stopped:
+                    return
                 self.cache[key] = (
                     self.placeholder if image.isNull() else QIcon(QPixmap.fromImage(image))
                 )
@@ -121,20 +106,20 @@ class PhotoModel(QFileSystemModel):
                 index = self.index(key[0])
                 if index.isValid():
                     self.dataChanged.emit(index, index, [Qt.ItemDataRole.DecorationRole])
-            if self.pending:
-                self.timer.start(0)
+                if self.pending:
+                    self.timer.start(0)
 
-        # Browsing another folder or changing the viewer image must not discard
-        # results and leave a filesystem thumbnail queue stuck in its busy state.
-        self.token = self.context.run_task(work, render, image_bound=False)
+            self.tokens[key] = self.context.request_thumbnail(key[0], render, edge=128)
+        self.busy = bool(self.tokens)
 
     def stop(self):
         self.stopped = True
         self.timer.stop()
         self.pending.clear()
         self.folders.stop()
-        if self.token:
-            self.token.cancel()
+        for token in self.tokens.values():
+            token.cancel()
+        self.tokens.clear()
 
 
 class PhotoDelegate(QStyledItemDelegate):

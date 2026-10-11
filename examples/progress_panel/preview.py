@@ -55,7 +55,10 @@ class PreviewStrip(QWidget):
                 self.owner.dock.setProperty("previewGeometry", target)
                 controller.collection.layout_strips()
             if target != self.geometry():
+                changed_width = target.width() != self.width()
                 self.setGeometry(target)
+                if changed_width:
+                    self.owner.refresh_timer.start()
                 self.raise_()
                 controller.strip.raise_()
 
@@ -68,10 +71,11 @@ class PreviewStrip(QWidget):
 
     def tile_rect(self, position):
         selected = self.items[position][0] == self.center_index
-        index = next((i for i, item in enumerate(self.items) if item[0] == self.center_index), 0)
         size = self.thumbnail_size if selected else round(self.thumbnail_size * 0.88)
         size *= 0.94 + 0.06 * self.reveal
-        center = self.width() / 2 + (position - index) * (self.thumbnail_size + 8)
+        center = self.width() / 2 + (self.items[position][0] - self.center_index) * (
+            self.thumbnail_size + 8
+        )
         return QRectF(center - size / 2, (self.height() - size) / 2, size, size)
 
     def paintEvent(self, event):
@@ -126,16 +130,16 @@ class PreviewStrip(QWidget):
                         self.owner.context.jump_to(item[0])
                     return
 
+    def move_center(self, delta):
+        paths = self.owner.context.image_paths()
+        if paths:
+            index = max(0, min(len(paths) - 1, self.center_index + delta))
+            self.owner.refresh_preview(center=index)
+
     def wheelEvent(self, event):
-        if self.items:
-            current = next(
-                (i for i, item in enumerate(self.items) if item[0] == self.center_index), 0
-            )
-            delta = event.angleDelta().y() or event.angleDelta().x()
-            if delta:
-                current = max(0, min(len(self.items) - 1, current - (1 if delta > 0 else -1)))
-                self.center_index = self.items[current][0]
-                self.update()
+        delta = event.angleDelta().y() or event.angleDelta().x()
+        if delta:
+            self.move_center(-1 if delta > 0 else 1)
         event.accept()
 
     def keyPressEvent(self, event):
@@ -143,16 +147,8 @@ class PreviewStrip(QWidget):
             event.accept()
         elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self.owner.context.jump_to(self.center_index)
-        elif self.items and event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
-            current = next(
-                (i for i, item in enumerate(self.items) if item[0] == self.center_index), 0
-            )
-            current = max(
-                0,
-                min(len(self.items) - 1, current + (1 if event.key() == Qt.Key.Key_Right else -1)),
-            )
-            self.center_index = self.items[current][0]
-            self.update()
+        elif event.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+            self.move_center(1 if event.key() == Qt.Key.Key_Right else -1)
         else:
             super().keyPressEvent(event)
 

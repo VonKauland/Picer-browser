@@ -10,15 +10,19 @@ from picer.theme import STYLE as STYLE
 class WindowButton(QPushButton):
     """Equal-sized controls with font-independent, colored line symbols."""
 
-    COLORS = {"minimize": "#E8FF59", "maximize": "#70b781", "close": "#d76b6b"}
-
-    def __init__(self, name, callback):
+    def __init__(self, name, callback, window):
         super().__init__()
+        self.window = window
         self.setObjectName(name)
         self.setStyleSheet("QPushButton { background: transparent; border: none; }")
         self.setFixedSize(32, 32)
         self.setAccessibleName(
-            {"minimize": "最小化", "maximize": "最大化或还原", "close": "关闭"}[name]
+            {
+                "fullscreen": "全屏或退出全屏",
+                "minimize": "最小化",
+                "maximize": "最大化或还原",
+                "close": "关闭",
+            }[name]
         )
         self.setToolTip(self.accessibleName())
         self.clicked.connect(callback)
@@ -26,7 +30,7 @@ class WindowButton(QPushButton):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(self.COLORS[self.objectName()])
+        color = QColor(self.window.skin_colors["accent"])
         if self.underMouse() or self.hasFocus():
             tint = QColor(color)
             tint.setAlpha(48 if self.isDown() else 24)
@@ -37,7 +41,12 @@ class WindowButton(QPushButton):
         painter.setPen(QPen(color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         center = QPointF(self.rect().center()) + QPointF(0.5, 0.5)
         x, y = center.x(), center.y()
-        if self.objectName() == "minimize":
+        if self.objectName() == "fullscreen":
+            for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+                corner = QPointF(x + dx * 4, y + dy * 4)
+                painter.drawLine(corner, corner - QPointF(dx * 2.5, 0))
+                painter.drawLine(corner, corner - QPointF(0, dy * 2.5))
+        elif self.objectName() == "minimize":
             painter.drawLine(QPointF(x - 4, y), QPointF(x + 4, y))
         elif self.objectName() == "maximize":
             painter.drawRect(QRectF(x - 4, y - 3, 8, 6))
@@ -98,11 +107,12 @@ class TitleBar(QWidget):
         control_layout.setContentsMargins(0, 0, 8, 0)
         self.control_buttons = {}
         for name, callback in (
+            ("fullscreen", window.toggle_fullscreen),
             ("minimize", window.showMinimized),
             ("maximize", self.toggle_maximized),
             ("close", window.close),
         ):
-            button = WindowButton(name, callback)
+            button = WindowButton(name, callback, window)
             control_layout.addWidget(button)
             self.control_buttons[name] = button
         buttons.addWidget(self.controls, 0, Qt.AlignmentFlag.AlignVCenter)

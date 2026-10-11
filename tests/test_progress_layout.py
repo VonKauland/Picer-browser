@@ -91,7 +91,7 @@ def test_old_progress_upgrade_preserves_settings_and_migrates_side_location(tmp_
     qtbot.wait(30)
     manager = upgraded.plugins
     record = manager.records["example.progress"]
-    assert record.state == "enabled" and record.manifest.version == "1.7.0"
+    assert record.state == "enabled" and record.manifest.version == "1.8.0"
     assert manager.get_setting("example.progress", "thumbnail_size", 0) == 144
     assert manager.panels["example.progress"].isHidden()
     assert upgraded.panel_hovers.controllers["example.progress"].area == DOCK_AREAS["bottom"]
@@ -163,7 +163,10 @@ def test_preview_transparent_fading_compact_controls_and_size_setting(
     progress = window.plugins.records["example.progress"].instance
     window.plugins.set_setting("example.progress", "thumbnail_size", size)
     progress.show_preview()
-    qtbot.waitUntil(lambda: len(progress.preview.items) == 9)
+    qtbot.waitUntil(
+        lambda: bool(progress.preview.items)
+        and all(not image.isNull() for _, _, image in progress.preview.items)
+    )
     qtbot.waitUntil(lambda: progress.expansion == 1)
     preview = progress.preview
     assert preview.thumbnail_size == size and preview.height() == size + 18

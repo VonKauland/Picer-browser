@@ -173,6 +173,50 @@ def verify_browser(window, browser, folder):
     )
 
 
+def verify_shared_thumbnails(window, folder):
+    import picer.cache as cache_module
+    from picer.cache import ThumbnailCache
+
+    source = folder.parent / "缩略图共享缓存检查.png"
+    if not source.exists():
+        image = QImage(320, 200, QImage.Format.Format_RGB32)
+        image.fill(Qt.GlobalColor.blue)
+        assert image.save(str(source))
+    original = cache_module.read_image
+    decoded = []
+
+    def read(path, **kwargs):
+        if Path(path) == source:
+            decoded.append(path)
+        return original(path, **kwargs)
+
+    cache_module.read_image = read
+    try:
+        results = []
+        for plugin_id, edge in (("example.files", 128), ("example.progress", 80)):
+            window.plugins.records[plugin_id].context.request_thumbnail(
+                source, results.append, edge=edge
+            )
+        wait_for(lambda: len(results) == 2)
+        assert sorted(image.width() for image in results) == [80, 128]
+        assert all(image.pixelColor(10, 10).blue() == 255 for image in results)
+        assert len(decoded) <= 1
+        before = len(decoded)
+        reopened = ThumbnailCache(window.paths_layout.cache)
+        assert reopened.read(source, edge=80).pixelColor(10, 10).blue() == 255
+        assert len(decoded) == before
+        canceled = []
+        token = window.plugins.records["example.progress"].context.request_thumbnail(
+            source, canceled.append
+        )
+        token.cancel()
+        wait_for(lambda: token.finished)
+        assert not canceled
+        print("Packaged shared thumbnail decode, disk reuse and cancellation passed")
+    finally:
+        cache_module.read_image = original
+
+
 def verify_held_keys(window):
     previous = window.current_path
     window.activateWindow()
@@ -215,6 +259,8 @@ def verify_media(window):
         controller.dock.close()
         window.panel_hovers.layout_strips()
         assert controller.strip.isVisible() and controller.strip.width() == RING_SIZE
+        assert controller.indicator.isVisible() and controller.indicator.size().height() == 5
+        assert controller.strip.geometry().bottom() < controller.indicator.geometry().top()
         assert abs(controller.strip.geometry().center().x() - window.rect().center().x()) <= 1
         assert f"/{len(window.paths)}" in controller.strip.toolTip()
         old_top = controller.strip.y()
@@ -343,6 +389,16 @@ def run(window, args, folder, done):
             button.size().width() == button.size().height() == 32
             for button in window.title_bar.control_buttons.values()
         )
+        assert list(window.title_bar.control_buttons) == [
+            "fullscreen",
+            "minimize",
+            "maximize",
+            "close",
+        ]
+        window.title_bar.control_buttons["fullscreen"].click()
+        assert window.isFullScreen()
+        window.title_bar.control_buttons["fullscreen"].click()
+        assert not window.isFullScreen()
         assert all(dock.titleBarWidget().height() == 0 for dock in window.plugins.panels.values())
         for plugin_id in ("example.files", "example.info", "example.progress"):
             record = window.plugins.records.get(plugin_id)
@@ -397,6 +453,8 @@ def run(window, args, folder, done):
             application_settings.deleteLater()
             verify_popups(window, browser)
             verify_browser(window, browser, folder)
+            if args.progress_panel_archive:
+                verify_shared_thumbnails(window, folder)
         progress = (
             window.plugins.records["example.progress"].instance
             if args.progress_panel_archive
@@ -437,7 +495,7 @@ def run(window, args, folder, done):
                 window.plugins, window, selected_id="example.progress", open_settings=True
             )
             management.settings_form.editors["thumbnail_size"].setValue(80)
-            management.settings_form.editors["thumbnail_count"].setValue(3)
+            assert "thumbnail_count" not in management.settings_form.editors
             management.save_settings()
             assert management.summary.text() == "设置已保存"
             management.close()
@@ -544,7 +602,12 @@ def run(window, args, folder, done):
                 invert()
 
         def preview_ready():
-            if window.plugins.jobs or progress.expansion < 1:
+            if (
+                window.plugins.jobs
+                or progress.expansion < 1
+                or not progress.preview.items
+                or any(image.isNull() for _, _, image in progress.preview.items)
+            ):
                 QTimer.singleShot(25, lambda: guarded(preview_ready))
                 return
             assert len(progress.preview.items) == 2, (
