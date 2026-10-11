@@ -2,6 +2,7 @@
 
 import traceback
 from pathlib import Path
+from threading import Event, Thread
 from time import sleep
 
 from PIL import Image
@@ -234,6 +235,35 @@ def verify_held_keys(window):
     print("Packaged held-key millisecond interval, release and saved repeat setting passed")
 
 
+def open_animation_with_cache_io_blocked(window, path):
+    entered, release = Event(), Event()
+
+    def disk_maintenance():
+        with window.thumbnail_cache._disk_lock:
+            entered.set()
+            release.wait(10)
+
+    thread = Thread(target=disk_maintenance)
+    thread.start()
+    try:
+        assert entered.wait(3)
+        assert window.open_image(path)
+        wait_for(lambda: window.animation.state.active)
+        wait_for(lambda: window.animation.state.frame > 0)
+        assert not release.is_set() and thread.is_alive()
+        images = []
+        window.plugins.records["example.progress"].context.request_thumbnail(path, images.append)
+        wait_for(lambda: bool(images))
+        assert not images[0].isNull() and thread.is_alive()
+        print(
+            f"Packaged {path.suffix} startup, frames and shared thumbnail "
+            "with blocked cache IO passed"
+        )
+    finally:
+        release.set()
+        thread.join(5)
+
+
 def verify_media(window):
     """Exercise wheel-packaged LibRaw/Pillow plus actual animated panel controls."""
     verify_held_keys(window)
@@ -244,8 +274,7 @@ def verify_media(window):
     for extension in ("gif", "webp"):
         path = directory / f"motion.{extension}"
         make_animation(path)
-        assert window.open_image(path)
-        wait_for(lambda: window.animation.state.active)
+        open_animation_with_cache_io_blocked(window, path)
         assert window.animation.state.count == 3
         wait_for(lambda: window.animation.state.frame > 0)
         window.animation.toggle(False)

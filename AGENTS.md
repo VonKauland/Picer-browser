@@ -40,3 +40,5 @@
 
 - All thumbnails use the host ThumbnailService/ThumbnailCache via request_thumbnail; keep a shared 256px oriented master, coalesced decode, memory/disk limits, per-consumer cancellation and plugin revocation. Preview virtualizes visible neighbours without imposing a total image count cap; old thumbnail_count values are ignored. Window controls remain 32px and share the effective user accent; fullscreen precedes minimize/maximize/close.
 - The hidden bottom progress ring coexists with its original 84x5 indicator; keep both hover/pin entry points, avoid overlap, clean up both and preserve existing animation timings.
+
+- Memory thumbnail lookup must never share locks with disk encoding/scanning/eviction. Maintain the disk index incrementally; queue startup/preference trimming off the GUI thread. GIF/WebP startup reuses the playback first frame (including over-budget transient frames); warm shared memory before emitting image events and preserve EXIF orientation, cancellation and bounded playback cache. Verify both formats continue playing with blocked cache IO.

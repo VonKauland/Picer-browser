@@ -235,14 +235,20 @@ class ImageLoader(QObject):
             return True
 
         def work(token):
-            image = read_image(path, edge=edge, auto_orient=options, token=token)
-            source = animation_source(path, token)
-            # Worker has a final cancellation checkpoint; close readers on races.
-            if token.cancelled:
+            source = None
+            try:
+                source = animation_source(path, token, auto_orient=options)
+                image = (
+                    source.preview(edge, token)
+                    if source
+                    else read_image(path, edge=edge, auto_orient=options, token=token)
+                )
+                token.checkpoint()
+                return image, source
+            except Exception:
                 if source:
                     source.close()
-                token.checkpoint()
-            return image, source
+                raise
 
         def finish(result, error):
             if generation != self.generation:
@@ -280,6 +286,7 @@ class ImageLoader(QObject):
         )
         if not self.options:
             return  # Shared thumbnails always use EXIF orientation.
+        self.host.thumbnail_cache.offer(path, thumbnail)
         self.pending_thumbnail = (path, thumbnail)
         self.thumbnail_timer.start()
 

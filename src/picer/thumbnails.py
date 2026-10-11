@@ -25,6 +25,7 @@ class ThumbnailService(QObject):
         self.writer.setMaxThreadCount(1)
         self.seed_pending = OrderedDict()
         self.seed_worker = None
+        self.trim_requested = False
         self.pending = OrderedDict()
         self.running = {}
         self.closed = False
@@ -42,11 +43,21 @@ class ThumbnailService(QObject):
             self.seed_pending.popitem(last=False)
         self.write_next()
 
+    def trim(self):
+        self.trim_requested = True
+        self.write_next()
+
     def write_next(self):
-        if self.closed or self.seed_worker or not self.seed_pending:
+        if self.closed or self.seed_worker:
             return
-        path, image = self.seed_pending.popitem(last=True)
-        worker = Worker(lambda token: self.cache.thumbnail(path, image))
+        if self.trim_requested:
+            self.trim_requested = False
+            worker = Worker(lambda token: self.cache.prune())
+        elif self.seed_pending:
+            path, image = self.seed_pending.popitem(last=True)
+            worker = Worker(lambda token: self.cache.thumbnail(path, image))
+        else:
+            return
         self.seed_worker = worker
         worker.signals.finished.connect(self.written, Qt.ConnectionType.QueuedConnection)
         self.writer.start(worker)
@@ -57,6 +68,7 @@ class ThumbnailService(QObject):
 
     def discard_seeds(self):
         self.seed_pending.clear()
+        self.trim_requested = False
         if self.seed_worker:
             self.seed_worker.token.cancel()
 

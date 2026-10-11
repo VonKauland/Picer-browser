@@ -1,8 +1,7 @@
-"""Shared, thread-safe thumbnail pixels with persistent and memory tiers."""
+"""Shared thumbnail pixels; disk maintenance never holds the GUI memory lock."""
 
 import hashlib
 import os
-import time
 import uuid
 from collections import OrderedDict
 from pathlib import Path
@@ -25,10 +24,10 @@ class ThumbnailCache:
         self.memory = OrderedDict()
         self.memory_bytes = 0
         self._lock = RLock()
+        self._disk_lock = RLock()
         self._flights = {}
         self._generation = 0
-        self._last_prune = 0.0
-        self._disk_count = None
+        self._disk_entries = None
         self._disk_bytes = 0
 
     @staticmethod
@@ -61,7 +60,7 @@ class ThumbnailCache:
             self.memory_bytes -= removed.sizeInBytes()
 
     def peek(self, path, *, edge=128):
-        """GUI-safe memory lookup; disk access/decoding belongs in read()."""
+        """Memory lookup never waits for PNG encoding, disk pruning or deletion."""
         try:
             key = self.key(path)
         except OSError:
@@ -71,13 +70,26 @@ class ThumbnailCache:
             if image is None:
                 return None
             self.memory.move_to_end(key)
-            return self.scale(image, edge)
+            image = QImage(image)
+        return self.scale(image, edge)
+
+    def offer(self, path, image):
+        """Host-only memory warmup before image events; persistence stays asynchronous."""
+        try:
+            key = self.key(path)
+        except OSError:
+            return
+        thumbnail = self.scale(image, self.EDGE)
+        with self._lock:
+            old = self.memory.get(key)
+            if old is None or old.isNull():
+                self._remember(key, thumbnail)
 
     def read(self, path, *, edge=128, token=None):
         return self._load(Path(path), edge, None, token)
 
     def thumbnail(self, path: Path, image: QImage) -> QImage:
-        """Seed the same cache from already-decoded, auto-oriented viewer pixels."""
+        """Seed the cache from already-decoded, auto-oriented viewer pixels."""
         return self._load(path, self.EDGE, image, None)
 
     def _load(self, path, edge, supplied, token):
@@ -92,13 +104,19 @@ class ThumbnailCache:
                 cached = self.memory.get(key)
                 if cached is not None:
                     self.memory.move_to_end(key)
-                    return self.scale(cached, edge)
-                flight = self._flights.get(key)
-                if flight is None:
-                    flight = Event()
-                    self._flights[key] = flight
+                    cached = QImage(cached)
                     generation = self._generation
-                    break
+                else:
+                    flight = self._flights.get(key)
+                    if flight is None:
+                        flight = Event()
+                        self._flights[key] = flight
+                        generation = self._generation
+                        break
+            if cached is not None:
+                if supplied is not None:
+                    self._persist(key, cached, generation, False)
+                return self.scale(cached, edge)
             flight.wait(0.025)
         try:
             target = self.directory / f"{key}.png"
@@ -112,36 +130,12 @@ class ThumbnailCache:
                 )
             if token:
                 token.checkpoint()
-            # A replaced file or cleared cache must not receive stale pixels.
             if self.key(path) != key:
                 return QImage()
             with self._lock:
                 if generation == self._generation:
                     self._remember(key, image)
-                    try:
-                        self.directory.mkdir(parents=True, exist_ok=True)
-                        if not image.isNull() and (rebuild or not target.is_file()):
-                            previous_size = target.stat().st_size if target.is_file() else 0
-                            temporary = self.directory / f"{key}.{uuid.uuid4().hex}.tmp"
-                            try:
-                                if image.save(str(temporary), "PNG"):
-                                    os.replace(temporary, target)
-                                    if self._disk_count is not None:
-                                        self._disk_count += int(previous_size == 0)
-                                        self._disk_bytes += target.stat().st_size - previous_size
-                            finally:
-                                temporary.unlink(missing_ok=True)
-                        if target.is_file():
-                            target.touch()
-                        if (
-                            self._disk_count is None
-                            or self._disk_count > self.limit
-                            or self._disk_bytes > self.byte_limit
-                            or time.monotonic() - self._last_prune > 1
-                        ):
-                            self.prune()
-                    except OSError:
-                        pass
+            self._persist(key, image, generation, rebuild)
             return self.scale(image, edge)
         except (OSError, ValueError, RuntimeError):
             image = self.scale(supplied, edge) if supplied is not None else QImage()
@@ -154,31 +148,72 @@ class ThumbnailCache:
                 self._flights.pop(key, None)
                 flight.set()
 
-    def prune(self):
-        with self._lock:
-            self._last_prune = time.monotonic()
+    def _persist(self, key, image, generation, rebuild):
+        try:
+            with self._disk_lock:
+                with self._lock:
+                    if generation != self._generation:
+                        return
+                self.directory.mkdir(parents=True, exist_ok=True)
+                if self._disk_entries is None:
+                    self._scan_disk()
+                target = self.directory / f"{key}.png"
+                if not image.isNull() and (rebuild or not target.is_file()):
+                    temporary = self.directory / f"{key}.{uuid.uuid4().hex}.tmp"
+                    try:
+                        if image.save(str(temporary), "PNG"):
+                            os.replace(temporary, target)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+                if target.is_file():
+                    target.touch()
+                    previous = self._disk_entries.pop(target.name, 0)
+                    size = target.stat().st_size
+                    self._disk_entries[target.name] = size
+                    self._disk_bytes += size - previous
+                self._trim_disk()
+        except OSError:
+            pass  # Persistence is optional; decoded pixels remain usable.
+
+    def _scan_disk(self):
+        """One startup/explicit scan; normal reads/writes update the index incrementally."""
+        entries = []
+        for file in self.directory.glob("*.png"):
             try:
-                files = sorted(
-                    self.directory.glob("*.png"), key=lambda file: file.stat().st_mtime_ns
-                )
-                total = sum(file.stat().st_size for file in files)
-                count = len(files)
-                for file in files:
-                    if count <= self.limit and total <= self.byte_limit:
-                        break
-                    size = file.stat().st_size
-                    file.unlink(missing_ok=True)
-                    total -= size
-                    count -= 1
-                self._disk_count, self._disk_bytes = count, total
+                stat = file.stat()
+                entries.append((stat.st_mtime_ns, file.name, stat.st_size))
+            except FileNotFoundError:
+                continue
+        entries.sort()
+        self._disk_entries = OrderedDict((name, size) for _, name, size in entries)
+        self._disk_bytes = sum(self._disk_entries.values())
+
+    def _trim_disk(self):
+        while self._disk_entries and (
+            len(self._disk_entries) > self.limit or self._disk_bytes > self.byte_limit
+        ):
+            name, size = next(iter(self._disk_entries.items()))
+            (self.directory / name).unlink(missing_ok=True)
+            self._disk_entries.pop(name)
+            self._disk_bytes -= size
+
+    def prune(self):
+        with self._disk_lock:
+            try:
+                self._scan_disk()
+                self._trim_disk()
             except OSError:
-                pass
+                self._disk_entries = None
 
     def clear(self) -> None:
+        # Release the memory lock before disk IO. A concurrent old writer is
+        # serialized by _disk_lock and its files are removed before clear returns.
         with self._lock:
             self._generation += 1
             self.memory.clear()
             self.memory_bytes = 0
-            self._disk_count, self._disk_bytes = 0, 0
+        with self._disk_lock:
+            self._disk_entries = None
+            self._disk_bytes = 0
             for file in self.directory.glob("*.png"):
                 file.unlink(missing_ok=True)

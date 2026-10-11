@@ -11,19 +11,35 @@ from picer.imaging import MAX_PIXELS, pillow_image
 from picer.media_types import AnimationState
 from picer.plugins.tasks import Worker
 
+FRAME_CACHE_BYTES = 64 * 1048576
+
 
 class FrameSource:
-    def __init__(self, path):
+    def __init__(self, path, *, auto_orient=True):
         self.reader = Image.open(path)
         if self.reader.width * self.reader.height > MAX_PIXELS:
             self.reader.close()
             raise ValueError("动画超过 1.2 亿像素的读取上限")
+        self.transpose = (
+            {
+                2: Image.Transpose.FLIP_LEFT_RIGHT,
+                3: Image.Transpose.ROTATE_180,
+                4: Image.Transpose.FLIP_TOP_BOTTOM,
+                5: Image.Transpose.TRANSPOSE,
+                6: Image.Transpose.ROTATE_270,
+                7: Image.Transpose.TRANSVERSE,
+                8: Image.Transpose.ROTATE_90,
+            }.get(self.reader.getexif().get(274))
+            if auto_orient
+            else None
+        )
         self.count = self.reader.n_frames
         self.loop = self.reader.info.get("loop", -1)
         if self.reader.format == "WEBP" and self.loop > 0:
             self.loop -= 1
             if self.loop == 0:
                 self.loop = -1
+        self.initial_frame = None
         self.cache = OrderedDict()
         self.bytes = 0
         self.lock = Lock()
@@ -35,27 +51,50 @@ class FrameSource:
                 self.cache.move_to_end(index)
                 return self.cache[index]
             self.reader.seek(index)
-            image = pillow_image(self.reader)
+            source = (
+                self.reader.transpose(self.transpose) if self.transpose is not None else self.reader
+            )
+            image = pillow_image(source)
             duration = max(1, int(self.reader.info.get("duration", 100) or 100))
             self.cache[index] = (image, duration)
             self.bytes += image.sizeInBytes()
-            while self.cache and (len(self.cache) > 12 or self.bytes > 64 * 1048576):
+            while self.cache and (len(self.cache) > 12 or self.bytes > FRAME_CACHE_BYTES):
                 _, (removed, _) = self.cache.popitem(last=False)
                 self.bytes -= removed.sizeInBytes()
             token.checkpoint()
             return image, duration
 
+    def preview(self, edge, token):
+        """Reuse playback frame zero instead of opening a second Qt decoder."""
+        image, duration = self.frame(0, token)
+        self.initial_frame = (image, duration)
+        preview = image.scaled(
+            min(edge, image.width()),
+            min(edge, image.height()),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        preview.setText("picer.native_width", str(image.width()))
+        preview.setText("picer.native_height", str(image.height()))
+        return preview
+
+    def take_initial(self):
+        with self.lock:
+            result, self.initial_frame = self.initial_frame, None
+            return result
+
     def close(self):
         with self.lock:
+            self.initial_frame = None
             self.reader.close()
             self.cache.clear()
             self.bytes = 0
 
 
-def animation_source(path, token):
+def animation_source(path, token, *, auto_orient=True):
     if bytes(QImageReader(str(path)).format()).lower() not in {b"gif", b"webp"}:
         return None
-    source = FrameSource(path)
+    source = FrameSource(path, auto_orient=auto_orient)
     if source.count <= 1:
         source.close()
         return None
@@ -115,7 +154,7 @@ class AnimationPlayer(QObject):
         self.source = source
         self.loops = 0
         self.publish(active=True, playing=True, frame=0, count=source.count)
-        self.seek(0)
+        self.seek(0, initial_frame=source.take_initial())
 
     def submit(self, work, callback, *, frame_task=False):
         worker = Worker(work)
@@ -133,7 +172,7 @@ class AnimationPlayer(QObject):
         self.pool.start(worker)
         return worker
 
-    def seek(self, index):
+    def seek(self, index, *, initial_frame=None):
         if not self.source or not 0 <= index < self.state.count:
             return
         self.timer.stop()
@@ -156,7 +195,7 @@ class AnimationPlayer(QObject):
                 self.timer.start(duration)
                 # Decode the next composited frame while this one is displayed.
                 next_index = (index + 1) % source.count
-                if image.sizeInBytes() > 64 * 1048576:
+                if image.sizeInBytes() > FRAME_CACHE_BYTES:
                     return
                 self.submit(
                     lambda token: source.frame(next_index, token),
@@ -164,7 +203,12 @@ class AnimationPlayer(QObject):
                     frame_task=True,
                 )
 
-        self.worker = self.submit(lambda token: source.frame(index, token), finish, frame_task=True)
+        if initial_frame is not None:
+            finish(initial_frame, None)
+        else:
+            self.worker = self.submit(
+                lambda token: source.frame(index, token), finish, frame_task=True
+            )
 
     def advance(self):
         if not self.source:

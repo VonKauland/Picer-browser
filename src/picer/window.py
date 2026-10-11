@@ -259,7 +259,7 @@ class MainWindow(QMainWindow):
         self.view.zoom_step = self.app_preferences["zoom_step"]
         self.view.double_click = self.app_preferences["double_click"]
         self.thumbnail_cache.byte_limit = self.app_preferences["cache_mb"] * 1048576
-        self.thumbnail_cache.prune()
+        self.thumbnails.trim()
         self.apply_host_style()
         self.restore_shortcuts(self.plugins.preferences["ui"].get("shortcuts", {}))
         for surface in tuple(self.glass.surfaces):
@@ -408,7 +408,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.14.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.14.1\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
