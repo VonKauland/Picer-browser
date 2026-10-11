@@ -209,3 +209,43 @@ def test_settings_dialog_has_clear_outer_corners(window, qtbot):
     settings.show()
     qtbot.waitUntil(settings.isVisible)
     assert_clear_corners(settings)
+
+
+@pytest.mark.parametrize("orientation", [Qt.Orientation.Horizontal, Qt.Orientation.Vertical])
+@pytest.mark.parametrize("inverted", [False, True])
+@pytest.mark.parametrize("rtl", [False, True])
+def test_absolute_click_seek_respects_direction_and_keeps_native_drag(
+    qtbot, orientation, inverted, rtl
+):
+    from PySide6.QtWidgets import QStyleOptionSlider
+
+    slider = RoundedSlider(orientation, jump_on_click=True)
+    qtbot.addWidget(slider)
+    slider.setStyleSheet(STYLE)
+    slider.resize(260, 30) if orientation == Qt.Orientation.Horizontal else slider.resize(30, 260)
+    slider.setRange(5, 105)
+    slider.setInvertedAppearance(inverted)
+    slider.setLayoutDirection(
+        Qt.LayoutDirection.RightToLeft if rtl else Qt.LayoutDirection.LeftToRight
+    )
+    slider.show()
+    option = QStyleOptionSlider()
+    slider.initStyleOption(option)
+    option.sliderPosition = option.sliderValue = 85
+    point = slider.handle_rect(option).center().toPoint()
+    emitted = []
+    slider.valueChanged.connect(emitted.append)
+    qtbot.mouseClick(slider, Qt.MouseButton.LeftButton, pos=point)
+    assert abs(slider.value() - 85) <= 1
+    assert len(emitted) == 1  # No intermediate page-step value.
+    slider.setTracking(False)
+    option.sliderPosition = option.sliderValue = 45
+    begin = slider.handle_rect(option).center().toPoint()
+    option.sliderPosition = option.sliderValue = 95
+    end = slider.handle_rect(option).center().toPoint()
+    previous = slider.value()
+    qtbot.mousePress(slider, Qt.MouseButton.LeftButton, pos=begin)
+    qtbot.mouseMove(slider, end)
+    assert slider.value() == previous
+    qtbot.mouseRelease(slider, Qt.MouseButton.LeftButton, pos=end)
+    assert abs(slider.value() - 95) <= 1

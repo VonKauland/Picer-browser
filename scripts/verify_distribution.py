@@ -115,6 +115,8 @@ def verify(application: Path) -> None:
             raise RuntimeError("File browser home did not survive relocation")
         if preferences["ui"]["application"]["zoom_step"] != 30:
             raise RuntimeError("Application settings did not survive relocation")
+        if preferences["ui"]["application"]["notification_ms"] != 1500:
+            raise RuntimeError("Notification duration did not survive relocation")
         print(
             "Folder layout, icons, function/skin/panel components, quick slots, fullscreen, "
             "cache, restart and relocation checks passed"

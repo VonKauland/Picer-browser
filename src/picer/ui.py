@@ -121,9 +121,37 @@ class RoundedSlider(QSlider):
     painting the track explicitly avoids both that block and squared endpoints.
     """
 
-    def __init__(self, orientation=Qt.Orientation.Horizontal, parent=None):
+    def __init__(self, orientation=Qt.Orientation.Horizontal, parent=None, *, jump_on_click=False):
         super().__init__(orientation, parent)
+        self.jump_on_click = jump_on_click
         self.setMinimumSize(24, 24)
+
+    def mousePressEvent(self, event):
+        if self.jump_on_click and event.button() == Qt.MouseButton.LeftButton:
+            option = QStyleOptionSlider()
+            self.initStyleOption(option)
+            if not self.handle_rect(option).contains(event.position()):
+                endpoints = QStyleOptionSlider(option)
+                endpoints.sliderPosition = endpoints.sliderValue = self.minimum()
+                start = self.handle_rect(endpoints).center()
+                endpoints.sliderPosition = endpoints.sliderValue = self.maximum()
+                end = self.handle_rect(endpoints).center()
+                horizontal = self.orientation() == Qt.Orientation.Horizontal
+                low = start.x() if horizontal else start.y()
+                high = end.x() if horizontal else end.y()
+                position = event.position().x() if horizontal else event.position().y()
+                self.setSliderPosition(
+                    QStyle.sliderValueFromPosition(
+                        self.minimum(),
+                        self.maximum(),
+                        round(position - min(low, high)),
+                        round(abs(high - low)),
+                        low > high,
+                    )
+                )
+        # Once moved under the pointer, native Qt handle dragging/release retains
+        # tracking, keyboard, RTL, inverted ranges and accessibility semantics.
+        super().mousePressEvent(event)
 
     def handle_rect(self, option):
         return QRectF(

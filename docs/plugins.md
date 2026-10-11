@@ -143,7 +143,7 @@ class Plugin:
 | events.subscribe | `subscribe(name, callback)` | 订阅图片、动画或外观事件，停用时自动撤销 |
 | settings | `get_setting(key, default=None)` / `set_setting(key, value)` | 插件命名空间下的 JSON 设置；读取返回副本，单值最多 64 KiB 序列化 JSON |
 | tasks | `run_task(work, on_result, image_bound=True)` | 后台计算，结果在 GUI 线程交付，返回取消令牌 |
-| 无额外声明 | `notify(message)` | 显示信息对话框 |
+| 无额外声明 | `notify(message)` | 显示纯文字、不可交互的毛玻璃通知气泡；默认 1 秒，跟随系统时长设置 |
 
 所有上下文 API 必须在 GUI 线程调用；停用后的上下文不可继续使用。插件清理钩子自行停止自己创建的资源，不应再注册命令或访问上下文。
 

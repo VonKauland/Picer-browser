@@ -91,7 +91,7 @@ def test_old_progress_upgrade_preserves_settings_and_migrates_side_location(tmp_
     qtbot.wait(30)
     manager = upgraded.plugins
     record = manager.records["example.progress"]
-    assert record.state == "enabled" and record.manifest.version == "1.8.0"
+    assert record.state == "enabled" and record.manifest.version == "1.8.1"
     assert manager.get_setting("example.progress", "thumbnail_size", 0) == 144
     assert manager.panels["example.progress"].isHidden()
     assert upgraded.panel_hovers.controllers["example.progress"].area == DOCK_AREAS["bottom"]

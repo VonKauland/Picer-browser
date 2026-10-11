@@ -4,6 +4,7 @@ DEFAULTS = {
     "start": "empty",
     "remember_window": True,
     "tooltips": True,
+    "notification_ms": 1000,
     "focus_image": True,
     "default_scale": "fit",
     "auto_orient": True,
@@ -26,6 +27,7 @@ CHOICES = {
     "density": {"standard", "compact"},
 }
 RANGES = {
+    "notification_ms": (250, 10000),
     "key_repeat_ms": (30, 2000),
     "key_repeat_delay_ms": (0, 5000),
     "zoom_step": (5, 100),

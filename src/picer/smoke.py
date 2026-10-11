@@ -288,6 +288,13 @@ def verify_media(window):
         assert window.animation.state.count == 3
         wait_for(lambda: window.animation.state.frame > 0)
         window.animation.toggle(False)
+        wait_for(lambda: progress.playback_expansion == 1)
+        progress.playback_slider.setValue(0)
+        slider = progress.playback_slider
+        QTest.mouseClick(
+            slider, Qt.MouseButton.LeftButton, pos=QPoint(slider.width() // 2, slider.height() // 2)
+        )
+        assert window.animation.state.frame == 1
         progress.playback_slider.setValue(2)
         wait_for(lambda: window.animation.state.duration == 190)
         assert window.view.image_item.pixmap().toImage().pixelColor(30, 30).blue() > 240
@@ -813,6 +820,7 @@ def verify_input_features(window):
     assert editor.tabs.count() == 3
     assert editor.assign("下一张", "keyboard", "Ctrl+Alt+N")
     settings.editors["key_repeat_delay_ms"].setValue(300)
+    settings.editors["notification_ms"].setValue(1500)
     assert editor.assign("下一张", "mouse", "Ctrl+Forward")
     assert editor.assign("下一张", "touch", "R1")
     settings.save()
@@ -853,4 +861,37 @@ def verify_input_features(window):
     print(
         "Packaged transparent glowing app/function icons, icon-only chrome, "
         "fullscreen slide, two-page plugin and multi-input bindings passed"
+    )
+    verify_notifications_and_click_seek(window, paths)
+
+
+def verify_notifications_and_click_seek(window, paths):
+    """Exercise actual click-through notifications and image seeking in the EXE."""
+    bubble = window.notifications
+    bubble.pending.clear()
+    bubble.dismiss()
+    wait_for(lambda: bubble.phase == "hidden")
+    assert window.app_preferences["notification_ms"] == 1500
+    window.app_preferences["notification_ms"] = 250
+    window.notify("纯文字操作提示")
+    wait_for(lambda: bubble.phase == "visible")
+    assert bubble.height() == 32 and bubble.width() < 250
+    assert bubble.snapshot.size() == bubble.size()
+    assert bubble.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    assert bubble.focusPolicy() == Qt.FocusPolicy.NoFocus
+    assert bubble.grab().toImage().pixelColor(0, 0).alpha() <= 4
+    assert bubble.timer.interval() == 250
+    wait_for(lambda: bubble.phase == "hidden")
+    window.app_preferences["notification_ms"] = 1500
+    window.panel_hovers.controllers["example.progress"].pin()
+    assert window.open_image(paths[0])
+    wait_for(lambda: window.current_path == paths[0])
+    slider = window.plugins.records["example.progress"].instance.slider
+    QTest.mouseClick(
+        slider, Qt.MouseButton.LeftButton, pos=QPoint(slider.width() // 2, slider.height() // 2)
+    )
+    wait_for(lambda: window.current_path == paths[2])
+    print(
+        "Packaged text-only frosted notifications, duration "
+        "and exact image/frame click seeking passed"
     )

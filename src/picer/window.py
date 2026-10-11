@@ -36,6 +36,7 @@ from picer.imaging import supported_suffixes
 from picer.input_bindings import InputBindings
 from picer.loading import ImageLoader
 from picer.navigation import NavigationKeys
+from picer.notifications import NotificationBubble
 from picer.panels import GlassBackdrop, PanelHovers
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
@@ -144,6 +145,7 @@ class MainWindow(QMainWindow):
         self.source_size = (0, 0)
         self.image_rotation = 0
         self.navigation_request = None
+        self.navigation_feedback = 0
         self.last_error = ""
         self.view = ImageView()
         self.title_bar = TitleBar(self)
@@ -222,6 +224,7 @@ class MainWindow(QMainWindow):
         self.plugins.changed.connect(self.inputs.reload)
         self.apply_preferences()
         self.navigation_keys = NavigationKeys(self)
+        self.notifications = NotificationBubble(self)
         self.update_actions()
         self.title_bar.arrange()
 
@@ -378,7 +381,11 @@ class MainWindow(QMainWindow):
         self.plugins.emit_image("rotated")
 
     def plugin_notification(self, message: str) -> None:
-        QMessageBox.information(self, "揽映 · 插件", str(message))
+        self.notify(message)
+
+    def notify(self, message: str) -> None:
+        if hasattr(self, "notifications"):
+            self.notifications.notify(message)
 
     def show_plugins(self) -> None:
         dialog = PluginDialog(self.plugins, self)
@@ -399,6 +406,7 @@ class MainWindow(QMainWindow):
         if self.current_path:
             ui["last_image"] = str(self.current_path)
         self.plugins._save()
+        self.notifications.dispose()
         self.navigation_keys.dispose()
         self.inputs.dispose()
         self.fullscreen_chrome.dispose()
@@ -422,6 +430,7 @@ class MainWindow(QMainWindow):
         else:
             self.was_maximized = self.isMaximized()
             self.showFullScreen()
+            self.notify("已进入全屏")
 
     def exit_fullscreen(self) -> None:
         if self.isFullScreen():
@@ -429,6 +438,7 @@ class MainWindow(QMainWindow):
                 self.showMaximized()
             else:
                 self.showNormal()
+            self.notify("已退出全屏")
 
     def open_data_directory(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths_layout.root)))
@@ -440,12 +450,14 @@ class MainWindow(QMainWindow):
             self.thumbnail_cache.clear()
         except OSError as error:
             QMessageBox.warning(self, "清理缓存失败", str(error))
+        else:
+            self.notify("图片缓存已清理")
 
     def show_about(self) -> None:
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.15.1\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.16.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -496,6 +508,7 @@ class MainWindow(QMainWindow):
     def open_image(self, path: Path) -> bool:
         """Accept a request; large images/RAW/animation finish in the background."""
         self.navigation_request = None
+        self.navigation_feedback = 0
         self.loader.folder_candidates.clear()
         return self.loader.open(path)
 
@@ -512,6 +525,7 @@ class MainWindow(QMainWindow):
         self.plugins.emit_image("indexed")
 
     def present_image(self, path, image, *, paths=None, preview=False):
+        feedback, self.navigation_feedback = self.navigation_feedback, 0
         self.animation.stop()
         self.double_page.clear()
         self.current_path = path
@@ -527,6 +541,10 @@ class MainWindow(QMainWindow):
                 self.paths.append(path)
             self.path_positions = {item: index for index, item in enumerate(self.paths)}
             self.image_path_snapshot = tuple(self.paths)
+        if feedback < 0 and self.path_positions.get(path) == 0:
+            self.notify("已到第一张")
+        elif feedback > 0 and self.path_positions.get(path) == len(self.paths) - 1:
+            self.notify("已到最后一张")
         self.current_thumbnail = image.scaled(
             min(256, image.width()),
             min(256, image.height()),
@@ -588,6 +606,8 @@ class MainWindow(QMainWindow):
             return
         self.loader.requested = self.current_path
         # Keep the last good image and expose a nonmodal failure on the caption.
+        self.navigation_feedback = 0
+        self.notify("图片读取失败")
         self.title_bar.caption.setToolTip(self.last_error)
         if self.current_path is None:
             self.empty_label.setText(self.last_error)
@@ -597,6 +617,7 @@ class MainWindow(QMainWindow):
         """Skip unreadable images and wrap around at folder boundaries."""
         if self.current_path is None or len(self.paths) < 2:
             return
+        self.navigation_feedback = 1 if offset > 0 else -1
         self.loader.folder_candidates.clear()
         self.loader.direction = 1 if offset > 0 else -1
         self.continue_navigation(self.double_page.offset(offset), len(self.paths) - 1)
@@ -608,6 +629,8 @@ class MainWindow(QMainWindow):
         for step in range(1, budget + 1):
             target = index + offset + (step - 1) * (1 if offset > 0 else -1)
             if not self.app_preferences["wrap"] and not 0 <= target < len(paths):
+                self.navigation_feedback = 0
+                self.notify("已到第一张" if offset < 0 else "已到最后一张")
                 return
             path = paths[target % len(paths)]
             if self.loader.open(path):
@@ -618,6 +641,7 @@ class MainWindow(QMainWindow):
                 )
                 return
         self.loader.requested = self.current_path
+        self.navigation_feedback = 0
 
     def update_actions(self) -> None:
         self.previous_action.setEnabled(len(self.paths) > 1)

@@ -218,6 +218,9 @@ class PluginManager(QObject):
         self._save()
         self.changed.emit()
 
+        if plugin_id in activated and self.records[plugin_id].manifest.type == "function":
+            self.host.notify(f"{self.records[plugin_id].manifest.name}已启用")
+
     def _enable(self, plugin_id: str, visiting: set[str], activated: list[str]) -> None:
         if self._closed:
             raise PluginError("插件管理器已关闭")
@@ -300,10 +303,14 @@ class PluginManager(QObject):
         dependents = self._dependents(plugin_id)
         if dependents:
             raise PluginError(f"请先停用依赖此插件的插件：{', '.join(dependents)}")
-        self._cleanup(self.records[plugin_id])
+        record = self.records[plugin_id]
+        was_enabled = record.state == "enabled"
+        self._cleanup(record)
         self.preferences["enabled"][plugin_id] = False
         self._save()
         self.changed.emit()
+        if was_enabled and record.manifest.type == "function":
+            self.host.notify(f"{record.manifest.name}已停用")
 
     def reload(self, plugin_id: str) -> None:
         record = self.records[plugin_id]
@@ -402,6 +409,13 @@ class PluginManager(QObject):
         except Exception as error:
             self._fail(plugin_id, error)
 
+    def _invoke_command(self, plugin_id, key, callback):
+        self._invoke(plugin_id, callback)
+        action = self.commands.get(key)
+        if action is not None and self.records[plugin_id].state == "enabled":
+            suffix = ("已开启" if action.isChecked() else "已关闭") if action.isCheckable() else ""
+            self.host.notify(action.text() + suffix)
+
     def add_command(
         self, plugin_id, command_id, label, callback, shortcut, requires_image, menu, icon=None
     ):
@@ -459,7 +473,7 @@ class PluginManager(QObject):
         action.setProperty("default_shortcut", default_shortcut)
         action.setProperty("plugin_id", plugin_id)
         action.setProperty("requires_image", requires_image)
-        action.triggered.connect(lambda: self._invoke(plugin_id, callback))
+        action.triggered.connect(lambda: self._invoke_command(plugin_id, key, callback))
         self.host.plugin_menus["插件"].addAction(action)
         if menu != "插件":
             self.host.plugin_menus[menu].addAction(action)
@@ -834,6 +848,7 @@ class PluginManager(QObject):
             self.preferences["enabled"][manifest.id] = False
             self._save()
             self.changed.emit()
+            self.host.notify(f"{manifest.name}已安装")
             return manifest.id
         except (OSError, zipfile.BadZipFile, RuntimeError) as error:
             raise PluginError(f"安装失败：{error}") from error

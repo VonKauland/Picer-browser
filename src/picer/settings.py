@@ -116,6 +116,8 @@ class ApplicationSettings(StyledDialog):
         layout.addWidget(card)
         card = Card("操作反馈")
         self.preference(card, "tooltips", "显示操作提示")
+        duration = self.preference(card, "notification_ms", "通知气泡显示时长")
+        duration.setSuffix(" ms")
         self.preference(card, "focus_image", "打开图片后聚焦画布")
         layout.addWidget(card)
         card = Card("文件关联")
@@ -360,3 +362,4 @@ class ApplicationSettings(StyledDialog):
         self.manager._save()
         self.host.apply_preferences()
         self.accept()
+        self.host.notify("设置已保存")
