@@ -1079,3 +1079,65 @@ def test_browser_refresh_reloads_image_and_stops_old_jobs(window, tmp_path, qtbo
     icon = plugin.model.data(plugin.model.index(str(path)), Qt.ItemDataRole.DecorationRole)
     image = icon.pixmap(32, 32).toImage()
     assert image.pixelColor(image.width() // 2, image.height() // 2).blue() > 200
+
+
+@pytest.mark.parametrize("mode", ["list", "tiles"])
+def test_folder_first_photo_preview_shared_cache_and_live_updates(
+    window, tmp_path, qtbot, pictures, mode, monkeypatch
+):
+    album = pictures / "album"
+    album.mkdir()
+    (album / "00-broken.jpg").write_text("broken")
+    Image.new("RGB", (32, 24), "green").save(album / "z-last.png")
+    first = album / "A-first.png"
+    Image.new("RGB", (32, 24), "red").save(first)
+    plugin = enable(window, tmp_path, "file_browser")
+    plugin.context.set_setting("view", mode)
+    plugin.apply_view()
+    folders = plugin.model.files.folders
+    probed = []
+    can_read = folders.can_read
+
+    def probe(source, token):
+        if Path(source).parent == album:
+            probed.append(Path(source).name)
+        return can_read(source, token)
+
+    monkeypatch.setattr(folders, "can_read", probe)
+    plugin.open_folder(pictures)
+    path = str(album)
+    folders.icon(path)
+    qtbot.waitUntil(lambda: path in folders.previews)
+    assert folders.sources[path] == str(first)
+    assert set(probed) == {"00-broken.jpg", "A-first.png"}
+    pixels = folders.icon(path).pixmap(128, 128).toImage()
+    assert pixels.pixelColor(80, 46).red() > 230
+    assert pixels.pixelColor(80, 46).green() < 30
+    # The photo is smaller than the front-facing sleeve and biased to its right.
+    left = pixels.pixelColor(34, 46)
+    assert abs(left.red() - left.green()) < 12
+    assert pixels.pixelColor(0, 0).alpha() == 0
+    assert folders.icon(path).pixmap(128, 128, QIcon.Mode.Selected).toImage() == pixels
+    assert not window.thumbnail_cache.peek(first).isNull()
+    assert window.thumbnail_cache.peek(first).pixelColor(0, 0).red() > 230
+    # Updating the existing first photo (not a directory membership change)
+    # must refresh its shared thumbnail and the composite folder icon.
+    Image.new("RGB", (48, 32), "blue").save(first)
+    qtbot.waitUntil(
+        lambda: path in folders.previews
+        and folders.icon(path).pixmap(128, 128).toImage().pixelColor(80, 46).blue() > 230
+    )
+    earlier = album / "01-new.png"
+    Image.new("RGB", (32, 24), "yellow").save(earlier)
+    qtbot.waitUntil(lambda: folders.sources.get(path) == str(earlier))
+    qtbot.waitUntil(
+        lambda: folders.icon(path).pixmap(128, 128).toImage().pixelColor(80, 46).green() > 230
+    )
+    earlier.unlink()
+    qtbot.waitUntil(lambda: folders.sources.get(path) == str(first))
+    qtbot.waitUntil(
+        lambda: folders.icon(path).pixmap(128, 128).toImage().pixelColor(80, 46).blue() > 230
+    )
+    window.plugins.disable("example.files")
+    assert folders.stopped and not folders.preview_tokens
+    assert not folders.watcher.files() and not folders.watcher.directories()

@@ -42,3 +42,5 @@
 - The hidden bottom progress ring coexists with its original 84x5 indicator; keep both hover/pin entry points, avoid overlap, clean up both and preserve existing animation timings.
 
 - Memory thumbnail lookup must never share locks with disk encoding/scanning/eviction. Maintain the disk index incrementally; queue startup/preference trimming off the GUI thread. GIF/WebP startup reuses the playback first frame (including over-budget transient frames); warm shared memory before emitting image events and preserve EXIF orientation, cancellation and bounded playback cache. Verify both formats continue playing with blocked cache IO.
+
+- Folder icons remain frontal, with a smaller card inset to the right behind the frosted sleeve. Select the first directly readable image by name in a background scan, then request its pixels only through the shared thumbnail SDK. Bound composites, requests and source-file watches; invalidate on first-photo edits as well as directory changes, reject stale callbacks and clean up on disable. Preserve directory-specific sorting, whole-row selection and panel motion.

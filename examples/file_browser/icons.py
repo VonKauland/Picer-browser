@@ -14,7 +14,7 @@ from PySide6.QtGui import (
 )
 
 
-def folder_icon(pictures=False):
+def folder_icon(pictures=False, preview=None):
     size = 128
     image = QImage(size, size, QImage.Format.Format_RGBA8888)
     image.fill(Qt.GlobalColor.transparent)
@@ -32,19 +32,39 @@ def folder_icon(pictures=False):
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     gradient = QLinearGradient(14, 14, 114, 110)
-    gradient.setColorAt(0, QColor("#737377"))
+    gradient.setColorAt(0, QColor("#929296"))
+    gradient.setColorAt(0.45, QColor("#59595E"))
     gradient.setColorAt(1, QColor("#303034"))
     painter.setBrush(gradient)
     painter.setPen(QPen(QColor("#A0A0A4"), 1.5))
     painter.drawPath(back)
     painter.setPen(Qt.PenStyle.NoPen)
+    card = QRectF(52, 34, 54, 68)
     painter.setBrush(QColor("#DDDDDF"))
-    painter.drawRoundedRect(QRectF(44, 34, 63, 77), 8, 8)
+    painter.drawRoundedRect(card, 7, 7)
     painter.setBrush(QColor("#7B7B80"))
-    if pictures:
+    if preview is not None and not preview.isNull():
+        # A smaller, front-facing card sits inside the sleeve on its right.
+        clipped = QPainterPath()
+        clipped.addRoundedRect(card, 7, 7)
+        photo = preview.scaled(
+            54,
+            68,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        painter.save()
+        painter.setClipPath(clipped)
+        painter.drawImage(
+            card,
+            photo,
+            QRectF((photo.width() - 54) / 2, (photo.height() - 68) / 2, 54, 68),
+        )
+        painter.restore()
+    elif pictures:
         painter.drawEllipse(QRectF(55, 40, 10, 10))
         mountain = QPainterPath()
-        mountain.moveTo(48, 69)
+        mountain.moveTo(54, 69)
         mountain.lineTo(61, 55)
         mountain.lineTo(69, 62)
         mountain.lineTo(84, 46)
@@ -53,7 +73,7 @@ def folder_icon(pictures=False):
         painter.drawPath(mountain)
     else:
         for y in (43, 54, 65, 76):
-            painter.drawRoundedRect(QRectF(54, y, 40, 5), 2.5, 2.5)
+            painter.drawRoundedRect(QRectF(60, y, 36, 5), 2.5, 2.5)
     painter.end()
     blurred = Image.frombytes("RGBA", (size, size), bytes(image.bits())).filter(
         ImageFilter.GaussianBlur(3.5)
@@ -78,9 +98,16 @@ def folder_icon(pictures=False):
     painter.setClipPath(front)
     painter.drawImage(0, 0, haze)
     tint = QLinearGradient(0, 57, 0, 116)
-    tint.setColorAt(0, QColor(110, 110, 115, 125))
+    tint.setColorAt(0, QColor(150, 150, 155, 125))
+    tint.setColorAt(0.45, QColor(100, 100, 105, 160))
     tint.setColorAt(1, QColor(58, 58, 62, 205))
     painter.fillPath(front, tint)
+    sheen = QLinearGradient(12, 0, 116, 0)
+    sheen.setColorAt(0, QColor(255, 255, 255, 35))
+    sheen.setColorAt(0.25, QColor(255, 255, 255, 8))
+    sheen.setColorAt(0.7, QColor(255, 255, 255, 0))
+    sheen.setColorAt(1, QColor(255, 255, 255, 18))
+    painter.fillPath(front, sheen)
     painter.restore()
     edge = QLinearGradient(0, 57, 0, 116)
     edge.setColorAt(0, QColor("#CCCCCF"))

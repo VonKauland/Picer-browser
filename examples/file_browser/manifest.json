@@ -1,11 +1,11 @@
 {
   "id": "example.files",
   "name": "文件浏览器",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",
-  "description": "独立快速访问与历史、磁盘列表、目录独立排序、毛玻璃图标和列表 / 平铺图片预览。",
+  "description": "正面毛玻璃文件夹首图预览、独立快速访问与历史、磁盘列表、目录独立排序和列表 / 平铺图片预览。",
   "permissions": [
     "ui.panels",
     "image.read",

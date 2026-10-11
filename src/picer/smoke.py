@@ -7,7 +7,7 @@ from time import sleep
 
 from PIL import Image
 from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, Qt, QTimer
-from PySide6.QtGui import QCursor, QImage, QWheelEvent
+from PySide6.QtGui import QCursor, QIcon, QImage, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QStyleOptionSlider
 
@@ -136,6 +136,14 @@ def verify_browser(window, browser, folder):
     assert browser.model.isDir(browser.model.index(0, 0, browser.tree.rootIndex()))
     browser.model.data(browser.model.index(str(child)), Qt.ItemDataRole.DecorationRole)
     wait_for(lambda: browser.model.files.folders.cache.get(str(child)) is True)
+    folders = browser.model.files.folders
+    wait_for(lambda: str(child) in folders.previews)
+    source = Path(folders.sources[str(child)])
+    assert source.parent == child and not window.thumbnail_cache.peek(source).isNull()
+    normal = folders.icon(str(child)).pixmap(128, 128).toImage()
+    assert normal.pixelColor(0, 0).alpha() == 0
+    assert normal == folders.icon(str(child)).pixmap(128, 128, QIcon.Mode.Selected).toImage()
+    print("Packaged frontal frosted folder first-photo card and shared cache passed")
     browser.view_button.click()
     QTest.qWait(20)
     assert browser.quick_menu.isVisible()
