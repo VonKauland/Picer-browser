@@ -327,6 +327,12 @@ class GamepadMonitor(QObject):
     def dispose(self):
         self.disposed = True
         self.timer.stop()
+        capture = self._capture() if self._capture else None
+        if capture is not None:
+            try:
+                capture.detach()
+            except RuntimeError:
+                pass  # The native window may already be tearing down.
         self._capture = None
         self.held = [frozenset() for _ in range(4)]
         # Keep the signal owner alive until the single native reader returns.

@@ -1,6 +1,6 @@
 """Unbranded asymmetric controller schematic and staged XInput selection."""
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QObject, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QApplication,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from picer.gamepad import GAMEPAD_LABELS, SHOULDERS, normalize_gamepad
 
@@ -192,6 +193,7 @@ class GamepadPage(QWidget):
         layout.addWidget(note)
         self.device.currentIndexChanged.connect(self.device_changed)
         self.subscribed = False
+        self.connections = []
         self.refresh_status()
 
     def value(self):
@@ -232,7 +234,9 @@ class GamepadPage(QWidget):
             self.window(),
         ):
             return
-        if QApplication.activeWindow() is not self.window():
+        # On Windows a native dialog activation group can still report its owner
+        # as QApplication.activeWindow(), while the dialog is active itself.
+        if not self.window().isActiveWindow():
             return
         current = self.monitor.held[index]
         self.select_button(key)
@@ -260,19 +264,27 @@ class GamepadPage(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        if not isValid(self.monitor) or self.monitor.disposed:
+            return
         if not self.subscribed:
-            self.monitor.status_changed.connect(self.refresh_status)
-            self.monitor.buttons_changed.connect(self.live_buttons)
-            self.monitor.pressed.connect(self.identify)
+            self.connections = [
+                self.monitor.status_changed.connect(self.refresh_status),
+                self.monitor.buttons_changed.connect(self.live_buttons),
+                self.monitor.pressed.connect(self.identify),
+            ]
             self.subscribed = True
         self.monitor.set_capture(self)
         self.refresh_status()
 
     def hideEvent(self, event):
         super().hideEvent(event)
-        self.monitor.release_capture(self)
-        if self.subscribed:
-            self.monitor.status_changed.disconnect(self.refresh_status)
-            self.monitor.buttons_changed.disconnect(self.live_buttons)
-            self.monitor.pressed.disconnect(self.identify)
-            self.subscribed = False
+        self.detach()
+
+    def detach(self):
+        if isValid(self.monitor):
+            self.monitor.release_capture(self)
+            for connection in self.connections:
+                if connection:
+                    QObject.disconnect(connection)
+        self.connections = []
+        self.subscribed = False

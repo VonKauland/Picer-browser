@@ -274,7 +274,15 @@ def test_editor_capture_chords_click_diagram_and_cancel(host, qtbot, tmp_path):
     window.inputs.gamepad.timer.stop()
     window.inputs.gamepad.poll()
     press(window, backend, GamepadSample(0x1000, right_trigger=100))
-    assert page.value() == "RT+A"
+    assert page.value() == "RT+A", {
+        "held": window.inputs.gamepad.held,
+        "baseline": window.inputs.gamepad.baseline,
+        "subscribed": page.subscribed,
+        "dialog_active": settings.isActiveWindow(),
+        "active_window": str(QApplication.activeWindow()),
+        "popup": str(QApplication.activePopupWidget()),
+        "modal": str(QApplication.activeModalWidget()),
+    }
     assert window.current_path == paths[0]
     diagram = page.diagram
     scale, x, y = diagram.transform()
@@ -385,3 +393,46 @@ def test_native_worker_keeps_gui_responsive_and_rejects_old_generation(qtbot):
     qtbot.waitUntil(lambda: seen == ["A"])
     monitor.dispose()
     assert not monitor.timer.isActive() and monitor.pool.activeThreadCount() == 0
+
+
+def test_capture_handles_native_owner_activation_group(host, qtbot, monkeypatch):
+    window, backend = host
+    settings = ApplicationSettings(window)
+    qtbot.addWidget(settings)
+    settings.navigation.setCurrentRow(4)
+    settings.binding_editor.tabs.setCurrentIndex(3)
+    settings.show()
+    settings.activateWindow()
+    qtbot.waitUntil(settings.isActiveWindow)
+    # Windows may report the native owner for an active child dialog group.
+    monkeypatch.setattr(QApplication, "activeWindow", lambda: window)
+    monitor = window.inputs.gamepad
+    monitor.timer.stop()
+    monitor.poll()
+    press(window, backend, GamepadSample(0x1000, right_trigger=100))
+    assert settings.binding_editor.gamepad_page.value() == "RT+A"
+    monitor.dispose()
+    assert not settings.binding_editor.gamepad_page.subscribed
+    settings.reject()
+
+
+def test_capture_teardown_after_native_monitor_deleted(qtbot):
+    from PySide6.QtWidgets import QWidget
+    from shiboken6 import delete
+
+    from picer.gamepad_editor import GamepadPage
+
+    monitor = GamepadMonitor(backend=FakeBackend())
+    monitor.timer.stop()
+    host = QWidget()
+    qtbot.addWidget(host)
+    host.inputs = SimpleNamespace(gamepad=monitor)
+    host.skin_colors = {"accent": "#DFFF45", "text": "#F3F3F0"}
+    page = GamepadPage(host)
+    qtbot.addWidget(page)
+    page.show()
+    assert page.subscribed
+    monitor.timer.stop()
+    delete(monitor)  # Native parent teardown can precede the dialog's Hide event.
+    page.hide()
+    assert not page.subscribed and not page.connections

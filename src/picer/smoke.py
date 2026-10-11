@@ -917,7 +917,15 @@ def verify_gamepad(window, paths):
         monitor.poll()
         samples[0] = GamepadSample(0x1000, right_trigger=100)
         monitor.poll()
-        assert editor.gamepad_page.value() == "RT+A"
+        assert editor.gamepad_page.value() == "RT+A", {
+            "held": monitor.held,
+            "baseline": monitor.baseline,
+            "subscribed": editor.gamepad_page.subscribed,
+            "dialog_active": settings.isActiveWindow(),
+            "active_window": str(QApplication.activeWindow()),
+            "popup": str(QApplication.activePopupWidget()),
+            "modal": str(QApplication.activeModalWidget()),
+        }
         assert window.current_path == paths[0]
         assert not editor.gamepad_page.diagram.grab().isNull()
         assert editor.assign("下一张", "gamepad", "RT+A")

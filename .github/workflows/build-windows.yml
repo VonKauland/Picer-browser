@@ -45,7 +45,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m ruff format --check .
       - name: Run GUI tests on Windows
-        run: python -m pytest --junitxml=test-results.xml
+        run: python -m pytest --maxfail=1 --junitxml=test-results.xml
       - name: Build complete Windows application folder
         run: python -m scripts.build_windows
       - name: Verify packaged folder and relocation on Windows
