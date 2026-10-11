@@ -39,12 +39,33 @@ def function_icon(label: str, color: str) -> QIcon:
         painter.drawEllipse(8, 8, 24, 24)
         painter.setBrush(QColor(color))
         painter.drawPie(8, 8, 24, 24, 90 * 16, 180 * 16)
+    elif "双页" in label:
+        for x in (5, 22):
+            painter.drawRoundedRect(x, 8, 13, 24, 2, 2)
+            painter.drawLine(x + 4, 15, x + 9, 15)
+            painter.drawLine(x + 4, 20, x + 9, 20)
+    elif "触控" in label:
+        painter.drawArc(9, 3, 18, 18, 0, 180 * 16)
+        painter.drawRoundedRect(15, 10, 6, 21, 3, 3)
+        painter.drawLine(21, 20, 30, 24)
+        painter.drawLine(30, 24, 29, 34)
+        painter.drawLine(29, 34, 17, 34)
+        painter.drawLine(17, 34, 9, 24)
+        painter.drawLine(9, 24, 15, 24)
     else:
         painter.drawRoundedRect(9, 9, 22, 22, 5, 5)
         painter.drawLine(20, 14, 20, 26)
         painter.drawLine(14, 20, 26, 20)
     painter.end()
     return QIcon(pixmap)
+
+
+def component_icon(manager, plugin_id: str) -> QIcon:
+    """Prefer a plugin's own icon, including for unassigned quick-slot actions."""
+    for action in manager.commands.values():
+        if action.property("plugin_id") == plugin_id and not action.icon().isNull():
+            return action.icon()
+    return function_icon(manager.records[plugin_id].manifest.name, "#e6e9ef")
 
 
 class ComponentUI:
@@ -78,6 +99,7 @@ class ComponentUI:
         )
 
     def refresh(self) -> None:
+        self.refresh_function_icons()
         if hasattr(self, "skin_group"):
             self.skin_group.deleteLater()
         for menu in self.menus.values():
@@ -101,6 +123,8 @@ class ComponentUI:
             action.setChecked(record.state == "enabled")
             action.setEnabled(record.state != "incompatible")
             action.setToolTip(record.error or record.manifest.description)
+            if record.manifest.type == "function":
+                action.setIcon(component_icon(self.manager, plugin_id))
             if record.manifest.type == "skin":
                 self.skin_group.addAction(action)
                 action.triggered.connect(
@@ -147,6 +171,7 @@ class ComponentUI:
         menu.addSeparator()
         for key, command in self.manager.commands.items():
             action = menu.addAction(command.text())
+            action.setIcon(command.icon())
             action.setCheckable(True)
             action.setChecked(key == current)
             action.triggered.connect(lambda _, value=key: self.assign(index, value))
@@ -154,12 +179,12 @@ class ComponentUI:
         return menu
 
     def refresh_slots(self) -> None:
+        self.refresh_function_icons()
         self.slots_menu.clear()
         for menu in self.slot_submenus:
             menu.deleteLater()
         self.slot_submenus.clear()
         assignments = self.assignments()
-        color = self.window.skin_colors["text"]
         for index, (button, key) in enumerate(
             zip(self.window.title_bar.quick_slots, assignments, strict=True)
         ):
@@ -168,10 +193,6 @@ class ComponentUI:
             self.slots_menu.addMenu(menu)
             action = self.manager.commands.get(key)
             if action is not None:
-                if key.startswith("picer."):
-                    action.setIcon(function_icon(action.text(), color))
-                elif action.icon().isNull():
-                    action.setIcon(function_icon(action.text(), "#e6e9ef"))
                 button.setDefaultAction(action)
                 button.setToolTip(f"{action.text()} · 右键配置栏位 {index + 1}")
             else:
@@ -183,3 +204,8 @@ class ComponentUI:
                     f"栏位 {index + 1} · 右键选择功能" + ("（原功能已停用）" if key else "")
                 )
         self.window.title_bar.arrange()
+
+    def refresh_function_icons(self) -> None:
+        for key, command in self.manager.commands.items():
+            if command.property("picerDefaultIcon") and key.startswith("picer."):
+                command.setIcon(function_icon(command.text(), self.window.skin_colors["text"]))

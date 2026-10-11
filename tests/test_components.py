@@ -169,8 +169,10 @@ def test_function_menu_switch_slots_cleanup_and_persistence(window, tmp_path, qt
     manager = window.plugins
     manager.install(component(tmp_path))
     menu = window.components.menus["function"]
+    assert all(not action.icon().isNull() for action in menu.actions())
     next(action for action in menu.actions() if action.text() == "test.component").trigger()
     assert manager.records["test.component"].state == "enabled"
+    assert not manager.commands["test.component:run"].icon().isNull()
     window.components.assign(4, "test.component:run")
     buttons = window.title_bar.quick_slots
     assert len(buttons) == 5
@@ -189,6 +191,36 @@ def test_function_menu_switch_slots_cleanup_and_persistence(window, tmp_path, qt
         is restarted.plugins.commands["test.component:run"]
     )
     restarted.plugins.shutdown()
+
+
+def test_custom_function_icon_survives_skin_and_slot_assignment(window, tmp_path):
+    manager = window.plugins
+    manager.install(
+        component(
+            tmp_path,
+            code="""
+        from PySide6.QtGui import QIcon, QPixmap, QColor
+        class Plugin:
+            def activate(self, context):
+                pixels = QPixmap(24, 24)
+                pixels.fill(QColor("#ff0088"))
+                self.icon = QIcon(pixels)
+                context.add_command("run", "Custom", lambda: None,
+                    requires_image=False, icon=self.icon)
+    """,
+        )
+    )
+    manager.enable("test.component")
+    action = manager.commands["test.component:run"]
+    original = action.icon().cacheKey()
+    window.components.assign(4, "test.component:run")
+    manager.install(component(tmp_path, "skin", "test.skin"))
+    manager.enable("test.skin")
+    assert action.icon().cacheKey() == original
+    assert window.title_bar.quick_slots[4].icon().cacheKey() == original
+    menu = window.components.slot_menu(4)
+    assert next(a for a in menu.actions() if a.text() == "Custom").icon().cacheKey() == original
+    menu.deleteLater()
 
 
 @pytest.mark.parametrize("area", ["left", "right"])

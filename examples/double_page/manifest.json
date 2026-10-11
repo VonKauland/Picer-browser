@@ -1,7 +1,7 @@
 {
   "id": "example.doublepage",
   "name": "显示双页",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "function",
   "api_version": 1,
   "entrypoint": "main:Plugin",

@@ -1,4 +1,4 @@
-"""Render the source SVG into desktop PNG and multi-resolution Windows ICO assets."""
+"""Prepare transparent PNG/SVG artwork for desktop and multi-resolution Windows ICO."""
 
 import struct
 from pathlib import Path
@@ -11,8 +11,11 @@ from PySide6.QtWidgets import QApplication
 
 def prepare_icons(source: Path, destination: Path) -> None:
     app = QApplication.instance() or QApplication([])
-    renderer = QSvgRenderer(str(source))
-    if not renderer.isValid():
+    renderer = QSvgRenderer(str(source)) if source.suffix.lower() == ".svg" else None
+    raster = QImage(str(source)) if renderer is None else None
+    if (renderer is not None and not renderer.isValid()) or (
+        raster is not None and raster.isNull()
+    ):
         raise ValueError(f"Invalid icon source: {source}")
     destination.mkdir(parents=True, exist_ok=True)
     images = []
@@ -20,7 +23,16 @@ def prepare_icons(source: Path, destination: Path) -> None:
         image = QImage(size, size, QImage.Format.Format_ARGB32)
         image.fill(Qt.GlobalColor.transparent)
         painter = QPainter(image)
-        renderer.render(painter)
+        if renderer is not None:
+            renderer.render(painter)
+        else:
+            scaled = raster.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            painter.drawImage((size - scaled.width()) // 2, (size - scaled.height()) // 2, scaled)
         painter.end()
         data = QByteArray()
         buffer = QBuffer(data)
@@ -41,6 +53,7 @@ def prepare_icons(source: Path, destination: Path) -> None:
     (destination / "picer.ico").write_bytes(
         header + b"".join(entries) + b"".join(data for _, data in images)
     )
-    (destination / "picer.svg").write_bytes(source.read_bytes())
+    if renderer is not None:
+        (destination / "picer.svg").write_bytes(source.read_bytes())
     # Keep a strong application reference until all rendering has completed.
     assert app is not None

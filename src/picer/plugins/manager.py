@@ -448,8 +448,13 @@ class PluginManager(QObject):
         if icon is not None and not isinstance(icon, QIcon):
             raise PluginError("功能图标必须为 QIcon")
         action = QAction(label, self.host)
-        if icon is not None:
-            action.setIcon(icon)
+        default_icon = icon is None or icon.isNull()
+        if default_icon:
+            from picer.components import function_icon
+
+            icon = function_icon(label, COLORS["text"])
+        action.setIcon(icon)
+        action.setProperty("picerDefaultIcon", default_icon)
         action.setShortcuts([QKeySequence(value) for value in sequences])
         action.setProperty("default_shortcut", default_shortcut)
         action.setProperty("plugin_id", plugin_id)

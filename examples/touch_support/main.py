@@ -1,5 +1,9 @@
 """Enable five touch zones; assignments belong to application input settings."""
 
+from pathlib import Path
+
+from PySide6.QtGui import QIcon
+
 
 class Plugin:
     def activate(self, context):
@@ -8,6 +12,7 @@ class Plugin:
             "toggle",
             "触控支持",
             self.toggle,
+            icon=QIcon(str(Path(__file__).with_name("icon.svg"))),
             requires_image=False,
             checkable=True,
             checked=context.get_setting("active", True) is True,

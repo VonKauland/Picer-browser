@@ -31,6 +31,39 @@ def pictures(tmp_path, count=5):
     return paths
 
 
+def test_function_icons_cover_menus_management_and_slots(host, qtbot):
+    from picer.plugins.dialog import PluginDialog
+
+    commands = host.plugins.commands
+    assert all(not action.icon().isNull() for action in commands.values())
+    keys = ("example.doublepage:toggle", "example.touch:toggle")
+    pixels = [commands[key].icon().pixmap(24, 24).toImage() for key in keys]
+    assert pixels[0] != pixels[1]
+    dialog = PluginDialog(host.plugins, host)
+    qtbot.addWidget(dialog)
+    for index, key in enumerate(keys, 3):
+        action = commands[key]
+        host.components.assign(index, key)
+        assert host.title_bar.quick_slots[index].icon().cacheKey() == action.icon().cacheKey()
+        menu_action = next(
+            a for a in host.components.menus["function"].actions() if a.text() == action.text()
+        )
+        assert menu_action.icon().cacheKey() == action.icon().cacheKey()
+        row_index = next(
+            i
+            for i in range(dialog.list.count())
+            if dialog.list.item(i).data(Qt.ItemDataRole.UserRole) == key.split(":")[0]
+        )
+        row = dialog.list.itemWidget(dialog.list.item(row_index))
+        from PySide6.QtWidgets import QLabel
+
+        assert (
+            row.findChildren(QLabel)[0].pixmap().toImage() == action.icon().pixmap(26, 26).toImage()
+        )
+    host.plugins.disable("example.touch")
+    assert all(not a.icon().isNull() for a in host.components.menus["function"].actions())
+
+
 def test_fullscreen_slides_without_reserved_space_and_restores(host, qtbot):
     assert host.title_bar.brand.isHidden()
     host.toggle_fullscreen()

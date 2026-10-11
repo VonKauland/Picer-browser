@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from picer.components import TYPES
+from picer.components import TYPES, component_icon
 from picer.host_style import mark_host
 from picer.plugins.api import PluginError
 from picer.plugins.settings import SettingsForm
@@ -186,9 +186,12 @@ class PluginDialog(StyledDialog):
             layout = QHBoxLayout(row)
             layout.setContentsMargins(12, 8, 12, 8)
             glyph = QLabel()
-            glyph.setPixmap(
-                ui_icon(manifest.type, self.manager.host.skin_colors["text"]).pixmap(26, 26)
+            icon = (
+                component_icon(self.manager, plugin_id)
+                if manifest.type == "function"
+                else ui_icon(manifest.type, self.manager.host.skin_colors["text"])
             )
+            glyph.setPixmap(icon.pixmap(26, 26))
             layout.addWidget(glyph)
             name = QLabel(manifest.name)
             name.setToolTip(manifest.name)

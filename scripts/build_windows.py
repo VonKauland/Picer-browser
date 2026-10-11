@@ -112,7 +112,7 @@ def main() -> None:
         raise SystemExit("Windows EXE builds must run on Windows")
     version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
     assets = ROOT / "build" / "distribution-assets"
-    prepare_icons(ROOT / "src" / "picer" / "assets" / "icons" / "picer.svg", assets / "icons")
+    prepare_icons(ROOT / "src" / "picer" / "assets" / "icons" / "picer.png", assets / "icons")
     bundles = assets.parent / "trusted-bundles"
     write_examples(bundles)
     resource = assets.parent / "version-info.txt"

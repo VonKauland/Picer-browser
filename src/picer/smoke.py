@@ -774,6 +774,17 @@ def run(window, args, folder, done):
 def verify_input_features(window):
     """Execute the new controls and packaged preinstalled functions in the EXE."""
     assert window.title_bar.brand.isHidden()
+    assert all(not action.icon().isNull() for action in window.plugins.commands.values())
+    app_icon = window.windowIcon().pixmap(256, 256).toImage()
+    assert app_icon.pixelColor(0, 0).alpha() == 0
+    assert app_icon.pixelColor(128, 128).alpha() > 200
+    assert any(0 < app_icon.pixelColor(128, y).alpha() < 180 for y in range(32))
+    icons = [
+        window.plugins.commands[key].icon().pixmap(24, 24).toImage()
+        for key in ("example.doublepage:toggle", "example.touch:toggle")
+    ]
+    assert icons[0] != icons[1] and all(not icon.isNull() for icon in icons)
+    assert all(not a.icon().isNull() for a in window.components.menus["function"].actions())
     for key in ("example.doublepage", "example.touch"):
         assert window.plugins.records[key].state == "enabled"
     directory = window.paths_layout.cache / "smoke-spread"
@@ -840,6 +851,6 @@ def verify_input_features(window):
     window.exit_fullscreen()
     assert window.menuWidget().height() == 48 and window.title_bar.y() == 0
     print(
-        "Packaged icon-only chrome, fullscreen slide, two-page plugin "
-        "and multi-input bindings passed"
+        "Packaged transparent glowing app/function icons, icon-only chrome, "
+        "fullscreen slide, two-page plugin and multi-input bindings passed"
     )

@@ -144,3 +144,33 @@ def test_icon_generation_and_distribution_assets(tmp_path, qapp):
     config.write_text("custom settings", encoding="utf-8")
     prepare_distribution(application, assets, version="0.4.0")
     assert config.read_text() == "custom settings"
+
+
+def test_raster_icon_ico_preserves_transparency_glow_and_dark_details(tmp_path, qapp):
+    source = Path(__file__).parents[1] / "src" / "picer" / "assets" / "icons" / "picer.png"
+    prepare_icons(source, tmp_path)
+    png = QImage(str(tmp_path / "picer.png"))
+    assert png.pixelColor(0, 0).alpha() == 0
+    assert png.pixelColor(128, 128).alpha() > 200  # Dark mosaic is part of the icon.
+    assert png.pixelColor(128, 128).green() < 100
+    assert any(0 < png.pixelColor(128, y).alpha() < 180 for y in range(32))
+    payload = (tmp_path / "picer.ico").read_bytes()
+    assert struct.unpack("<HHH", payload[:6]) == (0, 1, 7)
+    for index, expected in enumerate((16, 24, 32, 48, 64, 128, 256)):
+        entry = struct.unpack_from("<BBBBHHII", payload, 6 + index * 16)
+        length, offset = entry[-2:]
+        image = QImage.fromData(payload[offset : offset + length], "PNG")
+        assert image.width() == image.height() == expected
+        assert image.pixelColor(0, 0).alpha() == 0
+        assert image.pixelColor(expected // 2, expected // 2).alpha() > 200
+        assert any(
+            0 < image.pixelColor(expected // 2, y).alpha() < 220 for y in range(expected // 4)
+        )
+
+
+def test_invalid_raster_icon_fails_before_writing_assets(tmp_path, qapp):
+    invalid = tmp_path / "broken.png"
+    invalid.write_bytes(b"invalid PNG")
+    with pytest.raises(ValueError, match="Invalid icon source"):
+        prepare_icons(invalid, tmp_path / "assets")
+    assert not (tmp_path / "assets").exists()
