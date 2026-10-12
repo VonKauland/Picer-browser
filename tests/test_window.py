@@ -105,6 +105,7 @@ def test_single_title_row_and_centered_filename(window, images):
         "编辑",
         "视图",
         "插件",
+        "选项",
         "帮助",
     ]
     assert abs(window.title_bar.caption.geometry().center().x() - window.title_bar.width() / 2) <= 1

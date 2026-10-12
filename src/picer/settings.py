@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.color_editor import ColorEditor
+from picer.confirmation import confirm
 from picer.host_style import mark_host
 from picer.panels import DOCK_AREAS
 from picer.plugins.api import PluginError
@@ -32,9 +33,13 @@ class ApplicationSettings(StyledDialog):
         self.values = read_preferences(self.manager)
         self.editors, self.shortcut_editors, self.panel_editors = {}, {}, {}
         self.layout_reset = False
+        self.pending_backup = None
+        self.reset_pending = False
+        self.setWindowModality(Qt.WindowModality.NonModal)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
         self.setMinimumSize(760, 500)
         available = self.screen().availableGeometry().size()
-        self.resize(min(1120, available.width() - 24), min(820, available.height() - 24))
+        self.resize(min(960, available.width() - 24), min(720, available.height() - 24))
         content = QHBoxLayout()
         self.navigation = QListWidget()
         self.navigation.setFixedWidth(150)
@@ -74,6 +79,8 @@ class ApplicationSettings(StyledDialog):
         content.addWidget(self.navigation)
         content.addWidget(self.pages, 1)
         self.body.addLayout(content, 1)
+        self.skin_baseline = self.skin.currentData()
+        self.panel_baseline = {key: area.currentData() for key, area in self.panel_editors.items()}
         footer = QHBoxLayout()
         reset = QPushButton("恢复默认")
         reset.setObjectName("quietButton")
@@ -83,6 +90,9 @@ class ApplicationSettings(StyledDialog):
         cancel = QPushButton("取消")
         cancel.clicked.connect(self.reject)
         footer.addWidget(cancel)
+        self.apply_button = QPushButton("应用")
+        self.apply_button.clicked.connect(self.apply)
+        footer.addWidget(self.apply_button)
         save = QPushButton("保存更改")
         save.setObjectName("primaryButton")
         save.clicked.connect(self.save)
@@ -312,6 +322,12 @@ class ApplicationSettings(StyledDialog):
         self.refresh_cache_size()
 
     def reset_layout(self):
+        if confirm(
+            self, "恢复默认布局？", "面板停靠位置与尺寸将恢复默认。点击应用或保存更改后生效。"
+        ):
+            self._reset_layout()
+
+    def _reset_layout(self):
         self.layout_reset = True
         defaults = {"example.files": "left", "example.info": "right", "example.progress": "bottom"}
         for key, area in self.panel_editors.items():
@@ -319,6 +335,15 @@ class ApplicationSettings(StyledDialog):
                 area.setCurrentIndex(area.findData(DOCK_AREAS[defaults[key]]))
 
     def reset(self):
+        if not confirm(
+            self,
+            "恢复默认设置？",
+            "外观、浏览行为、输入绑定和面板布局将恢复默认。"
+            "点击应用或保存更改后生效；取消会保留当前表单。",
+        ):
+            return
+        self.pending_backup = None
+        self.reset_pending = True
         for key, editor in self.editors.items():
             value = DEFAULTS[key]
             if isinstance(editor, Toggle):
@@ -329,9 +354,36 @@ class ApplicationSettings(StyledDialog):
                 editor.setValue(value)
         self.skin.setCurrentIndex(0)
         self.binding_editor.reset()
-        self.reset_layout()
+        self._reset_layout()
 
     def save(self):
+        self.apply(close=True)
+
+    def load_backup(self, data):
+        from picer.settings_backup import validate_backup
+
+        data = validate_backup(data, self.host)
+        for key, editor in self.editors.items():
+            value = data["application"][key]
+            if isinstance(editor, Toggle):
+                editor.setChecked(value)
+            elif isinstance(editor, QComboBox):
+                editor.setCurrentIndex(editor.findData(value))
+            else:
+                editor.setValue(value)
+        if data["skin"] and self.skin.findData(data["skin"]) < 0:
+            record = self.manager.records[data["skin"]]
+            self.skin.addItem(record.manifest.name, data["skin"])
+        self.skin.setCurrentIndex(self.skin.findData(data["skin"]))
+        self.binding_editor.set_profile(data["input_bindings"])
+        for key, area in self.panel_editors.items():
+            if key in data["panels"]:
+                area.setCurrentIndex(area.findData(DOCK_AREAS[data["panels"][key]["area"]]))
+        self.pending_backup = data
+        self.reset_pending = False
+        self.layout_reset = False
+
+    def apply(self, *, close=False):
         bindings = self.binding_editor.validated()
         if bindings is None:
             return
@@ -352,7 +404,21 @@ class ApplicationSettings(StyledDialog):
         except ValueError as error:
             QMessageBox.warning(self, "设置未保存", str(error))
             return
+        # A modeless window can coexist with reading-direction/skin/layout changes
+        # made in the main window. Untouched fields must not revert those changes.
+        if not self.pending_backup and not self.reset_pending:
+            current = read_preferences(self.manager)
+            values = {k: current[k] if v == self.values[k] else v for k, v in values.items()}
         skin = self.skin.currentData()
+        if skin == self.skin_baseline and not self.pending_backup and not self.reset_pending:
+            skin = next(
+                (
+                    key
+                    for key, r in self.manager.records.items()
+                    if r.manifest.type == "skin" and r.state == "enabled"
+                ),
+                "",
+            )
         try:
             if skin:
                 if skin not in self.manager.records:
@@ -372,12 +438,68 @@ class ApplicationSettings(StyledDialog):
             controller = self.host.panel_hovers.controllers.get(key)
             if not controller:
                 continue
-            controller.move_to(area.currentData())
+            if (
+                self.layout_reset
+                or self.pending_backup
+                or area.currentData() != self.panel_baseline[key]
+            ):
+                controller.move_to(area.currentData())
             if self.layout_reset:
                 controller.extents = {"width": 320, "height": 180}
                 controller.restore_size()
                 controller.remember_layout()
+        if self.pending_backup:
+            data = self.pending_backup
+            if not isinstance(ui.get("panel_layouts"), dict):
+                ui["panel_layouts"] = {}
+            ui["quick_slots"] = data["quick_slots"].copy()
+            self.host.panel_hovers.close_all()
+            transition = self.manager._panel_transition
+            self.manager._panel_transition = True
+            try:
+                for key, layout in data["panels"].items():
+                    ui.setdefault("panel_layouts", {})[key] = {
+                        name: layout[name] for name in ("area", "width", "height")
+                    }
+                    ui["panels"][key] = layout["fixed"]
+                    controller = self.host.panel_hovers.controllers.get(key)
+                    if controller:
+                        controller.move_to(DOCK_AREAS[layout["area"]])
+                        controller.extents = {name: layout[name] for name in ("width", "height")}
+                        controller.dock.setVisible(not self.manager._fullscreen and layout["fixed"])
+                        controller.restore_size()
+                        controller.remember_layout()
+            finally:
+                self.manager._panel_transition = transition
+            self.host.panel_hovers.layout_strips()
+            self.host.components.refresh_slots()
         self.manager._save()
         self.host.apply_preferences()
-        self.accept()
-        self.host.notify("设置已保存")
+        for index, name in enumerate(("settings", "skin", "photo", "panel", "keyboard", "storage")):
+            self.navigation.item(index).setIcon(ui_icon(name, self.host.skin_colors["text"]))
+        for button in self.findChildren(QPushButton):
+            if button.accessibleName() == "关闭窗口":
+                button.setIcon(ui_icon("close", self.host.skin_colors["text"]))
+        self.values = values.copy()
+        self.pending_backup = None
+        self.reset_pending = False
+        self.layout_reset = False
+        self.skin_baseline = skin
+        if skin and self.skin.findData(skin) < 0:
+            self.skin.addItem(self.manager.records[skin].manifest.name, skin)
+        self.skin.setCurrentIndex(self.skin.findData(skin))
+        for key, area in self.panel_editors.items():
+            controller = self.host.panel_hovers.controllers.get(key)
+            if controller:
+                area.setCurrentIndex(area.findData(controller.area))
+                self.panel_baseline[key] = controller.area
+        for key, editor in self.editors.items():
+            if isinstance(editor, Toggle):
+                editor.setChecked(values[key])
+            elif isinstance(editor, QComboBox):
+                editor.setCurrentIndex(editor.findData(values[key]))
+            else:
+                editor.setValue(values[key])
+        if close:
+            self.accept()
+        self.host.notify("设置已保存" if close else "设置已应用")

@@ -134,6 +134,7 @@ class MainWindow(QMainWindow):
         self._base_skin_colors = dict(COLORS)
         self.skin_colors = dict(COLORS)
         self.app_preferences = dict(DEFAULTS)
+        self.settings_dialog = None
         self._skin_style = STYLE
         self.shortcut_actions, self.default_shortcuts = {}, {}
         self.chrome_style = "standard"
@@ -184,8 +185,16 @@ class MainWindow(QMainWindow):
         edit_menu = self.title_bar.menu.addMenu("编辑")
         view_menu = self.title_bar.menu.addMenu("视图")
         plugin_menu = self.title_bar.menu.addMenu("插件")
+        self.options_menu = self.title_bar.menu.addMenu("选项")
         help_menu = self.title_bar.menu.addMenu("帮助")
-        self.main_menus = (file_menu, edit_menu, view_menu, plugin_menu, help_menu)
+        self.main_menus = (
+            file_menu,
+            edit_menu,
+            view_menu,
+            plugin_menu,
+            self.options_menu,
+            help_menu,
+        )
         run_menu = plugin_menu.addMenu("调用功能")
         self.plugin_menus = {"编辑": edit_menu, "视图": view_menu, "插件": run_menu}
         self.open_action = self.add_action(file_menu, "打开图片…", "Ctrl+O", self.choose_image)
@@ -198,7 +207,13 @@ class MainWindow(QMainWindow):
         self.copy_image_action = self.add_action(
             edit_menu, "复制当前图片", "Ctrl+C", self.copy_image
         )
-        self.settings_action = self.add_action(edit_menu, "设置…", "Ctrl+,", self.show_settings)
+        self.settings_action = self.add_action(
+            self.options_menu, "设置…", "Ctrl+,", self.show_settings
+        )
+        self.settings_action.setText("系统设置…")
+        self.options_menu.addSeparator()
+        self.options_menu.addAction("导出设置…", self.export_settings)
+        self.options_menu.addAction("导入设置…", self.import_settings)
         self.previous_action = self.add_action(
             view_menu, "上一张", "Left", lambda: self.navigate(-1)
         )
@@ -502,18 +517,69 @@ class MainWindow(QMainWindow):
             self.notifications.notify(message)
 
     def show_plugins(self) -> None:
-        dialog = PluginDialog(self.plugins, self)
+        dialog = PluginDialog(self.plugins, self.settings_dialog or self)
         dialog.exec()
         dialog.deleteLater()
 
     def show_settings(self):
         from picer.settings import ApplicationSettings
 
-        dialog = ApplicationSettings(self)
-        dialog.exec()
-        dialog.deleteLater()
+        if self.settings_dialog is None:
+            dialog = ApplicationSettings(self)
+            self.settings_dialog = dialog
+
+            def finished():
+                if self.settings_dialog is dialog:
+                    self.settings_dialog = None
+                dialog.deleteLater()
+
+            dialog.finished.connect(finished)
+        self.settings_dialog.show()
+        self.settings_dialog.raise_()
+        self.settings_dialog.activateWindow()
+        return self.settings_dialog
+
+    def export_settings(self):
+        from PySide6.QtCore import QStandardPaths
+
+        from picer.settings_backup import write_backup
+
+        folder = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
+        filename, _ = QFileDialog.getSaveFileName(
+            self.settings_dialog or self,
+            "导出设置",
+            str(Path(folder) / "Picer-settings.json"),
+            "揽映设置 (*.json)",
+        )
+        if not filename:
+            return
+        try:
+            write_backup(filename, self)
+        except (OSError, ValueError, TypeError) as error:
+            QMessageBox.warning(self.settings_dialog or self, "设置未导出", str(error))
+        else:
+            self.notify("当前生效的设置已导出")
+
+    def import_settings(self):
+        from picer.settings_backup import read_backup
+
+        filename, _ = QFileDialog.getOpenFileName(
+            self.settings_dialog or self, "导入设置", "", "揽映设置 (*.json)"
+        )
+        if not filename:
+            return
+        try:
+            data = read_backup(filename, self)
+            dialog = self.show_settings()
+            dialog.load_backup(data)
+        except (OSError, ValueError, TypeError) as error:
+            QMessageBox.warning(self.settings_dialog or self, "设置未导入", str(error))
+        else:
+            self.notify("设置已导入，请点击应用或保存更改")
 
     def closeEvent(self, event) -> None:
+        if self.settings_dialog is not None:
+            self.settings_dialog.close()
         ui = self.plugins.preferences["ui"]
         if self.app_preferences["remember_window"] and not self.isFullScreen():
             ui["window_geometry"] = bytes(self.saveGeometry().toHex()).decode()
@@ -577,7 +643,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.18.2\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.19.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

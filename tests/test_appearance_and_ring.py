@@ -133,7 +133,7 @@ def test_fixed_panels_are_solid_and_hidden_reveals_capture_glass(window, qtbot):
     assert not controller.popup.uses_glass()
 
 
-def test_accent_save_cancel_restart_reset_and_skin_isolation(window, qtbot):
+def test_accent_save_cancel_restart_reset_and_skin_isolation(window, qtbot, monkeypatch):
     progress = window.plugins.records["example.progress"].instance
     browser = window.plugins.records["example.files"].instance
     original = browser.panel.property("picerPanelOriginalStyle")
@@ -165,6 +165,7 @@ def test_accent_save_cancel_restart_reset_and_skin_isolation(window, qtbot):
     assert restarted.app_preferences["accent_color"] == "#91AAFF"
     reset = ApplicationSettings(restarted)
     qtbot.addWidget(reset)
+    monkeypatch.setattr("picer.settings.confirm", lambda *args: True)
     reset.reset()
     reset.save()
     assert restarted.app_preferences["accent_color"] == ""

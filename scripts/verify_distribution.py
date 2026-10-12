@@ -59,6 +59,7 @@ def verify(application: Path) -> None:
         "examples/sdk/negative-plugin.zip",
         "docs/plugins.md",
         "docs/components.md",
+        "docs/settings.md",
         "examples/macos-skin.zip",
         "examples/info-panel.zip",
         "examples/file-browser.zip",

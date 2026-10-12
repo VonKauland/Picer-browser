@@ -114,6 +114,69 @@ def verify_color_picker(settings):
     print("Packaged custom rounded HSV picker, swatches, RGB/HEX and explicit save passed")
 
 
+def verify_system_settings(window):
+    """Exercise topmost modeless apply/reset/import in the real frozen application."""
+    from picer.confirmation import Confirmation
+    from picer.settings_backup import read_backup, snapshot, write_backup
+
+    assert [a.text() for a in window.title_bar.menu.actions()] == [
+        "文件",
+        "编辑",
+        "视图",
+        "插件",
+        "选项",
+        "帮助",
+    ]
+    assert window.settings_action not in window.main_menus[1].actions()
+    saved = snapshot(window)
+    path = window.paths_layout.cache / "settings-smoke.json"
+    write_backup(path, window)
+    assert read_backup(path, window) == saved
+    dialog = window.show_settings()
+    assert window.show_settings() is dialog and not dialog.isModal()
+    assert dialog.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert QApplication.activeModalWidget() is None
+    dialog.editors["zoom_step"].setValue(45)
+    QTest.mouseClick(dialog.apply_button, Qt.MouseButton.LeftButton)
+    assert dialog.isVisible() and window.view.zoom_step == 45
+    before = window.current_path
+    window.activateWindow()
+    window.view.setFocus()
+    wait_for(window.isActiveWindow)
+    QTest.keyClick(window.view, Qt.Key.Key_Right)
+    assert window.current_path != before and dialog.isVisible()
+    dialog.editors["zoom_step"].setValue(60)
+    cancelled = []
+
+    def cancel_reset():
+        confirmation = QApplication.activeModalWidget()
+        try:
+            assert isinstance(confirmation, Confirmation)
+            assert confirmation.cancel_button.isDefault()
+            assert confirmation.grab().toImage().pixelColor(0, 0).alpha() == 0
+            cancelled.append(True)
+        finally:
+            if confirmation:
+                confirmation.reject()
+
+    QTimer.singleShot(50, cancel_reset)
+    dialog.reset()
+    assert cancelled and dialog.editors["zoom_step"].value() == 60
+    dialog.load_backup(read_backup(path, window))
+    assert window.view.zoom_step == 45
+    dialog.apply()
+    assert dialog.isVisible() and window.view.zoom_step == saved["application"]["zoom_step"]
+    assert snapshot(window) == saved
+    dialog.reject()
+    assert window.settings_dialog is None
+    window.activateWindow()
+    window.view.setFocus()
+    print(
+        "Packaged Options menu, topmost modeless main-key routing, Apply persistence, "
+        "reset cancellation and JSON settings roundtrip passed"
+    )
+
+
 def verify_popups(window, browser):
     """Inspect actual popup windows in the frozen Windows application."""
     for menu in (window.main_menus[3], window.components.menus["function"]):
@@ -797,6 +860,7 @@ def run(window, args, folder, done):
             if not args.file_panel_archive:
                 verify_media(window)
                 verify_input_features(window)
+                verify_system_settings(window)
                 done(0)
                 return
             controller = window.panel_hovers.controllers["example.files"]
@@ -853,6 +917,7 @@ def run(window, args, folder, done):
             )
             verify_media(window)
             verify_input_features(window)
+            verify_system_settings(window)
             done(0)
 
         QTimer.singleShot(25, lambda: guarded(metadata_ready))

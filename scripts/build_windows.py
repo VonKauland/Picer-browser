@@ -51,6 +51,7 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
     )
     shutil.copy2(ROOT / "docs" / "media.md", application / "docs" / "media.md")
     shutil.copy2(ROOT / "docs" / "input.md", application / "docs" / "input.md")
+    shutil.copy2(ROOT / "docs" / "settings.md", application / "docs" / "settings.md")
     (application / "README.txt").write_text(
         "揽映 Picer 图片浏览器\n\n"
         "请保留完整文件夹，双击 Picer.exe 启动，无需安装 Python。\n"
@@ -65,7 +66,9 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
         "进度条拖动实时切图；缩略预览再次按弹出按钮关闭，控制面板隐藏后贴近底部。\n"
         "底部只允许一个进度面板，居中占窗口宽度约 1/3；缩略预览无底板、无滚动条。\n"
         "组件设置统一位于插件管理的设置页；三个默认示例面板不提供设置按钮。\n"
-        "编辑 → 设置：常规、外观、图片浏览、面板布局、快捷键、缓存与存储。\n"
+        "选项 → 系统设置：常规、外观、图片浏览、面板布局、快捷键、缓存与存储。\n"
+        "应用保存后保持设置窗口打开，保存更改后关闭；恢复默认需确认。\n"
+        "选项菜单可导出 / 导入系统设置 JSON，导入后检查表单并点击应用。\n"
         "迁移软件时复制整个目录；更新时保留 plugins、skins 与 config。\n"
         "目录不可写时用户数据退回 LocalAppData/Picer，可从帮助菜单查看位置。\n"
         "支持 LibRaw 相机 RAW、GIF/WebP 动画；动画帧进度位于图片进度条下方。\n"

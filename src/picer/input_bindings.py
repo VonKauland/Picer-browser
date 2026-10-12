@@ -158,6 +158,7 @@ class InputBindings(QObject):
         # Settings capture is isolated; never execute commands while assigning inputs.
         if (
             self.gamepad.capture is not None
+            and self.gamepad.capture.window().isActiveWindow()
             or not self.host.isActiveWindow()
             or QApplication.activePopupWidget()
             or QApplication.activeModalWidget()
