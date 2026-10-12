@@ -50,7 +50,12 @@ def test_modeless_singleton_apply_stays_open_main_keys_work_and_close_reopens(
     dialog.editors["zoom_step"].setValue(40)
     qtbot.mouseClick(dialog.apply_button, Qt.MouseButton.LeftButton)
     assert dialog.isVisible() and host.view.zoom_step == 40
-    assert json.loads(host.plugins.state_file.read_text())["ui"]["application"]["zoom_step"] == 40
+    assert (
+        json.loads(host.plugins.state_file.read_text(encoding="utf-8"))["ui"]["application"][
+            "zoom_step"
+        ]
+        == 40
+    )
     host.activateWindow()
     host.view.setFocus()
     qtbot.waitUntil(host.isActiveWindow)
@@ -73,11 +78,16 @@ def test_reset_confirmation_cancel_escape_and_accept_only_changes_form(host, qtb
 
     def cancel():
         confirmation = QApplication.activeModalWidget()
-        assert isinstance(confirmation, Confirmation)
-        seen.append(confirmation.windowTitle())
-        assert confirmation.cancel_button.isDefault()
-        assert confirmation.grab().toImage().pixelColor(0, 0).alpha() == 0
-        qtbot.keyClick(confirmation, Qt.Key.Key_Escape)
+        try:
+            assert isinstance(confirmation, Confirmation)
+            seen.append(confirmation.windowTitle())
+            assert confirmation.cancel_button.isDefault()
+            assert confirmation.grab().toImage().pixelColor(0, 0).alpha() == 0
+            qtbot.keyClick(confirmation, Qt.Key.Key_Escape)
+            assert not confirmation.isVisible()
+        finally:
+            if confirmation:
+                confirmation.reject()
 
     QTimer.singleShot(30, cancel)
     dialog.reset()
@@ -135,7 +145,7 @@ def test_roundtrip_stages_then_applies_bindings_skin_layout_slots_and_restarts(
     path = tmp_path / "设置备份.json"
     write_backup(path, host)
     assert read_backup(path, host) == expected
-    assert set(json.loads(path.read_text())) == set(expected)
+    assert set(json.loads(path.read_text(encoding="utf-8"))) == set(expected)
     # Imports do not write or apply anything until the user applies the form.
     host.components.default_skin()
     controller.move_to(DOCK_AREAS["left"])
