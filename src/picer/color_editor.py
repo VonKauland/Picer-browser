@@ -3,10 +3,11 @@
 import re
 
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QColorDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
+from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
-from picer.host_style import mark_host
+from picer.color_picker import ColorPicker
 from picer.theme import COLORS
+from picer.ui import colors_for
 
 
 def valid_accent(value):
@@ -48,13 +49,9 @@ class ColorEditor(QWidget):
 
     def choose(self):
         value = self.text.text().strip()
-        dialog = QColorDialog(
-            QColor(value if valid_accent(value) and value else COLORS["accent"]), self
+        dialog = ColorPicker(
+            value if valid_accent(value) and value else colors_for(self)["accent"], self
         )
-        dialog.setWindowTitle("选择强调色")
-        dialog.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog)
-        mark_host(dialog)
-        dialog.setStyleSheet("QColorDialog { background: #242426; }")
-        if dialog.exec() == QColorDialog.DialogCode.Accepted:
-            self.setValue(dialog.selectedColor().name().upper())
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.setValue(dialog.selected_value)
         dialog.deleteLater()

@@ -31,6 +31,7 @@ from picer.animation import AnimationPlayer
 from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
+from picer.drops import ImageDropTarget
 from picer.folder_navigation import FolderNavigation
 from picer.fullscreen import FullscreenChrome
 from picer.host_style import HostStyleFilter, mark_host, scope_style
@@ -172,6 +173,7 @@ class MainWindow(QMainWindow):
         self.supported_suffixes = supported_suffixes()
         self.animation = AnimationPlayer(self)
         self.loader = ImageLoader(self)
+        self.image_drops = ImageDropTarget(self, self.view.viewport())
         self.folder_navigation = FolderNavigation(self)
         self.touch_owners = set()
         self.double_page = DoublePage(self)
@@ -575,7 +577,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.18.1\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.18.2\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )
@@ -599,17 +601,6 @@ class MainWindow(QMainWindow):
             if edges and self.windowHandle():
                 self.windowHandle().startSystemResize(edges)
         super().mousePressEvent(event)
-
-    def dragEnterEvent(self, event) -> None:
-        if event.mimeData().hasUrls() and any(url.isLocalFile() for url in event.mimeData().urls()):
-            event.acceptProposedAction()
-
-    def dropEvent(self, event) -> None:
-        for url in event.mimeData().urls():
-            if url.isLocalFile() and self.open_image(Path(url.toLocalFile())):
-                event.acceptProposedAction()
-                return
-        QMessageBox.warning(self, "无法打开图片", self.last_error)
 
     def choose_image(self) -> None:
         patterns = " ".join(f"*{suffix}" for suffix in sorted(self.supported_suffixes))

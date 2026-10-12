@@ -6,11 +6,21 @@ from threading import Event, Thread
 from time import sleep
 
 from PIL import Image
-from PySide6.QtCore import QElapsedTimer, QPoint, QPointF, Qt, QTimer
-from PySide6.QtGui import QCursor, QIcon, QImage, QWheelEvent
+from PySide6.QtCore import QElapsedTimer, QMimeData, QPoint, QPointF, Qt, QTimer, QUrl
+from PySide6.QtGui import (
+    QColor,
+    QCursor,
+    QDragEnterEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QIcon,
+    QImage,
+    QWheelEvent,
+)
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QStyleOptionSlider
 
+from picer.color_picker import ColorPicker
 from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.progress_ring import RING_SIZE
@@ -29,6 +39,79 @@ def wait_for(predicate, timeout=3000):
         # callbacks can progress while this nested smoke loop polls the GUI.
         sleep(0.001)
     assert predicate()
+
+
+def verify_image_drop(window, path):
+    """Exercise the frozen Qt viewport's complete drag/drop route."""
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path))])
+    before = path.read_bytes()
+    for event in (
+        QDragEnterEvent(
+            QPoint(20, 20),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+        QDragMoveEvent(
+            QPoint(30, 30),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+        QDropEvent(
+            QPointF(30, 30),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ),
+    ):
+        QApplication.sendEvent(window.view.viewport(), event)
+        assert event.isAccepted() and event.dropAction() == Qt.DropAction.CopyAction
+    wait_for(lambda: window.current_path == path.resolve())
+    assert window.view.image_item.pixmap().toImage().pixelColor(10, 10).blue() == 204
+    assert path.read_bytes() == before
+    print("Packaged viewport enter/move/drop opens image and preserves source passed")
+
+
+def verify_color_picker(settings):
+    editor = settings.editors["accent_color"]
+    previous = editor.value()
+    seen = []
+
+    def interact():
+        try:
+            picker = QApplication.activeModalWidget()
+            assert isinstance(picker, ColorPicker)
+            QTest.mouseClick(picker.swatches[3], Qt.MouseButton.LeftButton)
+            assert picker.hex.text() == "#79B8FF"
+            picker.set_color(QColor("#FFA591"))
+            assert [spin.value() for spin in picker.rgb] == [255, 165, 145]
+            assert picker.grab().toImage().pixelColor(0, 0).alpha() == 0
+            pixels = picker.grab().toImage()
+            origin = picker.swatches[0].mapTo(picker, QPoint())
+            scale = pixels.devicePixelRatio()
+            corner = pixels.pixelColor(round(origin.x() * scale), round(origin.y() * scale))
+            center = pixels.pixelColor(
+                round((origin.x() + 16) * scale), round((origin.y() + 16) * scale)
+            )
+            assert corner.name().upper() != "#E8FF59"
+            assert center.name().upper() == "#E8FF59"
+            QTest.mouseClick(picker.apply, Qt.MouseButton.LeftButton)
+            seen.append(True)
+        except Exception:
+            traceback.print_exc()
+            if QApplication.activeModalWidget():
+                QApplication.activeModalWidget().reject()
+
+    QTimer.singleShot(50, interact)
+    editor.choose()
+    assert seen and editor.value() == "#FFA591"
+    assert settings.host.app_preferences["accent_color"] == previous
+    print("Packaged custom rounded HSV picker, swatches, RGB/HEX and explicit save passed")
 
 
 def verify_popups(window, browser):
@@ -487,7 +570,7 @@ def run(window, args, folder, done):
             assert isinstance(application_settings.editors["glass_strength"], RoundedSlider)
             application_settings.editors["zoom_step"].setValue(30)
             application_settings.editors["key_repeat_ms"].setValue(160)
-            application_settings.editors["accent_color"].setValue("#ffa591")
+            verify_color_picker(application_settings)
             application_settings.save()
             assert window.view.zoom_step == 30
             assert window.app_preferences["key_repeat_ms"] == 160
@@ -506,7 +589,7 @@ def run(window, args, folder, done):
             if args.progress_panel_archive
             else None
         )
-        assert window.open_image(first)
+        verify_image_drop(window, first)
         if progress:
             assert isinstance(progress.slider, RoundedSlider)
             progress.controls["next"].click()
