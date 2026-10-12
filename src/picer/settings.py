@@ -32,11 +32,12 @@ class ApplicationSettings(StyledDialog):
         self.values = read_preferences(self.manager)
         self.editors, self.shortcut_editors, self.panel_editors = {}, {}, {}
         self.layout_reset = False
-        self.resize(1000, 780)
-        self.setMinimumSize(860, 620)
+        self.setMinimumSize(760, 500)
+        available = self.screen().availableGeometry().size()
+        self.resize(min(1120, available.width() - 24), min(820, available.height() - 24))
         content = QHBoxLayout()
         self.navigation = QListWidget()
-        self.navigation.setFixedWidth(180)
+        self.navigation.setFixedWidth(150)
         self.navigation.setSpacing(6)
         self.pages = QStackedWidget()
         for label, icon, builder in (
@@ -59,6 +60,10 @@ class ApplicationSettings(StyledDialog):
             title.setObjectName("dialogHeading")
             layout.addWidget(title)
             builder(layout)
+            if builder == self.shortcuts_page:
+                layout.setSpacing(10)
+                self.pages.addWidget(page)
+                continue
             layout.addStretch()
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -258,7 +263,7 @@ class ApplicationSettings(StyledDialog):
 
         self.binding_editor = BindingEditor(self.host)
         self.shortcut_editors = self.binding_editor.primary_editors
-        layout.addWidget(self.binding_editor)
+        layout.addWidget(self.binding_editor, 1)
 
     def storage_page(self, layout):
         card = Card("应用数据")

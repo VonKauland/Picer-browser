@@ -51,6 +51,7 @@ def verify(application: Path) -> None:
         "_internal",
         "assets/icons/picer.ico",
         "assets/icons/picer.png",
+        "assets/ui/gamepad.png",
         "plugins",
         "cache",
         "config/plugins.json",

@@ -113,6 +113,7 @@ def main() -> None:
     version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
     assets = ROOT / "build" / "distribution-assets"
     prepare_icons(ROOT / "src" / "picer" / "assets" / "icons" / "picer.png", assets / "icons")
+    shutil.copytree(ROOT / "src" / "picer" / "assets" / "ui", assets / "ui", dirs_exist_ok=True)
     bundles = assets.parent / "trusted-bundles"
     write_examples(bundles)
     resource = assets.parent / "version-info.txt"

@@ -913,6 +913,15 @@ def verify_gamepad(window, paths):
         settings.activateWindow()
         wait_for(settings.isActiveWindow)
         assert monitor.capture is editor.gamepad_page
+        assert not editor.gamepad_page.diagram.artwork.isNull()
+        assert editor.gamepad_page.diagram.artwork.toImage().pixelColor(0, 0).alpha() == 0
+        for index in range(4):
+            editor.tabs.setCurrentIndex(index)
+            QTest.qWait(20)
+            for control in (editor.bindings, editor.add_button, editor.remove_button):
+                center = control.mapTo(settings, control.rect().center())
+                assert settings.rect().contains(center)
+        editor.tabs.setCurrentIndex(3)
         monitor.timer.stop()
         monitor.poll()
         samples[0] = GamepadSample(0x1000, right_trigger=100)

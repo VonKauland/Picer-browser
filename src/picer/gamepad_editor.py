@@ -1,7 +1,9 @@
 """Unbranded asymmetric controller schematic and staged XInput selection."""
 
+from pathlib import Path
+
 from PySide6.QtCore import QObject, QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -17,32 +19,33 @@ from shiboken6 import isValid
 from picer.gamepad import GAMEPAD_LABELS, SHOULDERS, normalize_gamepad
 
 # Front-facing, asymmetric sticks. No brand name or logo is embedded in the art.
+CANVAS = (1536, 1024)
 CENTERS = {
-    "LT": (192, 38),
-    "RT": (448, 38),
-    "LB": (194, 72),
-    "RB": (446, 72),
-    "LS": (186, 148),
-    "RS": (428, 230),
-    "Back": (286, 153),
-    "Start": (350, 153),
-    "Guide": (320, 105),
-    "Y": (484, 118),
-    "X": (450, 151),
-    "B": (518, 151),
-    "A": (484, 184),
-    "DpadUp": (244, 202),
-    "DpadDown": (244, 246),
-    "DpadLeft": (222, 224),
-    "DpadRight": (266, 224),
-    "LSUp": (186, 112),
-    "LSDown": (186, 184),
-    "LSLeft": (150, 148),
-    "LSRight": (222, 148),
-    "RSUp": (428, 194),
-    "RSDown": (428, 266),
-    "RSLeft": (392, 230),
-    "RSRight": (464, 230),
+    "LT": (380, 85),
+    "RT": (1145, 85),
+    "LB": (394, 156),
+    "RB": (1141, 156),
+    "LS": (390, 350),
+    "RS": (973, 566),
+    "Back": (682, 387),
+    "Start": (855, 387),
+    "Guide": (768, 299),
+    "Y": (1148, 277),
+    "X": (1055, 365),
+    "B": (1244, 365),
+    "A": (1148, 455),
+    "DpadUp": (575, 500),
+    "DpadDown": (575, 626),
+    "DpadLeft": (510, 564),
+    "DpadRight": (641, 564),
+    "LSUp": (390, 242),
+    "LSDown": (390, 456),
+    "LSLeft": (282, 350),
+    "LSRight": (494, 350),
+    "RSUp": (973, 458),
+    "RSDown": (973, 674),
+    "RSLeft": (865, 566),
+    "RSRight": (1081, 566),
 }
 
 
@@ -51,14 +54,22 @@ class GamepadMap(QWidget):
         super().__init__(page)
         self.page = page
         self.setObjectName("gamepadMap")
-        self.setMinimumHeight(220)
+        assets = getattr(page.host, "paths_layout", None)
+        root = assets.assets if assets else Path(__file__).parent / "assets"
+        self.artwork = QPixmap(str(root / "ui" / "gamepad.png"))
+        self.setMinimumHeight(200)
+        self.setMaximumHeight(280)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setAccessibleName("手柄示意图，左摇杆在上，右摇杆在下；也可用下方列表选择按键")
         self.setToolTip("点击按钮选择；摇杆外侧四个方向也可绑定。")
 
     def transform(self):
-        scale = min(self.width() / 640, self.height() / 340)
-        return scale, (self.width() - 640 * scale) / 2, (self.height() - 340 * scale) / 2
+        scale = max(0.001, min(self.width() / CANVAS[0], self.height() / CANVAS[1]))
+        return (
+            scale,
+            (self.width() - CANVAS[0] * scale) / 2,
+            (self.height() - CANVAS[1] * scale) / 2,
+        )
 
     def hit_test(self, point):
         scale, x, y = self.transform()
@@ -67,7 +78,7 @@ class GamepadMap(QWidget):
             key: (point - QPointF(*center)).manhattanLength() for key, center in CENTERS.items()
         }
         key = min(distances, key=distances.get)
-        return key if distances[key] <= 25 else None
+        return key if distances[key] <= 64 else None
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -86,43 +97,40 @@ class GamepadMap(QWidget):
         painter.scale(scale, scale)
         colors = self.page.host.skin_colors
         accent, text = QColor(colors["accent"]), QColor(colors["text"])
-        shell = QPainterPath(QPointF(170, 86))
-        shell.cubicTo(208, 66, 432, 66, 470, 86)
-        shell.cubicTo(520, 96, 535, 133, 550, 186)
-        shell.cubicTo(586, 308, 545, 327, 500, 295)
-        shell.lineTo(440, 272)
-        shell.cubicTo(380, 262, 260, 262, 200, 272)
-        shell.lineTo(140, 295)
-        shell.cubicTo(95, 327, 54, 308, 90, 186)
-        shell.cubicTo(105, 133, 120, 96, 170, 86)
-        gradient = QLinearGradient(150, 75, 390, 305)
-        gradient.setColorAt(0, QColor("#555559"))
-        gradient.setColorAt(0.45, QColor("#343438"))
-        gradient.setColorAt(1, QColor("#222225"))
-        painter.setPen(QPen(QColor("#626267"), 1.2))
-        painter.setBrush(gradient)
-        painter.drawPath(shell)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        if not self.artwork.isNull():
+            painter.drawPixmap(QRectF(0, 0, *CANVAS), self.artwork, QRectF(self.artwork.rect()))
+        else:
+            painter.setPen(text)
+            painter.drawText(
+                QRectF(0, 0, *CANVAS), Qt.AlignmentFlag.AlignCenter, "手柄示意图不可用"
+            )
+        font = painter.font()
+        font.setPixelSize(round(10 / scale))
+        painter.setFont(font)
         selected = set(self.page.value().split("+"))
         held = self.page.monitor.held[self.page.device.currentIndex()]
         for key, center in CENTERS.items():
             pos = QPointF(*center)
             direction = key.startswith(("LS", "RS")) and len(key) > 2
             chosen = key in selected
-            fill = accent if chosen else QColor("#444448" if key in held else "#28282B")
-            painter.setBrush(fill)
-            painter.setPen(QPen(accent if chosen or key in held else QColor("#65656B"), 1.3))
+            highlighted = chosen or key in held
+            fill = QColor(accent)
+            fill.setAlpha(180 if chosen else 70)
+            painter.setBrush(fill if highlighted else Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(accent, 1.5 / scale) if highlighted else Qt.PenStyle.NoPen)
             radius = (
-                28
+                95
                 if key in ("LS", "RS")
-                else 8
+                else 24
                 if direction
-                else 14
+                else 32
                 if key.startswith("Dpad")
-                else 18
+                else 46
             )
             if key in SHOULDERS:
-                rect = QRectF(pos.x() - 29, pos.y() - 11, 58, 22)
-                painter.drawRoundedRect(rect, 9, 9)
+                rect = QRectF(pos.x() - 88, pos.y() - 26, 176, 52)
+                painter.drawRoundedRect(rect, 22, 22)
             else:
                 rect = QRectF(pos.x() - radius, pos.y() - radius, radius * 2, radius * 2)
                 painter.drawEllipse(rect)
@@ -139,12 +147,6 @@ class GamepadMap(QWidget):
             if direction:
                 label = ""
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
-        painter.setPen(text)
-        painter.drawText(
-            QRectF(40, 313, 560, 24),
-            Qt.AlignmentFlag.AlignCenter,
-            "当前选择：" + self.page.display_value(),
-        )
 
 
 class GamepadPage(QWidget):
@@ -154,7 +156,13 @@ class GamepadPage(QWidget):
         self.monitor = host.inputs.gamepad
         self.setObjectName("bindingPage")
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
         self.device = QComboBox()
+        self.device.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.device.setMinimumContentsLength(8)
         self.device.setAccessibleName("识别输入的手柄设备")
         self.device.setToolTip(
             "选择用于识别按键的设备；保存的按键绑定适用于所有已连接 XInput 手柄。"
@@ -164,9 +172,12 @@ class GamepadPage(QWidget):
         layout.addWidget(self.device)
         self.diagram = GamepadMap(self)
         layout.addWidget(self.diagram, 1)
+        self.selection = QLabel("当前选择：A")
+        self.selection.setWordWrap(True)
+        layout.addWidget(self.selection)
         row = QHBoxLayout()
         self.modifiers = {}
-        row.addWidget(QLabel("组合肩键"))
+        layout.addWidget(QLabel("组合肩键"))
         for key in SHOULDERS:
             check = QCheckBox(key)
             check.setAccessibleName(key + "作为组合修饰键")
@@ -176,6 +187,10 @@ class GamepadPage(QWidget):
         row.addStretch()
         layout.addLayout(row)
         self.button = QComboBox()
+        self.button.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.button.setMinimumContentsLength(8)
         self.button.setAccessibleName("待添加手柄按钮")
         for key, label in GAMEPAD_LABELS.items():
             self.button.addItem(label, key)
@@ -185,8 +200,9 @@ class GamepadPage(QWidget):
         self.status.setWordWrap(True)
         self.status.setObjectName("muted")
         layout.addWidget(self.status)
-        note = QLabel(
-            "按下手柄按钮识别，或点击示意图选择。默认未分配功能。\n肩键用作组合修饰键后，不可同时单独绑定；其余肩键不受影响。"
+        note = QLabel("按键识别或点击选择；肩键支持组合绑定。")
+        note.setToolTip(
+            "手柄默认未分配。肩键用作组合修饰键后，不可同时单独绑定；其余肩键不受影响。"
         )
         note.setWordWrap(True)
         note.setObjectName("muted")
@@ -214,6 +230,7 @@ class GamepadPage(QWidget):
             if base in self.modifiers and self.modifiers[base].isChecked():
                 self.modifiers[base].setChecked(False)
             self.diagram.update()
+            self.selection.setText("当前选择：" + self.display_value())
 
     def select_button(self, key):
         self.button.setCurrentIndex(self.button.findData(key))

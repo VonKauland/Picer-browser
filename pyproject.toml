@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "picer"
-version = "0.18.0"
+version = "0.18.1"
 description = "Picer - a minimal Windows image browser"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -32,4 +32,4 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.setuptools.package-data]
-picer = ["assets/icons/*.svg", "assets/icons/*.png"]
+picer = ["assets/icons/*.svg", "assets/icons/*.png", "assets/ui/*.png"]

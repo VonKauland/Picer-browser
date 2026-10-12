@@ -73,6 +73,7 @@ QTabBar::tab { background: transparent; color: #A2A2A6; padding: 10px 18px;
 border-bottom: 2px solid transparent; }
 QTabBar::tab:selected { color: #F3F3F0; border-bottom: 2px solid #E8FF59; }
 QTabBar::tab:hover { background: #38383B; border-radius: 8px; }
+QTabWidget#inputTabs QTabBar::tab { padding: 8px 12px; }
 QToolTip { color: #F3F3F0; background: #38383B; border: 1px solid #454549; padding: 6px; }
 QMenu { background: #303032; color: #F3F3F0; border: none;
 border-radius: 12px; padding: 6px; }

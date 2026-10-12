@@ -289,7 +289,8 @@ def test_editor_capture_chords_click_diagram_and_cancel(host, qtbot, tmp_path):
     from picer.gamepad_editor import CENTERS
 
     assert CENTERS["LS"][1] < CENTERS["RS"][1]
-    pos = QPointF(x + 320 * scale, y + 105 * scale)
+    center_x, center_y = CENTERS["Guide"]
+    pos = QPointF(x + center_x * scale, y + center_y * scale)
     assert diagram.hit_test(pos) == "Guide"
     qtbot.mouseClick(diagram, Qt.MouseButton.LeftButton, pos=pos.toPoint())
     assert page.button.currentData() == "Guide"

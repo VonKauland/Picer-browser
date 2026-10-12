@@ -2,7 +2,7 @@
 
 import copy
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QTabWidget,
     QVBoxLayout,
@@ -33,6 +35,26 @@ from picer.input_bindings import (
 from picer.ui import Card
 
 DEVICES = ("keyboard", "mouse", "touch", "gamepad")
+
+
+class InputTabs(QTabWidget):
+    """A bounded viewport; hidden pages cannot impose their form height on every tab."""
+
+    def minimumSizeHint(self):
+        return QSize(0, 0)
+
+    def sizeHint(self):
+        return QSize(380, 260)
+
+    def addTab(self, page, label):
+        viewport = QScrollArea()
+        viewport.setWidgetResizable(True)
+        viewport.setFrameShape(QScrollArea.Shape.NoFrame)
+        viewport.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        viewport.setMinimumSize(0, 0)
+        viewport.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Expanding)
+        viewport.setWidget(page)
+        return super().addTab(viewport, label)
 
 
 class TouchMap(QWidget):
@@ -98,31 +120,41 @@ class BindingEditor(QWidget):
         self.current_key = None
         body = QVBoxLayout(self)
         body.setContentsMargins(0, 0, 0, 0)
-        note = QLabel(
-            "每个操作可添加多个输入。目录键在文件浏览面板内生效；其他键盘操作在窗口内生效。"
-            "鼠标与触控仅作用于图片画布；触控与手柄默认未分配。"
+        note = QLabel("选择左侧操作，可为键盘、鼠标、触控和手柄添加多个绑定。")
+        note.setToolTip(
+            "目录键在文件浏览面板内生效；其他键盘操作在窗口内生效。"
+            "鼠标与触控作用于图片画布；触控与手柄默认未分配。"
         )
         note.setWordWrap(True)
         note.setObjectName("muted")
         body.addWidget(note)
         row = QHBoxLayout()
-        left = QVBoxLayout()
+        function_pane = QWidget()
+        function_pane.setMinimumWidth(165)
+        function_pane.setMaximumWidth(215)
+        left = QVBoxLayout(function_pane)
+        left.setContentsMargins(0, 0, 0, 0)
         search = QLineEdit()
         search.setPlaceholderText("搜索操作或组件")
         left.addWidget(search)
         self.functions = QListWidget()
-        self.functions.setMinimumWidth(160)
-        self.functions.setMaximumWidth(230)
+        self.functions.setMinimumSize(0, 0)
         for key, action in self.actions.items():
             item = QListWidgetItem(action.text())
             item.setData(Qt.ItemDataRole.UserRole, key)
             self.functions.addItem(item)
         left.addWidget(self.functions)
-        row.addLayout(left)
-        card = Card("输入绑定")
-        self.tabs = QTabWidget()
+        row.addWidget(function_pane)
+        card = Card()
+        card.body.setContentsMargins(14, 12, 14, 12)
+        card.body.setSpacing(10)
+        self.tabs = InputTabs()
+        self.tabs.setMinimumSize(0, 0)
+        self.tabs.setMinimumHeight(90)
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.setObjectName("inputTabs")
         self.keyboard_stack = QStackedWidget()
+        self.keyboard_stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         for key in self.actions:
             values = [b["value"] for b in self.profile.get(key, []) if b["device"] == "keyboard"]
             edit = QKeySequenceEdit(QKeySequence(values[0] if values else ""))
@@ -141,6 +173,7 @@ class BindingEditor(QWidget):
         layout.addWidget(self.keyboard_stack)
         layout.addWidget(QLabel("添加另一个快捷键"))
         layout.addWidget(self.keyboard_add)
+        layout.addStretch()
         self.tabs.addTab(keyboard, "键盘")
         mouse = QWidget()
         mouse.setObjectName("bindingPage")
@@ -165,33 +198,41 @@ class BindingEditor(QWidget):
         layout.addWidget(QLabel("修饰键与鼠标操作"))
         layout.addWidget(self.mouse_modifiers)
         layout.addWidget(self.mouse)
+        layout.addStretch()
         self.tabs.addTab(mouse, "鼠标")
         touch = QWidget()
         touch.setObjectName("bindingPage")
         layout = QVBoxLayout(touch)
         self.touch = QComboBox()
         self.touch.addItems(ZONES)
-        layout.addWidget(TouchMap(self.touch, host))
+        touch_map = TouchMap(self.touch, host)
+        touch_map.setMaximumHeight(220)
+        layout.addWidget(touch_map)
         layout.addWidget(self.touch)
+        layout.addStretch()
         self.tabs.addTab(touch, "触控")
         from picer.gamepad_editor import GamepadPage
 
         self.gamepad_page = GamepadPage(host)
         self.tabs.addTab(self.gamepad_page, "手柄")
-        card.body.addWidget(self.tabs)
-        add = QPushButton("添加绑定")
-        add.clicked.connect(self.add_current)
-        card.body.addWidget(add)
+        card.body.addWidget(self.tabs, 1)
+        card.body.addWidget(QLabel("已绑定输入"))
         self.bindings = QListWidget()
-        self.bindings.setMinimumHeight(85)
-        self.bindings.setMaximumHeight(115)
+        self.bindings.setMinimumHeight(42)
+        self.bindings.setMaximumHeight(64)
         self.bindings.currentItemChanged.connect(self.select_binding)
         card.body.addWidget(self.bindings)
-        remove = QPushButton("移除选中绑定")
-        remove.clicked.connect(self.remove_current)
-        card.body.addWidget(remove)
+        toolbar = QHBoxLayout()
+        self.add_button = QPushButton("添加绑定")
+        self.add_button.setObjectName("primaryButton")
+        self.add_button.clicked.connect(self.add_current)
+        self.remove_button = QPushButton("移除选中绑定")
+        self.remove_button.clicked.connect(self.remove_current)
+        toolbar.addWidget(self.add_button)
+        toolbar.addWidget(self.remove_button)
+        card.body.addLayout(toolbar)
         row.addWidget(card, 1)
-        body.addLayout(row)
+        body.addLayout(row, 1)
         self.functions.currentItemChanged.connect(self.select)
         self.tabs.currentChanged.connect(self.show_bindings)
         search.textChanged.connect(self.filter)
