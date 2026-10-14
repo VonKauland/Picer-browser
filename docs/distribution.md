@@ -1,6 +1,20 @@
 # Picer 文件夹分发与存储
 
-下载 Windows 构建产物并完整解压，保留整个 `Picer` 文件夹，双击其中的 `Picer.exe` 即可运行。无需安装 Python，也无需管理员权限。`Picer.exe` 依赖同目录的 `_internal`，不能只复制 EXE。
+从 GitHub Releases 下载安装版或便携版，均无需安装 Python。
+
+## 安装版
+
+运行 `Picer-版本号-windows-x64-setup.exe`。默认安装到 `%LOCALAPPDATA%\Programs\Picer`，仅为当前用户安装，无需管理员权限，并创建开始菜单入口。
+
+「选择附加选项」页提供桌面快捷方式、Windows 右键菜单和默认图片浏览器。两个系统集成选项默认不勾选；注册范围仅为当前用户 HKCU。选择默认浏览器后，完成页可以打开 Windows 默认应用设置，由用户确认关联；不改写 UserChoice，也不覆盖其他程序的默认关联。静默安装不会打开系统设置或自动启动应用。Windows 11 的右键入口可能位于「显示更多选项」。
+
+再次安装到同一目录可以升级。安装文件不覆盖 `config`、`plugins`、`skins`、`cache`、`logs` 中的数据；默认组件由程序的可信目录在启动时安装或升级。取消已选集成选项会移除仍指向本安装路径的相应注册项。
+
+从 Windows 已安装的应用列表卸载，或运行安装目录中的 `unins000.exe`。卸载移除程序、快捷方式和本安装目录拥有的注册项，保留配置、用户插件和缓存；若另一份揽映已重新注册，保留那一份的入口。图片源文件不会删除。若需要彻底清理，可在卸载后自行删除保留的数据目录。
+
+## 便携版
+
+下载 `Picer-版本号-windows-x64-portable.zip` 并完整解压，保留整个 `Picer` 文件夹，双击其中的 `Picer.exe` 即可运行。无需管理员权限。`Picer.exe` 依赖同目录的 `_internal`，不能只复制 EXE。
 
 ```text
 Picer/
@@ -64,6 +78,9 @@ Picer/
 ```powershell
 python -m scripts.build_windows
 python -m scripts.verify_distribution
+python -m scripts.build_installer
+python -m scripts.verify_installer
+python -m scripts.release_assets
 ```
 
 构建使用 PyInstaller `--onedir --windowed --contents-directory _internal`，输出 `dist/Picer/`，再复制图标、示例插件、文档和数据目录。
@@ -71,3 +88,7 @@ python -m scripts.verify_distribution
 0.20.2 的体积优化仅移除 PyInstaller 自动带入的 `PySide6/opengl32sw.dll`。宿主使用 QWidget/QGraphicsView 光栅视口，不使用 OpenGL 控件；Python、Qt 主库、全部图片插件及 RAW/NumPy 库保留。`build/distribution-size.json` 记录清理前后每个文件的体积和明确移除项，作为 Windows 测试报告附件。实际 EXE 校验构建时记录的格式集合，逐项解码可用的静态图片，并执行 RAW、动画与界面测试；不把删除运行库本身视为验证通过。
 
 Windows CI 在临时目录复制完整软件，从无关工作目录启动 EXE，执行图片、三类组件、快捷位与全屏面板冒烟测试，检查实际配置、日志和缓存写入位置，然后迁移整个文件夹并再次启动，确认插件设置保留。最终上传原始干净的 `dist/`，测试写入的数据不会包含在分发包内。
+
+安装包由 Inno Setup 6 在 Windows 编译。CI 对公开安装包执行安装、实际 EXE 启动/重启、升级和卸载，并对同一脚本/完整载荷的隔离注册表测试构建执行四种勾选组合，检查其他默认关联与另一份揽映的注册项保留。测试不会打开系统默认应用页面，也不模拟用户修改默认关联。
+
+包含 `[release]` 标记的 main 提交只有在完整构建和安装验证通过后，才通过单独具有 contents:write 权限的发布作业创建 Release：先创建草稿，上传便携 ZIP、安装 EXE 与 SHA256SUMS.txt，全部成功后发布。普通提交和 PR 不自动发布。

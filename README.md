@@ -5,7 +5,7 @@
 <p align="center">揽景入方寸，映眸见万象。</p>
 
 <p align="center">
-  <a href="https://github.com/VonKauland/Picer-browser/actions/workflows/build-windows.yml">下载 Windows 版</a>
+  <a href="https://github.com/VonKauland/Picer-browser/releases/latest">下载 Windows 版</a>
   ·
   <a href="#开始使用">开始使用</a>
   ·
@@ -70,11 +70,14 @@
 
 ## 开始使用
 
-1. 打开 [Windows 构建页面](https://github.com/VonKauland/Picer-browser/actions/workflows/build-windows.yml)，选择最近一次成功运行。
-2. 在 **Artifacts** 中下载 **Picer-windows-x64**，完整解压 ZIP。
-3. 进入 **Picer** 文件夹，双击 **Picer.exe**，然后拖入图片或按 `Ctrl + O` 打开。
+打开 [GitHub Releases](https://github.com/VonKauland/Picer-browser/releases/latest)，选择适合自己的版本：
 
-无需安装 Python。请保留完整软件文件夹，运行库和资源与 EXE 一起使用。构建产物通常保留 30 天，下载需要登录 GitHub。
+- **安装版**：下载 `Picer-版本号-windows-x64-setup.exe`，按向导安装。可选择桌面快捷方式、Windows「使用揽映打开」右键菜单和默认图片浏览器；Windows 集成默认不勾选。选择默认浏览器后，在安装完成时打开 Windows 默认应用设置并确认关联。
+- **便携版**：下载 `Picer-版本号-windows-x64-portable.zip`，完整解压后进入 **Picer** 文件夹，双击 **Picer.exe**。
+
+启动后，拖入图片或按 `Ctrl + O` 即可开始浏览。
+
+两种版本都无需安装 Python。便携版请保留完整软件文件夹，运行库和资源与 EXE 一起使用。Releases 附件可直接下载，也提供 SHA256 校验值。
 
 更新时，把新版解压到新目录，再迁移旧版的 `plugins`、`skins` 和 `config`，即可保留插件与设置。更多说明见 [安装、更新与迁移](https://github.com/VonKauland/Picer-browser/blob/main/docs/distribution.md)。
 
