@@ -156,8 +156,12 @@ def test_settings_tabs_reveal_card_background_instead_of_rectangular_fill(window
         for corner in (rect.topLeft(), rect.topRight()):
             point = tabs.mapTo(dialog, corner)
             assert pixel(image, point.x(), point.y()) == card_color
-    # Empty tab-bar space must also reveal the same card, not the top-level title color.
-    point = tabs.mapTo(dialog, QPoint(tabs.width() - 2, 2))
+    # QTabBar can fit its tabs exactly. Its last pixels then belong to the
+    # hovered tab's antialiased curve, not empty space; sample beside the bar.
+    container = dialog.binding_editor.tabs
+    blank = QPoint(tabs.geometry().right() + 4, tabs.y() + 2)
+    assert container.rect().contains(blank)
+    point = container.mapTo(dialog, blank)
     assert pixel(dialog.grab().toImage(), point.x(), point.y()) == card_color
     dialog.reject()
 
