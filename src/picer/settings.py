@@ -180,12 +180,6 @@ class ApplicationSettings(StyledDialog):
         card.body.addLayout(form_row("毛玻璃层次", slider))
         card.body.addLayout(form_row("文件名", QLabel("始终居中")))
         layout.addWidget(card)
-        card = Card("动画与反馈")
-        label = QLabel("面板悬停展开与收回沿用当前动效。")
-        label.setObjectName("muted")
-        label.setWordWrap(True)
-        card.body.addWidget(label)
-        layout.addWidget(card)
 
     def browsing_page(self, layout):
         card = Card("打开图片")
@@ -222,9 +216,6 @@ class ApplicationSettings(StyledDialog):
             "双击图片",
             (("toggle", "适应 / 原始大小切换"), ("fit", "适应窗口"), ("actual", "原始大小")),
         )
-        note = QLabel("旋转只修改预览，不改写原图。")
-        note.setObjectName("muted")
-        card.body.addWidget(note)
         layout.addWidget(card)
 
     def panels_page(self, layout):
@@ -249,13 +240,6 @@ class ApplicationSettings(StyledDialog):
             card.body.addLayout(row)
         if not self.panel_editors:
             card.body.addWidget(QLabel("启用面板组件后，可在这里调整停靠位置。"))
-        note = QLabel(
-            "固定 / 自动隐藏仅通过面板三点条与指示条切换。全屏默认隐藏；"
-            "侧边面板可左右换边，底部仅放进度面板。"
-        )
-        note.setWordWrap(True)
-        note.setObjectName("muted")
-        card.body.addWidget(note)
         reset = QPushButton("重置布局")
         reset.clicked.connect(self.reset_layout)
         card.body.addWidget(reset)

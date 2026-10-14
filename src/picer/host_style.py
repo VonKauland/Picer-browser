@@ -3,7 +3,7 @@
 import re
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QComboBox, QMenu, QStyledItemDelegate, QWidget
+from PySide6.QtWidgets import QComboBox, QFrame, QMenu, QStyledItemDelegate, QWidget
 
 from picer.theme import CONTROLS
 
@@ -26,6 +26,9 @@ def prepare_popup(widget):
         widget.setAutoFillBackground(False)
         if not isinstance(widget, QMenu):
             widget.setObjectName("picerComboPopup")
+            widget.setFrameShape(QFrame.Shape.NoFrame)
+            widget.setLineWidth(0)
+            widget.setMidLineWidth(0)
 
 
 def mark_host(widget: QWidget) -> None:

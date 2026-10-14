@@ -85,8 +85,9 @@ QMenu::separator { height: 1px; background: #454549; margin: 6px 10px; }
 
 STYLE = (
     """
-QWidget { background: #242426; color: #F3F3F0; font-size: 13px;
+QWidget { background: transparent; color: #F3F3F0; font-size: 13px;
 font-family: 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
+QMainWindow { background: #242426; }
 QWidget#titleBar { background: #242426; }
 QWidget#titleLeft, QWidget#titleRight, QWidget#windowControls, QLabel {
 background: transparent; }

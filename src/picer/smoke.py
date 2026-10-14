@@ -18,7 +18,7 @@ from PySide6.QtGui import (
     QWheelEvent,
 )
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QStyleOptionSlider
+from PySide6.QtWidgets import QApplication, QFrame, QMenu, QPushButton, QStyleOptionSlider
 
 from picer.color_picker import ColorPicker
 from picer.panels import DOCK_AREAS
@@ -225,10 +225,61 @@ def verify_formats_and_shell(window):
             service.delete("")
         print("Packaged EXE per-user native registry commands and cleanup passed (isolated HKCU)")
     print("Packaged image context menu and live format filtering passed")
+    from picer.about import POEM, AboutDialog
+
+    checked = []
+
+    def close_about():
+        dialog = QApplication.activeModalWidget()
+        try:
+            assert isinstance(dialog, AboutDialog)
+            assert dialog.windowFlags() & Qt.WindowType.FramelessWindowHint
+            assert dialog.poem.accessibleName() == POEM
+            assert "Windows x64" in dialog.version.text() if sys.platform == "win32" else True
+            assert dialog.close_button.size().width() == 32
+            assert dialog.grab().toImage().pixelColor(0, 0).alpha() == 0
+            checked.append(True)
+        finally:
+            if dialog:
+                dialog.done_button.click()
+
+    QTimer.singleShot(50, close_about)
+    window.show_about()
+    assert checked
+    print("Packaged custom About title bar, transparent corners, accent pixels and acrostic passed")
 
 
 def verify_popups(window, browser):
     """Inspect actual popup windows in the frozen Windows application."""
+    dialog = window.show_settings()
+    dialog.navigation.setCurrentRow(1)
+    combo = dialog.editors["density"]
+    combo.showPopup()
+    QTest.qWait(30)
+    popup = combo.view().window()
+    assert popup.frameShape() == QFrame.Shape.NoFrame
+    pixels = popup.grab().toImage()
+    ratio = pixels.devicePixelRatio()
+    for x, y in (
+        (0, 0),
+        (popup.width() - 1, 0),
+        (0, popup.height() - 1),
+        (popup.width() - 1, popup.height() - 1),
+    ):
+        assert pixels.pixelColor(round(x * ratio), round(y * ratio)).alpha() == 0
+    combo.hidePopup()
+    dialog.navigation.setCurrentRow(4)
+    tabs = dialog.binding_editor.tabs.tabBar()
+    QTest.mouseMove(tabs, tabs.tabRect(3).center())
+    QTest.qWait(30)
+    image = dialog.grab().toImage()
+    for corner in (tabs.tabRect(3).topLeft(), tabs.tabRect(3).topRight()):
+        point = tabs.mapTo(dialog, corner)
+        assert image.pixelColor(
+            round(point.x() * image.devicePixelRatio()), round(point.y() * image.devicePixelRatio())
+        ) == QColor(window.skin_colors["menu"])
+    dialog.reject()
+    print("Packaged real settings dropdown native-frame removal and transparent tab backing passed")
     for menu in (window.main_menus[3], window.components.menus["function"]):
         menu.popup(window.mapToGlobal(QPoint(100, 100)))
         QTest.qWait(20)

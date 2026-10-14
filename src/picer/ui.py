@@ -277,14 +277,14 @@ class DialogHeader(QWidget):
 
 
 class StyledDialog(QDialog):
-    def __init__(self, title, subtitle="", parent=None):
+    def __init__(self, title, subtitle="", parent=None, *, surface_type=QFrame):
         super().__init__(parent)
         self.setWindowTitle("揽映 · " + title)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
-        frame = QFrame()
+        frame = surface_type()
         frame.setObjectName("dialogSurface")
         outer.addWidget(frame)
         layout = QVBoxLayout(frame)

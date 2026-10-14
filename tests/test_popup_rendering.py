@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QMenu
 
 from picer.host_style import mark_host
 from picer.settings import ApplicationSettings
@@ -110,6 +110,98 @@ def test_combobox_popup_rounding_selection_and_complete_rows(window, qtbot, tmp_
     if owner == "panel":
         assert plugin.current_order()[0] == "size"
         assert plugin.context.get_setting("folder_orders")[plugin.location.text()]["sort"] == "size"
+
+
+@pytest.mark.parametrize("skin", ["default", "macos"])
+def test_all_real_settings_dropdowns_have_clear_corners_and_no_native_frame(
+    window, qtbot, tmp_path, skin
+):
+    if skin == "macos":
+        enable_example(window, tmp_path, "macos_skin")
+    dialog = window.show_settings()
+    checked = set()
+    for page in range(dialog.pages.count()):
+        dialog.navigation.setCurrentRow(page)
+        for tab in range(4) if page == 4 else [None]:
+            if tab is not None:
+                dialog.binding_editor.tabs.setCurrentIndex(tab)
+            qtbot.wait(10)
+            for combo in dialog.pages.currentWidget().findChildren(QComboBox):
+                if combo in checked or not combo.isVisible() or not combo.count():
+                    continue
+                combo.showPopup()
+                popup = combo.view().window()
+                qtbot.waitUntil(popup.isVisible)
+                assert popup.frameShape() == QFrame.Shape.NoFrame
+                assert popup.lineWidth() == popup.midLineWidth() == 0
+                assert_clear_corners(popup)
+                combo.hidePopup()
+                checked.add(combo)
+    assert dialog.editors["density"] in checked
+    assert dialog.binding_editor.gamepad_page.button in checked
+    assert len(checked) >= 10
+    dialog.reject()
+
+
+def test_settings_tabs_reveal_card_background_instead_of_rectangular_fill(window, qtbot):
+    dialog = window.show_settings()
+    dialog.navigation.setCurrentRow(4)
+    tabs = dialog.binding_editor.tabs.tabBar()
+    card_color = QColor(COLORS["menu"])
+    for index in range(tabs.count()):
+        rect = tabs.tabRect(index)
+        qtbot.mouseMove(tabs, rect.center())
+        qtbot.wait(20)
+        image = dialog.grab().toImage()
+        for corner in (rect.topLeft(), rect.topRight()):
+            point = tabs.mapTo(dialog, corner)
+            assert pixel(image, point.x(), point.y()) == card_color
+    # Empty tab-bar space must also reveal the same card, not the top-level title color.
+    point = tabs.mapTo(dialog, QPoint(tabs.width() - 2, 2))
+    assert pixel(dialog.grab().toImage(), point.x(), point.y()) == card_color
+    dialog.reject()
+
+
+@pytest.mark.parametrize("skin", ["default", "macos"])
+def test_all_persistent_host_management_and_browser_menus_have_clear_corners(
+    window, qtbot, tmp_path, skin
+):
+    from picer.plugins.dialog import PluginDialog
+
+    browser = enable_example(window, tmp_path, "file_browser")
+    if skin == "macos":
+        enable_example(window, tmp_path, "macos_skin")
+    management = PluginDialog(window.plugins, window)
+    qtbot.addWidget(management)
+    management.show()
+    canvas = window.image_context_menu()
+    menus = set(window.findChildren(QMenu))
+    menus.update((canvas, browser.quick_menu))
+    for menu in menus:
+        if not menu.actions():
+            continue
+        menu.popup(window.mapToGlobal(QPoint(180, 180)))
+        qtbot.waitUntil(menu.isVisible)
+        assert_clear_corners(menu)
+        menu.hide()
+    assert len(menus) >= 15
+    for combo in (management.status_filter, management.filter, browser.sort):
+        combo.showPopup()
+        qtbot.waitUntil(combo.view().window().isVisible)
+        assert_clear_corners(combo.view().window())
+        combo.hidePopup()
+    canvas.deleteLater()
+    management.reject()
+
+
+def test_settings_omit_the_user_marked_static_notes(window):
+    dialog = ApplicationSettings(window)
+    labels = [label.text() for label in dialog.findChildren(QLabel)]
+    assert "动画与反馈" not in labels
+    assert all("面板悬停展开与收回" not in text for text in labels)
+    assert all("旋转只修改预览" not in text for text in labels)
+    assert all("固定 / 自动隐藏仅通过" not in text for text in labels)
+    dialog.deleteLater()
 
 
 @pytest.mark.parametrize("orientation", [Qt.Orientation.Horizontal, Qt.Orientation.Vertical])
