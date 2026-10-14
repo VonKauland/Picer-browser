@@ -1,0 +1,16 @@
+{
+  "id": "example.touch",
+  "name": "触控支持",
+  "version": "1.0.1",
+  "type": "function",
+  "api_version": 1,
+  "entrypoint": "main:Plugin",
+  "description": "五个触控区域，默认不分配操作。在应用快捷键设置中配置。",
+  "author": "Picer",
+  "permissions": [
+    "ui.commands",
+    "input.touch",
+    "settings"
+  ],
+  "requires": []
+}

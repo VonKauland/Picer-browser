@@ -1,0 +1,76 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and build Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12 x64
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install -r requirements-dev.txt -e .
+      - name: Check code quality
+        run: |
+          python -m ruff check .
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff format --check .
+      - name: Run GUI tests on Windows
+        run: python -m pytest --maxfail=1 --junitxml=test-results.xml
+      - name: Build complete Windows application folder
+        run: python -m scripts.build_windows
+      - name: Verify packaged folder and relocation on Windows
+        run: python -m scripts.verify_distribution
+      - name: Record distribution size
+        run: |
+          $files = Get-ChildItem 'dist/Picer' -Recurse -File
+          $bytes = ($files | Measure-Object -Property Length -Sum).Sum
+          $sizeReport = Get-Content 'build/distribution-size.json' -Raw | ConvertFrom-Json
+          "Before: $($sizeReport.before.bytes) bytes; after: $($sizeReport.after.bytes) bytes; saved: $($sizeReport.saved_bytes) bytes"
+          "Picer folder: $($files.Count) files, $([math]::Round($bytes / 1MB, 2)) MiB" >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload complete Windows application folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: Picer-windows-x64
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: |
+            test-results.xml
+            build/distribution-size.json
+          if-no-files-found: ignore

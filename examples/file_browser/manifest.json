@@ -1,0 +1,17 @@
+{
+  "id": "example.files",
+  "name": "文件浏览器",
+  "version": "1.11.0",
+  "api_version": 1,
+  "type": "panel",
+  "entrypoint": "main:Plugin",
+  "description": "正面毛玻璃首图预览、当前级搜索与随机定位、同步选中、独立快速访问、目录独立排序及列表 / 平铺。",
+  "permissions": [
+    "ui.panels",
+    "image.read",
+    "image.navigate",
+    "settings",
+    "tasks",
+    "events.subscribe"
+  ]
+}
