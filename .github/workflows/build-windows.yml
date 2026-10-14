@@ -54,6 +54,8 @@ jobs:
         run: |
           $files = Get-ChildItem 'dist/Picer' -Recurse -File
           $bytes = ($files | Measure-Object -Property Length -Sum).Sum
+          $sizeReport = Get-Content 'build/distribution-size.json' -Raw | ConvertFrom-Json
+          "Before: $($sizeReport.before.bytes) bytes; after: $($sizeReport.after.bytes) bytes; saved: $($sizeReport.saved_bytes) bytes"
           "Picer folder: $($files.Count) files, $([math]::Round($bytes / 1MB, 2)) MiB" >> $env:GITHUB_STEP_SUMMARY
       - name: Upload complete Windows application folder
         uses: actions/upload-artifact@v4
@@ -68,5 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-test-results
-          path: test-results.xml
+          path: |
+            test-results.xml
+            build/distribution-size.json
           if-no-files-found: ignore

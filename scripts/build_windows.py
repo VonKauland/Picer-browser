@@ -9,6 +9,8 @@ import zipfile
 from pathlib import Path
 
 from picer.bundles import EXAMPLES, write_examples
+from picer.imaging import supported_suffixes
+from scripts.distribution_size import compact_distribution
 from scripts.prepare_assets import prepare_icons
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,15 +45,16 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
         destination.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(application / "examples" / filename) as archive:
             archive.extractall(destination)
-    shutil.copy2(ROOT / "docs" / "plugins.md", application / "docs" / "plugins.md")
-    shutil.copy2(ROOT / "docs" / "distribution.md", application / "docs" / "distribution.md")
-    shutil.copy2(ROOT / "docs" / "components.md", application / "docs" / "components.md")
-    shutil.copy2(
-        ROOT / "docs" / "example-components.md", application / "docs" / "example-components.md"
-    )
-    shutil.copy2(ROOT / "docs" / "media.md", application / "docs" / "media.md")
-    shutil.copy2(ROOT / "docs" / "input.md", application / "docs" / "input.md")
-    shutil.copy2(ROOT / "docs" / "settings.md", application / "docs" / "settings.md")
+    for name in (
+        "plugins",
+        "distribution",
+        "components",
+        "example-components",
+        "media",
+        "input",
+        "settings",
+    ):
+        shutil.copy2(ROOT / "docs" / f"{name}.md", application / "docs" / f"{name}.md")
     (application / "README.txt").write_text(
         "揽映 Picer 图片浏览器\n\n"
         "请保留完整文件夹，双击 Picer.exe 启动，无需安装 Python。\n"
@@ -86,6 +89,7 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
                 "mode": "portable-folder",
                 "plugin_api": 1,
                 "component_types": ["skin", "function", "panel"],
+                "readable_formats": sorted(supported_suffixes()),
             },
             ensure_ascii=False,
             indent=2,
@@ -113,7 +117,9 @@ def version_resource(version: str) -> str:
 def main() -> None:
     if sys.platform != "win32":
         raise SystemExit("Windows EXE builds must run on Windows")
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
     assets = ROOT / "build" / "distribution-assets"
     prepare_icons(ROOT / "src" / "picer" / "assets" / "icons" / "picer.png", assets / "icons")
     shutil.copytree(ROOT / "src" / "picer" / "assets" / "ui", assets / "ui", dirs_exist_ok=True)
@@ -160,6 +166,14 @@ def main() -> None:
         check=True,
     )
     prepare_distribution(ROOT / "dist" / "Picer", assets, version=version)
+    report = compact_distribution(ROOT / "dist" / "Picer")
+    (assets.parent / "distribution-size.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    print(
+        f"Distribution: {report['before']['bytes']} -> {report['after']['bytes']} bytes; "
+        f"saved {report['saved_bytes']} bytes; removed {report['removed']}"
+    )
 
 
 if __name__ == "__main__":

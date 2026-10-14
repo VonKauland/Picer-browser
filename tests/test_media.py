@@ -9,7 +9,7 @@ from PySide6.QtGui import QImage
 
 from picer.imaging import RAW_SUFFIXES, read_image, supported_suffixes
 from picer.metadata import inspect_image
-from picer.smoke_samples import make_animation, make_dng
+from picer.smoke_samples import make_animation, make_dng, make_stills
 from picer.window import MainWindow
 
 
@@ -33,6 +33,12 @@ def test_actual_libraw_preview_full_and_metadata(tmp_path, qapp):
     assert metadata["exif"] and len(metadata["histogram"]) == 3
     assert not metadata["warnings"]
     assert {".cr2", ".cr3", ".nef", ".arw", ".raf", ".dng"} <= RAW_SUFFIXES
+
+
+def test_available_still_image_codecs_decode(tmp_path, qapp):
+    assert {"png", "jpg", "bmp", "webp", "ico", "ppm", "xbm", "xpm", "svg"} <= set(
+        make_stills(tmp_path)
+    )
 
 
 @pytest.mark.parametrize("extension", ["gif", "webp"])

@@ -5,6 +5,39 @@ import struct
 from PIL import Image
 
 
+def make_stills(folder):
+    """Exercise independent Qt still-image codecs without downloaded samples."""
+    from PySide6.QtGui import QImage
+
+    formats = ("png", "jpg", "bmp", "tiff", "webp", "ico", "ppm", "xbm", "xpm")
+    from picer.imaging import read_image, supported_suffixes
+
+    image = QImage(32, 24, QImage.Format.Format_RGB32)
+    image.fill(0x3399CC)
+    checked = []
+    for suffix in formats:
+        if f".{suffix}" not in supported_suffixes():
+            continue
+        path = folder / f"codec.{suffix}"
+        assert image.save(str(path)), f"Could not create {suffix} sample"
+        decoded = read_image(path)
+        assert decoded.width() == 32 and decoded.height() == 24
+        assert not decoded.isNull()
+        checked.append(suffix)
+    if ".svg" in supported_suffixes():
+        path = folder / "codec.svg"
+        path.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="24">'
+            '<rect width="32" height="24" fill="#3399cc"/></svg>',
+            encoding="utf-8",
+        )
+        decoded = read_image(path)
+        assert decoded.width() == 32 and decoded.height() == 24
+        assert decoded.pixelColor(16, 12).name() == "#3399cc"
+        checked.append("svg")
+    return checked
+
+
 def make_animation(path):
     frames = [Image.new("RGBA", (96, 64), color) for color in ("red", "green", "blue")]
     frames[0].save(

@@ -22,11 +22,13 @@ class ImageLoader(QObject):
         self.pools["preview"].setMaxThreadCount(2)
         self.rapid = False
         self.direction = 1
+        self.prefetch_again = False
         self.jobs = {}
         self.generation = 0
         self.closed = False
         self.cache = OrderedDict()
         self.cache_bytes = 0
+        self.cache_generation = 0
         self.cache_limit = 192 * 1048576
         self.directories = OrderedDict()
         self.indexing = set()
@@ -86,6 +88,8 @@ class ImageLoader(QObject):
                         source.close()
                 return
             done(result, error)
+            if lane == "prefetch" and self.prefetch_again:
+                self.prefetch_timer.start(20)
 
         worker.signals.finished.connect(finish, Qt.ConnectionType.QueuedConnection)
         self.pools[lane].start(worker, 1 if foreground else 0)
@@ -95,7 +99,9 @@ class ImageLoader(QObject):
         stat = path.stat()
         return (path, stat.st_mtime_ns, stat.st_size, edge, self.options)
 
-    def remember(self, key, image):
+    def remember(self, key, image, *, generation=None):
+        if generation is not None and generation != self.cache_generation:
+            return
         old = self.cache.pop(key, None)
         if old:
             self.cache_bytes -= old.sizeInBytes()
@@ -238,6 +244,7 @@ class ImageLoader(QObject):
             return False
         self.generation += 1
         generation = self.generation
+        cache_generation = self.cache_generation
         self.requested = path
         self.refine.stop()
         self.prefetch_timer.stop()
@@ -293,7 +300,7 @@ class ImageLoader(QObject):
             self.folder_candidates.clear()
             self.store_thumbnail(path, image)
             if source is None:
-                self.remember(preview_key, image)
+                self.remember(preview_key, image, generation=cache_generation)
             self.host.present_image(
                 path, image, paths=self.directories.get(path.parent), preview=source is None
             )
@@ -327,6 +334,7 @@ class ImageLoader(QObject):
 
     def load_full(self):
         path, generation, options = self.requested, self.generation, self.options
+        cache_generation = self.cache_generation
         if not path or self.rapid or self.host.animation.state.active:
             return
         try:
@@ -344,7 +352,7 @@ class ImageLoader(QObject):
             if error:
                 self.host.last_error = f"原图无法读取 {path.name}：{error}"
                 return
-            self.remember(key, image)
+            self.remember(key, image, generation=cache_generation)
             self.host.refine_image(image)
 
         self.submit(
@@ -355,17 +363,30 @@ class ImageLoader(QObject):
         )
 
     def prefetch(self):
+        # Thread count bounds execution, not Qt's queue. Keep a single neighbour
+        # batch even when repeated timers fire during a slow disk/RAW decode.
+        if self.closed:
+            return
+        if any(lane == "prefetch" for _, lane, _ in self.jobs.values()):
+            self.prefetch_again = True
+            return
+        self.prefetch_again = False
         paths = self.host.paths
         if self.requested not in self.host.path_positions or len(paths) < 2:
             return
         index = self.host.path_positions[self.requested]
         options = self.options
         edge = 960 if self.rapid else 1600
+        cache_generation = self.cache_generation
+        targets = set()
         for offset in (self.direction, -self.direction):
             target = index + offset
             if not self.host.app_preferences["wrap"] and not 0 <= target < len(paths):
                 continue
             path = paths[target % len(paths)]
+            if path in targets:
+                continue
+            targets.add(path)
             if bytes(QImageReader(str(path)).format()).lower() in {b"gif", b"webp"}:
                 continue
             try:
@@ -377,7 +398,7 @@ class ImageLoader(QObject):
 
             def finish(image, error, key=key):
                 if error is None:
-                    self.remember(key, image)
+                    self.remember(key, image, generation=cache_generation)
 
             self.submit(
                 "prefetch",
@@ -390,6 +411,7 @@ class ImageLoader(QObject):
     def open_folder(self, directory):
         self.generation += 1
         generation = self.generation
+        format_generation = self.format_generation
         self.refine.stop()
         self.prefetch_timer.stop()
         self.host.navigation_request = None
@@ -406,7 +428,7 @@ class ImageLoader(QObject):
             return paths
 
         def finish(paths, error):
-            if generation != self.generation:
+            if generation != self.generation or format_generation != self.format_generation:
                 return
             if error:
                 self.host.loading_failed(directory, str(error))
@@ -422,6 +444,9 @@ class ImageLoader(QObject):
         self.submit("index", work, finish, foreground=True)
 
     def clear_cache(self):
+        self.cache_generation += 1
+        self.prefetch_again = False
+        self.prefetch_timer.stop()
         self.cache.clear()
         self.cache_bytes = 0
         self.thumbnail_timer.stop()

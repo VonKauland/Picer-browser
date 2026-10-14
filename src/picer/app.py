@@ -9,7 +9,6 @@ from pathlib import Path
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from picer.smoke import run as run_smoke
 from picer.window import MainWindow
 
 
@@ -56,6 +55,8 @@ def main() -> int:
         tempfile.TemporaryDirectory() if smoke_test and args.smoke_images is None else None
     )
     if smoke_test:
+        from picer.smoke import run as run_smoke
+
         folder = Path(temporary_images.name) if temporary_images else args.smoke_images
         QTimer.singleShot(0, lambda: run_smoke(window, args, folder, app.exit))
         QTimer.singleShot(60_000, lambda: app.exit(2))

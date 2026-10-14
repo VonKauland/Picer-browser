@@ -6,11 +6,12 @@
 Picer/
   Picer.exe                     启动程序，带应用图标与版本信息
   _internal/                    PyInstaller、Python、Qt 运行库
-  assets/icons/                 picer.svg、picer.png、picer.ico
+  assets/icons/                 picer.png、七尺寸透明 picer.ico
+  assets/ui/                    透明手柄示意图
   plugins/                      功能与面板组件，随附示例已安装
   skins/                        已安装皮肤组件，默认关闭
   cache/
-    thumbnails/                 打开图片后自动生成，最多 256 个 PNG
+    thumbnails/                 共享 256px 缩略图，默认最多 4096 项 / 512 MiB
     plugins/<plugin-id>/        插件独立缓存（声明 cache 权限后可使用）
   config/plugins.json           插件启用状态、独立设置
   logs/plugins.log              日志，自动轮转
@@ -34,9 +35,9 @@ Picer/
 
 ## 缓存与资源
 
-图片缓存保存最多 256 个缩略图，以原文件路径、修改时间和大小生成键。打开原图依然读取原文件，缓存只服务预览缩略图。**帮助 → 清理图片缓存** 只删除宿主缩略图，不删除插件、原图或插件设置。插件通过 `context.thumbnail()` 读取当前原图缩略图，通过 `context.cache_directory()` 获取独立缓存目录；插件应自行控制其缓存体积。
+图片缩略图缓存以原文件路径、修改时间和大小生成键，内存最多 256 项 / 32 MiB，磁盘默认最多 4096 项 / 512 MiB，可在设置中调整。打开原图依然读取原文件，磁盘缓存只服务预览缩略图。**帮助 → 清理图片缓存** 清理宿主解码与缩略图缓存，不删除插件、原图或插件设置。插件通过 `context.request_thumbnail()` 共享异步缩略图服务，也保留 `context.thumbnail()` 同步接口；通过 `context.cache_directory()` 获取独立缓存目录，插件应自行控制其缓存体积。
 
-图标资源以 `assets/icons/picer.svg` 为源，在 Windows 构建时生成 PNG 和多尺寸 ICO。ICO 同时嵌入 EXE，窗口、顶栏和资源目录使用同一图标。
+图标资源以透明 `assets/icons/picer.png` 为源，在 Windows 构建时生成 PNG 和七尺寸 ICO，保留外发光与内部深色像素。ICO 同时嵌入 EXE，窗口、顶栏和资源目录使用同一图标。
 
 ## 从旧版本迁移
 
@@ -54,7 +55,7 @@ Picer/
 - 更新：先关闭程序，解压新版到一个新目录，再从旧目录复制 `plugins`、`skins` 和 `config`。可选复制 `logs`；缓存无需备份。避免用新包的默认配置覆盖已有设置。
 - 备份与迁移：复制整个应用目录即可；若数据曾退回用户目录或通过参数指定，还需复制实际数据目录。
 - 清理：关闭应用后可删除缓存内容，下次会重新生成缩略图。
-- 卸载：关闭应用并删除应用目录；另行删除实际退回/指定的数据目录即可移除用户数据。程序不自动修改 Windows 文件关联或注册表。
+- 卸载：若已手动注册资源管理器右键菜单，请先在系统设置中取消注册，再关闭程序并删除应用目录；另行删除实际退回/指定的数据目录即可移除用户数据。默认图片浏览器的选择由 Windows 默认应用设置管理，程序不自动改写默认关联。
 
 ## 构建与验证
 
@@ -66,5 +67,7 @@ python -m scripts.verify_distribution
 ```
 
 构建使用 PyInstaller `--onedir --windowed --contents-directory _internal`，输出 `dist/Picer/`，再复制图标、示例插件、文档和数据目录。
+
+0.20.2 的体积优化仅移除 PyInstaller 自动带入的 `PySide6/opengl32sw.dll`。宿主使用 QWidget/QGraphicsView 光栅视口，不使用 OpenGL 控件；Python、Qt 主库、全部图片插件及 RAW/NumPy 库保留。`build/distribution-size.json` 记录清理前后每个文件的体积和明确移除项，作为 Windows 测试报告附件。实际 EXE 校验构建时记录的格式集合，逐项解码可用的静态图片，并执行 RAW、动画与界面测试；不把删除运行库本身视为验证通过。
 
 Windows CI 在临时目录复制完整软件，从无关工作目录启动 EXE，执行图片、三类组件、快捷位与全屏面板冒烟测试，检查实际配置、日志和缓存写入位置，然后迁移整个文件夹并再次启动，确认插件设置保留。最终上传原始干净的 `dist/`，测试写入的数据不会包含在分发包内。

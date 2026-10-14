@@ -17,6 +17,14 @@ def describe(value):
     return text[:2048] + ("…" if len(text) > 2048 else "")
 
 
+def add_sample(result, sample, mean_label):
+    sample = sample.convert("RGB")
+    histogram = sample.histogram()
+    result["histogram"] = [histogram[i : i + 256] for i in (0, 256, 512)]
+    result["sample_size"] = sample.size
+    result["color"][mean_label] = ", ".join(f"{v:.1f}" for v in ImageStat.Stat(sample).mean)
+
+
 def inspect_image(path: Path, token=None) -> dict:
     def checkpoint():
         if token:
@@ -95,14 +103,7 @@ def inspect_image(path: Path, token=None) -> dict:
             checkpoint()
             source.draft("RGB", (1024, 1024))
             source.thumbnail((1024, 1024))
-            sample = source.copy()
-            sample = sample.convert("RGB")
-            histogram = sample.histogram()
-            result["histogram"] = [histogram[i : i + 256] for i in (0, 256, 512)]
-            result["sample_size"] = sample.size
-            result["color"]["平均 RGB（采样）"] = ", ".join(
-                f"{v:.1f}" for v in ImageStat.Stat(sample).mean
-            )
+            add_sample(result, source, "平均 RGB（采样）")
     except (OSError, ValueError, Image.DecompressionBombError) as error:
         result["warnings"].append(f"部分元数据无法读取：{error}")
     checkpoint()
@@ -143,13 +144,7 @@ def inspect_raw(path, result, token):
         image = read_image(path, edge=1024, token=token)
         image = image.convertToFormat(image.Format.Format_RGBA8888)
         sample = Image.frombytes("RGBA", (image.width(), image.height()), bytes(image.constBits()))
-        sample = sample.convert("RGB")
-        histogram = sample.histogram()
-        result["histogram"] = [histogram[i : i + 256] for i in (0, 256, 512)]
-        result["sample_size"] = sample.size
-        result["color"]["平均 RGB（预览采样）"] = ", ".join(
-            f"{v:.1f}" for v in ImageStat.Stat(sample).mean
-        )
+        add_sample(result, sample, "平均 RGB（预览采样）")
     except (OSError, ValueError, RuntimeError, rawpy.LibRawError) as error:
         result["warnings"].append(f"部分 RAW 元数据无法读取：{error}")
     if token:

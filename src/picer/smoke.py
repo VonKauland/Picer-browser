@@ -1,5 +1,7 @@
 """Exercise packaged external examples and their actual Qt widgets in Windows CI."""
 
+import json
+import sys
 import traceback
 from pathlib import Path
 from threading import Event, Thread
@@ -21,11 +23,12 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QFrame, QMenu, QPushButton, QStyleOptionSlider
 
 from picer.color_picker import ColorPicker
+from picer.imaging import supported_suffixes
 from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.progress_ring import RING_SIZE
 from picer.settings import ApplicationSettings
-from picer.smoke_samples import make_animation, make_dng
+from picer.smoke_samples import make_animation, make_dng, make_stills
 from picer.ui import RoundedSlider, colors_for
 
 
@@ -635,10 +638,20 @@ def verify_media(window):
 
 def run(window, args, folder, done):
     try:
+        if getattr(sys, "frozen", False):
+            metadata = Path(sys.executable).parent / "distribution.json"
+            expected = json.loads(metadata.read_text(encoding="utf-8"))["readable_formats"]
+            assert set(expected) == supported_suffixes(), "A bundled image codec was lost"
+            assert window.view.viewport().metaObject().className() == "QWidget"
+            assert not (Path(sys._MEIPASS) / "PySide6" / "opengl32sw.dll").exists()
+            print("Packaged raster viewport and complete pre-compaction format set passed")
         # Windows TEMP can contain 8.3 aliases (RUNNER~1); the Qt model and
         # viewer use resolved paths, so compare the same canonical directory.
         folder = Path(folder).resolve()
         folder.mkdir(parents=True, exist_ok=True)
+        codec_folder = window.paths_layout.cache / "smoke-codecs"
+        codec_folder.mkdir(exist_ok=True)
+        print(f"Still image codecs decoded: {make_stills(codec_folder)}")
         first, second = folder / "1.png", folder / "2.jpg"
         image = QImage(80, 60, QImage.Format.Format_RGB32)
         image.fill(0x3399CC)
