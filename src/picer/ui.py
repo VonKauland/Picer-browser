@@ -257,6 +257,7 @@ class DialogHeader(QWidget):
         close = QPushButton()
         close.setIcon(ui_icon("close", colors_for(dialog)["text"]))
         close.setObjectName("circleButton")
+        close.setProperty("picerDialogClose", True)
         close.setFixedSize(32, 32)
         close.setAccessibleName("关闭窗口")
         close.clicked.connect(dialog.reject)

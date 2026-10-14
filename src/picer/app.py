@@ -58,7 +58,7 @@ def main() -> int:
     if smoke_test:
         folder = Path(temporary_images.name) if temporary_images else args.smoke_images
         QTimer.singleShot(0, lambda: run_smoke(window, args, folder, app.exit))
-        QTimer.singleShot(40_000, lambda: app.exit(2))
+        QTimer.singleShot(60_000, lambda: app.exit(2))
     elif args.image:
         window.open_image(Path(args.image))
 

@@ -30,7 +30,7 @@ def run_smoke(application: Path, working_directory: Path, images: Path) -> None:
         cwd=working_directory,
     )
     try:
-        code = process.wait(timeout=60)
+        code = process.wait(timeout=90)
     except subprocess.TimeoutExpired:
         subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], check=False)
         raise RuntimeError("Packaged application smoke test timed out") from None

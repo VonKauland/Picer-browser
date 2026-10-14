@@ -34,6 +34,9 @@ def contained(widget, ancestor):
 def test_all_tabs_keep_binding_controls_inside_dialog(settings, qtbot, size, font_px):
     settings.setStyleSheet(f"QWidget {{ font-size: {font_px}px; }}")
     settings.resize(*size)
+    # Qt defers font/resize layout events. Settle those before comparing tab
+    # hints; the first transition must not be compared to stale font geometry.
+    qtbot.wait(100)
     editor = settings.binding_editor
     assert not isinstance(settings.pages.currentWidget(), QScrollArea)
     heights = []

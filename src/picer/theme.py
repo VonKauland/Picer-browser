@@ -27,6 +27,9 @@ QPushButton#dangerButton:hover { background: #453238; }
 QPushButton#quietButton { background: transparent; color: #A2A2A6; }
 QPushButton#quietButton:hover { background: #38383B; color: #F3F3F0; }
 QPushButton#circleButton { border-radius: 16px; padding: 0; }
+QPushButton#circleButton[picerDialogClose="true"] { border: none;
+min-width: 32px; max-width: 32px; min-height: 32px; max-height: 32px; }
+QPushButton#circleButton[picerDialogClose="true"]:focus { background: #414145; }
 QLineEdit, QSpinBox, QComboBox, QKeySequenceEdit { background: #38383B;
 border: 1px solid #454549; border-radius: 12px; padding: 7px 12px;
 min-height: 20px; color: #F3F3F0; selection-background-color: #E8FF59;
