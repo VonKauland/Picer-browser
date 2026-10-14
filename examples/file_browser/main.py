@@ -226,6 +226,11 @@ class Plugin:
         self.image_selection_path = None
 
     def on_appearance(self, event):
+        formats = frozenset(event.get("formats", supported_suffixes()))
+        if hasattr(self, "readable_formats") and formats != self.readable_formats:
+            self.readable_formats = formats
+            self.refresh()
+        self.readable_formats = formats
         self.parent_entry.set_accent(event["accent"])
         self.tabs.set_accent(event["accent"])
         for view in (self.tree, self.tiles, self.favorites, self.recent):
@@ -314,7 +319,10 @@ class Plugin:
         self.model.files.setFilter(
             QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot
         )
-        self.model.files.setNameFilters([f"*{suffix}" for suffix in sorted(supported_suffixes())])
+        self.model.files.setNameFilters(
+            [f"*{suffix}" for suffix in sorted(self.context.readable_suffixes())]
+            or ["*.picer-no-enabled-format"]
+        )
         self.model.files.setNameFilterDisables(False)
         self.model.files.folderClassified.connect(self.folder_classified)
         self.model.files.directoryLoaded.connect(self.directory_loaded)

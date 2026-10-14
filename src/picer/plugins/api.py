@@ -150,6 +150,11 @@ class PluginContext:
         self._check("settings")
         self._manager.show_settings(self.plugin_id)
 
+    def readable_suffixes(self) -> frozenset[str]:
+        """Effective user-selected image formats; decoding capabilities are unchanged."""
+        self._check("image.read")
+        return frozenset(self._manager.host.supported_suffixes)
+
     def image_paths(self) -> tuple[Path, ...]:
         self._check("image.read")
         return self._manager.host.image_path_snapshot

@@ -131,6 +131,7 @@ class Plugin:
 | settings | `add_settings(fields, on_apply)` / `show_settings()` | 声明 SettingField 设置表单，在插件管理的内嵌设置页应用 |
 | image.navigate | `open_image(path)` / `navigate(offset)` / `jump_to(index)` | 打开或按浏览方向导航、按零起始文件索引绝对跳转 |
 | image.read | `image_paths()` | 当前目录顺序的 Path 元组快照 |
+| image.read | `readable_suffixes()` | 用户当前启用格式的 frozenset，例如 `{'.png', '.jpg'}` |
 | image.read + tasks | `request_metadata(callback)` | 后台读取原图元数据，丢弃过期结果 |
 | ui.panels | `frosted_surface(parent, popup=False)` | 创建共享玻璃界面；嵌在固定面板内时不透明，自动隐藏或弹出窗时使用毛玻璃 |
 | ui.panels | `add_panel(widget, area="right")` | 仅面板类，注册一个停靠面板；普通面板支持 left/right；panel_role: progress 仅 bottom，停用时删除 |
@@ -216,7 +217,7 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 ### 自定义强调色（0.12，仍兼容 API v1）
 
 - `context.accent_color()` 需要 `ui.panels`：返回用户显式指定的强调色，未指定时返回插件默认黄绿 `#E8FF59`，不会读取宿主皮肤的强调色。
-- `subscribe("appearance.changed", callback)` 需要 `events.subscribe`，应用外观设置保存后回调参数为 `{"accent": "#RRGGBB"}`；停用 / 出错自动撤销。插件应在激活时读取 `accent_color()` 初始化，并在回调中更新自行绘制的选中状态。
+- `subscribe("appearance.changed", callback)` 需要 `events.subscribe`，应用设置保存后回调参数包含 `{"accent": "#RRGGBB", "formats": [".jpg", ".png", ...]}`；停用 / 出错自动撤销。插件应在激活时读取 `accent_color()` 初始化，并在回调中更新自行绘制的选中状态。文件类插件可用 `readable_suffixes()` 同步格式筛选，`formats` 变化时丢弃旧索引和待处理的目录分类结果；兼容此前仅读取 `accent` 的插件。
 - 宿主共享控件随用户设置更新，外部插件原始 QSS 与自有 QIcon 不被改写；示例浏览器与进度条主动订阅外观变化。皮肤仍只影响宿主。
 - 固定面板外壳不透明，自动隐藏弹出才使用玻璃；`frosted_surface` 的子界面在固定面板中同样不透明，独立弹出窗仍可使用玻璃。
 

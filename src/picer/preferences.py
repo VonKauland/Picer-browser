@@ -1,6 +1,7 @@
 """Validated application preferences; component settings remain separate."""
 
 DEFAULTS = {
+    "readable_formats": None,
     "start": "empty",
     "remember_window": True,
     "tooltips": True,
@@ -47,7 +48,11 @@ def read_preferences(manager):
 
     for key, default in DEFAULTS.items():
         value = stored.get(key, default)
-        if key == "accent_color":
+        if key == "readable_formats":
+            from picer.formats import valid_formats
+
+            result[key] = list(value) if isinstance(value, list) and valid_formats(value) else None
+        elif key == "accent_color":
             result[key] = value.upper() if valid_accent(value) else default
         elif type(default) is bool:
             result[key] = value if type(value) is bool else default

@@ -121,7 +121,7 @@ def test_sdk_settings_entry_opens_management_page(window, tmp_path, monkeypatch)
 def test_application_settings_save_restart_and_cancel(window, tmp_path, qtbot):
     dialog = ApplicationSettings(window)
     qtbot.addWidget(dialog)
-    assert dialog.pages.count() == 6
+    assert dialog.pages.count() == 7
     dialog.editors["zoom_step"].setValue(40)
     dialog.editors["wrap"].setChecked(False)
     dialog.editors["glass"].setChecked(False)

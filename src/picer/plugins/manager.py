@@ -658,7 +658,14 @@ class PluginManager(QObject):
                         )
                         widget.update()
         for plugin_id, callback in list(self.subscribers.get("appearance.changed", [])):
-            self._invoke(plugin_id, callback, {"accent": accent or COLORS["accent"]})
+            self._invoke(
+                plugin_id,
+                callback,
+                {
+                    "accent": accent or COLORS["accent"],
+                    "formats": sorted(self.host.supported_suffixes),
+                },
+            )
 
     def emit_animation(self, state):
         for plugin_id, callback in list(self.subscribers.get("animation.changed", [])):

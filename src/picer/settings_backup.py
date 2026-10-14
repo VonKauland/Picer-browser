@@ -31,7 +31,11 @@ def validate_backup(data, host):
     values = dict(DEFAULTS)
     for key, value in application.items():
         default = DEFAULTS[key]
-        if key == "accent_color":
+        if key == "readable_formats":
+            from picer.formats import valid_formats
+
+            valid = valid_formats(value)
+        elif key == "accent_color":
             valid = valid_accent(value)
         elif key in CHOICES:
             valid = isinstance(value, str) and value in CHOICES[key]

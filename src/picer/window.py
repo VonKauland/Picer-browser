@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QVBoxLayout,
     QWidget,
@@ -33,10 +34,11 @@ from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
 from picer.drops import ImageDropTarget
 from picer.folder_navigation import FolderNavigation
+from picer.formats import enabled_formats
 from picer.fullscreen import FullscreenChrome
 from picer.host_style import HostStyleFilter, mark_host, scope_style
-from picer.imaging import read_image, supported_suffixes
-from picer.input_bindings import InputBindings
+from picer.imaging import read_image
+from picer.input_bindings import InputBindings, mouse_value
 from picer.loading import ImageLoader
 from picer.navigation import NavigationKeys
 from picer.notifications import NotificationBubble
@@ -49,6 +51,7 @@ from picer.plugins.skins import COLORS
 from picer.preferences import DEFAULTS, read_preferences
 from picer.spread import DoublePage
 from picer.thumbnails import ThumbnailService
+from picer.windows_integration import reveal_file
 
 
 class ImageView(QGraphicsView):
@@ -83,6 +86,23 @@ class ImageView(QGraphicsView):
     def actual_size(self) -> None:
         self.fit_mode = False
         self.resetTransform()
+
+    def contextMenuEvent(self, event):
+        host = self.window()
+        if not isinstance(host, MainWindow):
+            return super().contextMenuEvent(event)
+        if (
+            event.reason() == event.Reason.Mouse
+            and ("mouse", mouse_value(event, "Right")) in host.inputs.mapping
+        ):
+            event.accept()
+            return
+        menu = host.image_context_menu()
+        try:
+            menu.exec(event.globalPos())
+        finally:
+            menu.deleteLater()
+        event.accept()
 
     def wheelEvent(self, event) -> None:
         factor = 1 + self.zoom_step / 100
@@ -171,7 +191,7 @@ class MainWindow(QMainWindow):
         self.empty_label.setObjectName("empty")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.supported_suffixes = supported_suffixes()
+        self.supported_suffixes = enabled_formats(self.app_preferences)
         self.animation = AnimationPlayer(self)
         self.loader = ImageLoader(self)
         self.image_drops = ImageDropTarget(self, self.view.viewport())
@@ -329,6 +349,11 @@ class MainWindow(QMainWindow):
 
     def apply_preferences(self):
         self.app_preferences = read_preferences(self.plugins)
+        suffixes = enabled_formats(self.app_preferences)
+        if suffixes != self.supported_suffixes:
+            self.supported_suffixes = suffixes
+            self.folder_navigation.cancel()
+            self.loader.formats_changed()
         self.view.zoom_step = self.app_preferences["zoom_step"]
         self.view.double_click = self.app_preferences["double_click"]
         self.thumbnail_cache.byte_limit = self.app_preferences["cache_mb"] * 1048576
@@ -403,6 +428,25 @@ class MainWindow(QMainWindow):
         if not folder:
             return
         self.loader.open_folder(Path(folder).resolve())
+
+    def image_context_menu(self):
+        menu = QMenu(self)
+        menu.addAction(self.copy_image_action)
+        menu.addAction(self.copy_action)
+        reveal = menu.addAction("在 Windows 资源管理器中显示")
+        reveal.setEnabled(self.current_path is not None)
+        reveal.triggered.connect(self.reveal_current_image)
+        menu.addSeparator()
+        menu.addAction(self.fullscreen_action)
+        mark_host(menu)
+        return menu
+
+    def reveal_current_image(self):
+        if self.current_path:
+            try:
+                reveal_file(self.current_path)
+            except OSError as error:
+                self.notify(str(error))
 
     def copy_path(self) -> None:
         if self.current_path:
@@ -643,7 +687,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "关于揽映",
-            "揽映 Picer 0.19.0\n以插件为核心的本地图片浏览器。\n"
+            "揽映 Picer 0.20.0\n以插件为核心的本地图片浏览器。\n"
             "滚轮缩放 · 拖动平移 · 左右键切换\n"
             "旋转仅影响当前显示，不修改原文件。",
         )

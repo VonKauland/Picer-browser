@@ -95,9 +95,14 @@ class FolderContents(QObject):
             self.pending.pop(path, None)
         self.busy = True
 
+        suffixes = (
+            self.context.readable_suffixes()
+            if hasattr(self.context, "readable_suffixes")
+            else supported_suffixes()
+        )
+
         def work(token):
             results = []
-            suffixes = supported_suffixes()
             for path, generation in batch:
                 first = None
                 try:

@@ -30,6 +30,7 @@ class ImageLoader(QObject):
         self.cache_limit = 192 * 1048576
         self.directories = OrderedDict()
         self.indexing = set()
+        self.format_generation = 0
         self.dirty_directories = set()
         self.folder_candidates = deque()
         self.watcher = QFileSystemWatcher(self)
@@ -134,6 +135,26 @@ class ImageLoader(QObject):
         if self.host.current_path and self.host.current_path.parent == directory:
             self.host.set_image_paths(paths)
 
+    def formats_changed(self):
+        self.format_generation += 1
+        if self.requested and self.requested.suffix.lower() not in self.host.supported_suffixes:
+            self.generation += 1
+            self.requested = self.host.current_path
+            self.refine.stop()
+            for worker, lane, _ in self.jobs.values():
+                if lane != "index":
+                    worker.token.cancel()
+        for worker, lane, _ in self.jobs.values():
+            if lane == "index":
+                worker.token.cancel()
+        self.directories.clear()
+        self.indexing.clear()
+        self.dirty_directories.clear()
+        if self.watcher.directories():
+            self.watcher.removePaths(self.watcher.directories())
+        if self.host.current_path:
+            self.index_directory(self.host.current_path.parent, force=True)
+
     def index_directory(self, directory, *, force=False):
         if not self.host.app_preferences["browse_folder"]:
             return [self.requested] if self.requested else []
@@ -142,6 +163,7 @@ class ImageLoader(QObject):
         if directory in self.indexing:
             return None
         suffixes = self.host.supported_suffixes
+        format_generation = self.format_generation
 
         def scan(token=None, limit=0):
             paths = []
@@ -166,6 +188,8 @@ class ImageLoader(QObject):
         self.indexing.add(directory)
 
         def finish(paths, error):
+            if format_generation != self.format_generation:
+                return
             self.indexing.discard(directory)
             if directory in self.dirty_directories:
                 self.dirty_directories.discard(directory)
@@ -183,6 +207,8 @@ class ImageLoader(QObject):
     def open(self, path):
         path = Path(path).resolve()
         try:
+            if path.suffix.lower() not in self.host.supported_suffixes:
+                raise ValueError("此图片格式未启用，请在选项 → 系统设置 → 格式设置中开启。")
             if not path.is_file():
                 raise ValueError("文件不存在")
             reader = QImageReader(str(path))

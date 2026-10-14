@@ -52,6 +52,7 @@ class ApplicationSettings(StyledDialog):
             ("面板与布局", "panel", self.panels_page),
             ("快捷键", "keyboard", self.shortcuts_page),
             ("缓存与存储", "storage", self.storage_page),
+            ("格式设置", "photo", self.formats_page),
         ):
             from PySide6.QtWidgets import QListWidgetItem
 
@@ -135,15 +136,11 @@ class ApplicationSettings(StyledDialog):
         duration.setSuffix(" ms")
         self.preference(card, "focus_image", "打开图片后聚焦画布")
         layout.addWidget(card)
-        card = Card("文件关联")
-        button = QPushButton("打开 Windows 默认应用设置")
-        button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("ms-settings:defaultapps")))
-        card.body.addWidget(button)
-        note = QLabel("在 Windows 设置中选择揽映作为默认图片浏览器。")
-        note.setObjectName("muted")
-        note.setWordWrap(True)
-        card.body.addWidget(note)
-        layout.addWidget(card)
+
+    def formats_page(self, layout):
+        from picer.format_settings import build_format_page
+
+        build_format_page(self, layout)
 
     def appearance_page(self, layout):
         card = Card("主题")

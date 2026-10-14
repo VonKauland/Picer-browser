@@ -175,6 +175,56 @@ def verify_system_settings(window):
         "Packaged Options menu, topmost modeless main-key routing, Apply persistence, "
         "reset cancellation and JSON settings roundtrip passed"
     )
+    verify_formats_and_shell(window)
+
+
+def verify_formats_and_shell(window):
+    """Check frozen capability filtering and actual isolated HKCU registrations."""
+    import sys
+    from uuid import uuid4
+
+    from picer.windows_integration import CAPABILITIES, PROG_ID, WindowsIntegration
+
+    menu = window.image_context_menu()
+    assert menu.actions()[0] is window.copy_image_action
+    menu.actions()[1].trigger()
+    assert QApplication.clipboard().text() == str(window.current_path)
+    menu.popup(window.mapToGlobal(QPoint(250, 100)))
+    QTest.qWait(20)
+    assert menu.grab().toImage().pixelColor(0, 0).alpha() == 0
+    menu.hide()
+    menu.deleteLater()
+    dialog = window.show_settings()
+    dialog.navigation.setCurrentRow(6)
+    selection = dialog.editors["readable_formats"]
+    saved = selection.value()
+    selection.setValue([".png"])
+    dialog.apply()
+    assert window.supported_suffixes == {".png"}
+    assert not window.open_image(window.paths_layout.cache / "disabled.jpg")
+    assert "格式未启用" in window.last_error
+    selection.setValue(saved)
+    dialog.apply()
+    dialog.reject()
+    if sys.platform == "win32":
+        executable = Path(sys.executable).resolve()
+        root = r"Software\PicerIntegrationTests" + "\\" + uuid4().hex
+        service = WindowsIntegration(executable, root=root)
+        try:
+            service.register_viewer([".png", ".jpg", ".dng"])
+            service.register_context_menu([".png", ".jpg", ".dng"])
+            command = f'"{executable}" "%1"'
+            assert service.read(service.menu_key(".png") + r"\command", "") == command
+            assert service.read(CAPABILITIES + r"\FileAssociations", ".dng") == PROG_ID
+            assert service.read(r"Software\Classes\Picer.Image\shell\open\command", "") == command
+            service.register_context_menu([".png"])
+            assert service.read(service.menu_key(".jpg"), "") is None
+            service.remove_context_menu()
+            assert service.read(service.menu_key(".png"), "") is None
+        finally:
+            service.delete("")
+        print("Packaged EXE per-user native registry commands and cleanup passed (isolated HKCU)")
+    print("Packaged image context menu and live format filtering passed")
 
 
 def verify_popups(window, browser):
@@ -629,7 +679,7 @@ def run(window, args, folder, done):
                 assert window.app_preferences["accent_color"] == "#FFA591"
                 assert window.app_preferences["key_repeat_ms"] == 160
             application_settings = ApplicationSettings(window)
-            assert application_settings.pages.count() == 6
+            assert application_settings.pages.count() == 7
             assert isinstance(application_settings.editors["glass_strength"], RoundedSlider)
             application_settings.editors["zoom_step"].setValue(30)
             application_settings.editors["key_repeat_ms"].setValue(160)
