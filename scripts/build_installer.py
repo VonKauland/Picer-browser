@@ -117,9 +117,28 @@ def build(application, output, *, test_root=""):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--compiler-preflight", action="store_true")
     parser.add_argument("--application", type=Path, default=ROOT / "dist" / "Picer")
     parser.add_argument("--output", type=Path, default=ROOT / "release-assets")
     args = parser.parse_args()
+    if args.compiler_preflight:
+        from picer import __version__
+        from picer.imaging import supported_suffixes
+        from scripts.prepare_assets import prepare_icons
+
+        fixture = ROOT / "build" / "installer-preflight-payload"
+        fixture.mkdir(parents=True, exist_ok=True)
+        (fixture / "Picer.exe").write_bytes(b"Compiler test fixture, not a runnable application")
+        (fixture / "distribution.json").write_text(
+            json.dumps({"version": __version__, "readable_formats": sorted(supported_suffixes())}),
+            encoding="utf-8",
+        )
+        prepare_icons(
+            ROOT / "src" / "picer" / "assets" / "icons" / "picer.png", fixture / "assets" / "icons"
+        )
+        build(fixture, ROOT / "build" / "installer-preflight", test_root=TEST_PREFIX + "0" * 32)
+        print("Installer compiler preflight passed (test payload; never installed or published)")
+        return
     print(build(args.application, args.output))
 
 

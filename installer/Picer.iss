@@ -93,10 +93,30 @@ begin
     (CompareText(Value, '"' + ExpandConstant('{app}\Picer.exe') + '" "%1"') = 0);
 end;
 
+function FormatSuffixes: TArrayOfString;
+var Remaining, Suffix: String; Position, Count: Integer;
+begin
+  Remaining := FormatList;
+  SetArrayLength(Result, 0);
+  while Remaining <> '' do begin
+    Position := Pos(';', Remaining);
+    if Position = 0 then begin
+      Suffix := Remaining;
+      Remaining := '';
+    end else begin
+      Suffix := Copy(Remaining, 1, Position - 1);
+      Delete(Remaining, 1, Position);
+    end;
+    Count := GetArrayLength(Result);
+    SetArrayLength(Result, Count + 1);
+    Result[Count] := Suffix;
+  end;
+end;
+
 procedure CleanupContext;
 var Suffixes: TArrayOfString; I: Integer; Key: String; Remaining: Boolean;
 begin
-  Suffixes := SplitString(FormatList, ';');
+  Suffixes := FormatSuffixes;
   Remaining := False;
   for I := 0 to GetArrayLength(Suffixes) - 1 do begin
     Key := 'Software\Classes\SystemFileAssociations\' + Suffixes[I] + '\shell\Picer';
@@ -112,7 +132,7 @@ procedure CleanupViewer;
 var Suffixes: TArrayOfString; I: Integer; Value: String;
 begin
   if OwnCommand('Software\Classes\Picer.Image\shell\open\command') then begin
-    Suffixes := SplitString(FormatList, ';');
+    Suffixes := FormatSuffixes;
     for I := 0 to GetArrayLength(Suffixes) - 1 do
       RegDeleteValue(HKCU, RegistryPrefix + 'Software\Classes\' + Suffixes[I] + '\OpenWithProgids', 'Picer.Image');
     RegDeleteKeyIncludingSubkeys(HKCU, RegistryPrefix + 'Software\Classes\Picer.Image');
