@@ -5,12 +5,27 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from uuid import uuid4
 
 from picer.windows_integration import CAPABILITIES, PROG_ID, WindowsIntegration
 from scripts.build_installer import ROOT, TEST_PREFIX, build
 from scripts.verify_distribution import run_smoke
+
+
+class InstallerWorkspace(tempfile.TemporaryDirectory):
+    """Inno's final self-deletion process can briefly retain its uninstall log."""
+
+    def cleanup(self):
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                return super().cleanup()
+            except PermissionError as error:
+                if getattr(error, "winerror", None) not in {5, 32} or time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.1)
 
 
 def run(command, log):
@@ -72,7 +87,7 @@ def verify(application, setup):
 
     metadata = json.loads((application / "distribution.json").read_text(encoding="utf-8"))
     suffixes = metadata["readable_formats"]
-    with tempfile.TemporaryDirectory(prefix="picer-setup-check-") as temporary:
+    with InstallerWorkspace(prefix="picer-setup-check-") as temporary:
         root = Path(temporary).resolve()
         destination = root / "揽映 安装 path with spaces"
         work = root / "unrelated-cwd"

@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import pytest
 
 from scripts.build_installer import TEST_PREFIX, registry_lines
 from scripts.release_assets import archive_portable, checksums
-from scripts.verify_installer import verify_payload
+from scripts.verify_installer import InstallerWorkspace, verify_payload
 
 
 def test_registration_catalog_is_per_user_quoted_and_task_scoped():
@@ -107,3 +108,35 @@ def test_installed_payload_requires_nested_qt_plugins_but_preserves_user_data(tm
     platform.write_bytes(b"corrupted platform")
     with pytest.raises(RuntimeError, match="differs from verified"):
         verify_payload(source, installed)
+
+
+def test_installer_workspace_retries_only_transient_windows_sharing_errors(monkeypatch):
+    cleanup = tempfile.TemporaryDirectory.cleanup
+    attempts = []
+
+    def briefly_locked(self):
+        attempts.append(1)
+        if len(attempts) < 3:
+            error = PermissionError("uninstall log still open")
+            error.winerror = 32
+            raise error
+        return cleanup(self)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile.TemporaryDirectory, "cleanup", briefly_locked)
+        patch.setattr("scripts.verify_installer.time.sleep", lambda _: None)
+        with InstallerWorkspace() as temporary:
+            path = Path(temporary)
+            (path / "uninstall.log").write_text("test log")
+        assert len(attempts) == 3 and not path.exists()
+
+    workspace = InstallerWorkspace()
+    with monkeypatch.context() as patch:
+
+        def forbidden(self):
+            raise PermissionError("persistent non-sharing permission failure")
+
+        patch.setattr(tempfile.TemporaryDirectory, "cleanup", forbidden)
+        with pytest.raises(PermissionError, match="non-sharing"):
+            workspace.cleanup()
+    workspace.cleanup()
