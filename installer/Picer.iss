@@ -63,7 +63,7 @@ Name: "contextmenu"; Description: "加入 Windows 右键菜单（使用揽映打
 Name: "defaultviewer"; Description: "设为默认图片浏览器"; GroupDescription: "Windows 集成："; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "config\*,plugins\*,skins\*,cache\*,logs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "\config\*,\plugins\*,\skins\*,\cache\*,\logs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 #ifndef TestBuild

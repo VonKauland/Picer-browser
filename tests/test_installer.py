@@ -9,6 +9,7 @@ import pytest
 
 from scripts.build_installer import TEST_PREFIX, registry_lines
 from scripts.release_assets import archive_portable, checksums
+from scripts.verify_installer import verify_payload
 
 
 def test_registration_catalog_is_per_user_quoted_and_task_scoped():
@@ -42,7 +43,7 @@ def test_test_registry_isolation_is_strict():
 def test_installer_options_preserve_user_data_and_os_confirmation():
     script = (Path(__file__).parents[1] / "installer" / "Picer.iss").read_text(encoding="utf-8")
     assert "PrivilegesRequired=lowest" in script
-    assert 'Excludes: "config\\*,plugins\\*,skins\\*,cache\\*,logs\\*"' in script
+    assert 'Excludes: "\\config\\*,\\plugins\\*,\\skins\\*,\\cache\\*,\\logs\\*"' in script
     for task in ("contextmenu", "defaultviewer"):
         line = next(line for line in script.splitlines() if line.startswith(f'Name: "{task}"'))
         assert "Flags: unchecked" in line
@@ -81,3 +82,28 @@ def test_portable_zip_contains_complete_folder_and_checksums(tmp_path):
             f"{hashlib.sha256(file.read_bytes()).hexdigest()}  {file.name}"
             in (output / "SHA256SUMS.txt").read_text()
         )
+
+
+def test_installed_payload_requires_nested_qt_plugins_but_preserves_user_data(tmp_path):
+    source, installed = tmp_path / "source", tmp_path / "installed"
+    for name, content in {
+        "Picer.exe": b"layout fixture",
+        "_internal/PySide6/plugins/platforms/qwindows.dll": b"platform library",
+        "_internal/PySide6/plugins/imageformats/qwebp.dll": b"image codec",
+        "plugins/user/main.py": b"new defaults must not overwrite user plugin",
+        "config/plugins.json": b"new defaults must not overwrite user settings",
+    }.items():
+        for base in (source, installed):
+            file = base / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(content)
+    (installed / "config/plugins.json").write_bytes(b"personal settings")
+    (installed / "plugins/user/main.py").write_bytes(b"personal plugin")
+    verify_payload(source, installed)
+    platform = installed / "_internal/PySide6/plugins/platforms/qwindows.dll"
+    platform.unlink()
+    with pytest.raises(RuntimeError, match="omitted runtime"):
+        verify_payload(source, installed)
+    platform.write_bytes(b"corrupted platform")
+    with pytest.raises(RuntimeError, match="differs from verified"):
+        verify_payload(source, installed)

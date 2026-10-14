@@ -1,5 +1,6 @@
 """Real installer/upgrade/uninstall checks; integration uses isolated native HKCU."""
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -45,6 +46,27 @@ def uninstall(destination, log):
         raise RuntimeError("Uninstall failed to remove the installed EXE")
 
 
+def verify_payload(application, destination):
+    """User-data exclusions must never omit nested Qt plugins or other libraries."""
+    user_directories = {"config", "plugins", "skins", "cache", "logs"}
+    checked = 0
+    for source in application.rglob("*"):
+        relative = source.relative_to(application)
+        if not source.is_file() or relative.parts[0] in user_directories:
+            continue
+        target = destination / relative
+        if not target.is_file():
+            raise RuntimeError(f"Installer omitted runtime file: {relative}")
+        with source.open("rb") as before, target.open("rb") as after:
+            if (
+                hashlib.file_digest(before, "sha256").digest()
+                != hashlib.file_digest(after, "sha256").digest()
+            ):
+                raise RuntimeError(f"Installed file differs from verified build: {relative}")
+        checked += 1
+    print(f"Installed payload matches verified portable build: {checked} files", flush=True)
+
+
 def verify(application, setup):
     import winreg
 
@@ -59,6 +81,7 @@ def verify(application, setup):
         images.mkdir()
         # Exercise the exact public installer, with integrations left off.
         install(setup, destination, "", root / "production-install.log")
+        verify_payload(application, destination)
         if not (destination / "assets" / "ui" / "gamepad.png").is_file():
             raise RuntimeError("Installer resources are incomplete")
         run_smoke(destination, work, images)
@@ -67,6 +90,7 @@ def verify(application, setup):
         user_plugin = destination / "plugins" / "user-owned.txt"
         user_plugin.write_text("preserve this plugin", encoding="utf-8")
         install(setup, destination, "", root / "production-upgrade.log")
+        verify_payload(application, destination)
         if state.read_bytes() != before or user_plugin.read_text() != "preserve this plugin":
             raise RuntimeError("Upgrade changed user settings or plugins")
         run_smoke(destination, work, images)
