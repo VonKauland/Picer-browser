@@ -64,6 +64,8 @@ class PluginManager(QObject):
         self.panels: dict[str, QDockWidget] = {}
         self.panel_operations = {}
         self.settings_forms = {}
+        self.settings_widgets = {}
+        self.editing_sessions = {}
         self._panel_transition = False
         self._fullscreen = host.isFullScreen()
         self.subscribers: dict[str, list[tuple[str, Callable]]] = {}
@@ -345,6 +347,10 @@ class PluginManager(QObject):
         was_enabled = record.state == "enabled"
         record.state = "disabled"
         self.settings_forms.pop(plugin_id, None)
+        self.settings_widgets.pop(plugin_id, None)
+        session = self.editing_sessions.pop(plugin_id, None)
+        if session:
+            session.close()
         self.panel_operations = {
             name: entry for name, entry in self.panel_operations.items() if entry[0] != plugin_id
         }

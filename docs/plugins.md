@@ -282,3 +282,34 @@ columns. Search, sorting and star/color filters share the annotation index. Turn
 it never scans drives. Filter counts respect the search/scope and the other filter facet.
 Clicking the final star's left half in a rating row selects a half-star threshold. Thumbnail
 pixels always come from the shared host service, with bounded visible requests and watches.
+
+### Temporary editor and custom settings (additive API v1)
+
+`create_editing_session()` requires `ui.panels`, `image.read`, `image.modify` and
+`tasks`. A component can own one host editing session; disabling it revokes its
+workers, canvas tools and subscriptions and restores the source view. The shipped
+`example.editor` panel defaults off and docks right when first enabled.
+
+`add_settings_page(factory)` requires `settings`. The factory receives the parent
+and returns a QWidget implementing `save() -> bool` and `reset()`. It is embedded
+in Plugin Management using the same Apply/Cancel lifecycle; it cannot be combined
+with `add_settings` for the same component. Existing declarative forms are unchanged.
+
+The temporary editor keeps a bounded 1600px working preview and computes saves from
+the original resolution off the GUI thread. Each modifier has an independent enable
+switch; disabling it preserves its parameters. Named recipes (up to 64, subject to
+the SDK's 64 KiB setting limit) live in the editor's plugin settings. Only the top
+navigator contains a photo thumbnail; modifier charts are parameter controls.
+
+Selective color preserves a target hue range and grays other colors, with circular
+hue distance and adjustable transition. Cropping uses source-relative coordinates;
+the canvas selection tool and numeric fields share the same recipe. Curves support
+RGB and individual channels with up to 16 ordered, piecewise-linear nodes.
+
+Save confirmation offers Cancel, Overwrite and PNG Copy. Copies allocate a unique
+sibling name. Overwrite supports PNG/JPEG/WebP/BMP/TIFF; RAW and other readable still
+formats export to PNG. Animated inputs are explicitly excluded from this editor.
+All saves check the original fingerprint, render full resolution, write/fsync a
+sibling temporary file, then atomically replace the target. Errors preserve the
+original; JPEG/BMP flatten transparency onto white. Readable EXIF/ICC metadata is
+preserved where the output supports it, with normalized orientation/dimensions.

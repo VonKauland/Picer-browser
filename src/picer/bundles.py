@@ -12,6 +12,7 @@ EXAMPLES = (
     ("double_page", "double-page.zip", "example.doublepage", True),
     ("touch_support", "touch-support.zip", "example.touch", True),
     ("file_browser", "file-browser.zip", "example.files", True),
+    ("image_editor", "image-editor.zip", "example.editor", False),
     ("image_manager", "image-manager.zip", "example.images", False),
     ("info_panel", "info-panel.zip", "example.info", True),
     ("progress_panel", "progress-panel.zip", "example.progress", True),

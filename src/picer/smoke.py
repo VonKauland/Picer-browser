@@ -975,6 +975,7 @@ def run(window, args, folder, done):
                 verify_media(window)
                 verify_input_features(window)
                 verify_system_settings(window)
+                verify_new_panels(window)
                 done(0)
                 return
             controller = window.panel_hovers.controllers["example.files"]
@@ -1032,6 +1033,7 @@ def run(window, args, folder, done):
             verify_media(window)
             verify_input_features(window)
             verify_system_settings(window)
+            verify_new_panels(window)
             done(0)
 
         QTimer.singleShot(25, lambda: guarded(metadata_ready))
@@ -1345,4 +1347,72 @@ def verify_notifications_and_click_seek(window, paths):
     print(
         "Packaged text-only frosted notifications, duration "
         "and exact image/frame click seeking passed"
+    )
+
+
+def verify_new_panels(window):
+    """Run the real shipped editor/manager, including frozen NumPy and atomic saving."""
+    from picer.editing.presets import read_presets
+    from picer.plugins.settings import SettingsForm
+
+    folder = window.paths_layout.cache / "smoke-editor"
+    folder.mkdir(exist_ok=True)
+    path = folder / "original.png"
+    picture = Image.new("RGB", (400, 240), "red")
+    picture.paste((0, 255, 0), (200, 0, 400, 240))
+    picture.save(path)
+    original = path.read_bytes()
+    assert window.open_image(path)
+    wait_for(lambda: window.current_path == path)
+    for key in ("example.images", "example.editor"):
+        assert window.plugins.records[key].state == "disabled"
+        window.plugins.enable(key)
+    panel = window.plugins.records["example.editor"].instance.panel
+    manager = window.plugins.records["example.images"].instance
+    wait_for(lambda: panel.session.source is not None, timeout=5000)
+    wait_for(lambda: path in manager.model.paths)
+    state = panel.session.state.copy()
+    import copy
+
+    state = copy.deepcopy(state)
+    state["selective"].update(enabled=True, hue=120, range=10, softness=0)
+    panel.session.set_state(state)
+    wait_for(lambda: not panel.session.busy and not panel.session.timer.isActive())
+    assert panel.session.applied and path.read_bytes() == original
+    preview = window.view.image_item.pixmap().toImage()
+    left, right = preview.pixelColor(10, 10), preview.pixelColor(300, 10)
+    assert left.red() == left.green() == left.blue() and right.green() > 240
+    context = window.plugins.records["example.editor"].context
+    context.set_setting("presets", [{"name": "Smoke green", "state": state}])
+    panel.reload_presets()
+    assert read_presets(context)[0]["name"] == "Smoke green"
+    form = SettingsForm(window.plugins, "example.editor")
+    assert form.custom is not None and form.save()
+    form.deleteLater()
+    info = window.plugins.records["example.info"].context
+    info.set_image_annotation(path, rating=3.5, color="green")
+    wait_for(lambda: manager.notes.get(str(path), {}).get("rating") == 3.5)
+    manager.filter_menu()
+    assert manager.popup.color_counts["green"] == 1
+    manager.popup.close()
+
+    def confirm():
+        dialog = QApplication.activeModalWidget()
+        assert dialog is not None and dialog.windowTitle().endswith("保存修改")
+        dialog.choose(False)
+
+    QTimer.singleShot(80, confirm)
+    panel.confirm_save()
+    wait_for(lambda: window.current_path != path, timeout=8000)
+    assert path.read_bytes() == original
+    with Image.open(window.current_path) as saved:
+        assert saved.size == (400, 240)
+        assert saved.getpixel((10, 10))[0] == saved.getpixel((10, 10))[1]
+    for key in ("example.editor", "example.images"):
+        window.plugins.disable(key)
+    assert not panel.session.active
+    assert not panel.navigator.timer.isActive() and not manager.requests
+    print(
+        "Packaged opt-in image manager, shared marks, selective-color editor, presets, "
+        "save confirmation, full-resolution copy and revocation passed"
     )

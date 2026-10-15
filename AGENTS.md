@@ -11,7 +11,7 @@
 - Report only checks that actually ran; distinguish Linux checks, Windows CI, and manual desktop validation.
 
 - Keep public plugin SDK compatibility in `src/picer/plugins/api.py` and `docs/plugins.md`; API v1 plugins are trusted in-process Python, not sandboxed.
-- Never auto-enable user-installed external plugins. The user-authorized shipped examples are provisioned by the trusted application catalog: panels/functions on, skins off, except the image-manager panel defaults off; preserve later user choices and explicit uninstalls. Revoke context, commands, subscriptions and tasks when disabling or failing a plugin.
+- Never auto-enable user-installed external plugins. The user-authorized shipped examples are provisioned by the trusted application catalog: panels/functions on, skins off, except the image-manager and temporary-editor panels default off; preserve later user choices and explicit uninstalls. Revoke context, commands, subscriptions and tasks when disabling or failing a plugin.
 - Plugin tests must use temporary data directories; never touch the developer's installed plugins or settings.
 - Preserve the packaged EXE smoke test that installs and executes the real external example ZIP.
 

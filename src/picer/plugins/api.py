@@ -148,6 +148,26 @@ class PluginContext:
         self._check("settings")
         self._manager.add_settings(self.plugin_id, fields, on_apply)
 
+    def add_settings_page(self, factory):
+        """Add a custom QWidget with save/reset methods to component settings."""
+        self._check("settings")
+        if not callable(factory) or self.plugin_id in self._manager.settings_forms:
+            raise PluginError("设置页面只能注册一次，且须提供控件工厂")
+        self._manager.settings_forms[self.plugin_id] = ((), lambda: None)
+        self._manager.settings_widgets[self.plugin_id] = factory
+
+    def create_editing_session(self):
+        """Create one revocable, host-owned temporary editing session."""
+        for permission in ("ui.panels", "image.read", "image.modify", "tasks"):
+            self._check(permission)
+        if self.plugin_id in self._manager.editing_sessions:
+            raise PluginError("每个组件只能创建一个临时编辑会话")
+        from picer.editing.session import EditingSession
+
+        session = EditingSession(self, self._manager.host)
+        self._manager.editing_sessions[self.plugin_id] = session
+        return session
+
     def show_settings(self) -> None:
         self._check("settings")
         self._manager.show_settings(self.plugin_id)
