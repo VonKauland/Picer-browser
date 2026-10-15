@@ -1,11 +1,11 @@
 {
   "id": "example.info",
   "name": "图片信息",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",
-  "description": "自适应窄面板的信息分类、RGB 直方图与星级；RAW/JPEG EXIF 表格固定于底部，可向上展开详情。",
+  "description": "自适应信息分类、RGB 直方图、底部半星评分与六色分类；RAW/JPEG EXIF 表格可向上展开详情。",
   "permissions": [
     "ui.panels",
     "image.read",

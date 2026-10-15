@@ -5,7 +5,6 @@ import math
 from PySide6.QtCore import QEvent, QPointF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -17,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from picer.plugins import SettingField
 
+from .annotations import Annotations
 from .exif_view import ExifView
 from .labels import DetailLabel
 
@@ -81,6 +81,7 @@ class Plugin:
                 ("color", "颜色信息"),
                 ("histogram", "RGB 直方图"),
                 ("rating", "星级"),
+                ("classification", "颜色分类"),
                 ("extra", "其他元数据"),
             )
         )
@@ -89,7 +90,7 @@ class Plugin:
         self.panel.setMinimumWidth(180)
         self.panel.setStyleSheet("QGroupBox { margin: 0; padding: 0; border: none; }")
         layout = QVBoxLayout(self.panel)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(12, 12, 12, 0)
         top = QHBoxLayout()
         self.title = DetailLabel("图片信息")
         self.title.setTextFormat(Qt.TextFormat.PlainText)
@@ -126,15 +127,6 @@ class Plugin:
         row.addWidget(self.histogram)
         row.addWidget(self.sample_label)
         self.body.addWidget(group)
-        group, row = section("星级 · 保存在插件配置，不修改原图")
-        self.groups["rating"] = group
-        self.rating = QComboBox()
-        self.rating.addItem("未评级", 0)
-        for stars in range(1, 6):
-            self.rating.addItem("★" * stars, stars)
-        self.rating.currentIndexChanged.connect(self.set_rating)
-        row.addWidget(self.rating)
-        self.body.addWidget(group)
         self.warning = DetailLabel()
         self.warning.setWordWrap(True)
         self.body.addWidget(self.warning)
@@ -147,6 +139,10 @@ class Plugin:
         exif_layout.addWidget(self.exif_view)
         layout.addWidget(self.exif_box, 0)
         self.exif_box.hide()
+        self.rating = Annotations()
+        self.rating.ratingChanged.connect(self.set_rating)
+        self.rating.categoryChanged.connect(self.set_category)
+        layout.addWidget(self.rating, 0)
         self.dock = context.add_panel(self.panel, area="right")
         context.subscribe("image.changed", self.on_image)
         self.apply_settings()
@@ -165,9 +161,14 @@ class Plugin:
 
     def apply_settings(self):
         for field in self.fields:
-            self.groups[field.key].setVisible(
-                field.validate(self.context.get_setting(field.key, True))
-            )
+            if field.key in self.groups:
+                self.groups[field.key].setVisible(
+                    field.validate(self.context.get_setting(field.key, True))
+                )
+        self.rating.configure(
+            bool(self.context.get_setting("rating", True)),
+            bool(self.context.get_setting("classification", True)),
+        )
 
     def on_image(self, event):
         self.refresh()
@@ -187,6 +188,7 @@ class Plugin:
                 table.removeRow(0)
         self.histogram.channels = []
         self.histogram.update()
+        self.rating.set_values(0, "")
         self.rating.setEnabled(False)
         if path:
             self.read_timer.start()
@@ -219,22 +221,33 @@ class Plugin:
             if isinstance(ratings, dict)
             else 0
         )
-        self.rating.blockSignals(True)
-        self.rating.setCurrentIndex(max(0, min(5, rating)) if type(rating) is int else 0)
-        self.rating.blockSignals(False)
+        categories = self.context.get_setting("color_labels", {})
+        category = categories.get(data["path"], "") if isinstance(categories, dict) else ""
+        self.rating.set_values(rating, category)
         self.rating.setEnabled(True)
 
-    def set_rating(self):
+    def set_rating(self, value):
         if not self.metadata:
             return
         ratings = self.context.get_setting("ratings", {})
         ratings = ratings if isinstance(ratings, dict) else {}
         path = self.metadata["path"]
         ratings.pop(path, None)
-        ratings[path] = self.rating.currentData()
+        ratings[path] = value
         while len(ratings) > 256:
             del ratings[next(iter(ratings))]
         self.context.set_setting("ratings", ratings)
+
+    def set_category(self, value):
+        if not self.metadata:
+            return
+        categories = self.context.get_setting("color_labels", {})
+        categories = categories if isinstance(categories, dict) else {}
+        path = self.metadata["path"]
+        categories.pop(path, None)
+        if value:
+            categories[path] = value
+        self.context.set_setting("color_labels", categories)
 
     def deactivate(self):
         self.read_timer.stop()
