@@ -51,10 +51,14 @@ class PhotoGrid(QListView):
 
     def arrange(self):
         columns = max(1, min(4, round(200 / self.owner.size.value())))
-        width = max(48, (self.viewport().width() - 2) // columns)
+        # QListView reserves the potential vertical scrollbar while wrapping,
+        # even before it becomes visible. Leave that gutter in the cell budget.
+        available = self.viewport().width() - self.verticalScrollBar().sizeHint().width()
+        width = max(48, (available - 2) // columns)
         size = QSize(width, round(width * 0.68) + 25)
         if self.gridSize() != size:
             self.setGridSize(size)
+            self.doItemsLayout()
         self.owner.queue_load()
 
 

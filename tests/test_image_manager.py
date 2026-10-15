@@ -59,6 +59,9 @@ def test_default_off_right_only_images_and_visible_shared_thumbnails(host, qtbot
     window, folder, panel = enable(host, qtbot)
     assert window.dockWidgetArea(panel.dock) == Qt.DockWidgetArea.RightDockWidgetArea
     assert panel.size.value() == 100
+    window.panel_hovers.controllers["example.images"].resize_extent(310)
+    window.panel_hovers.controllers["example.images"].pin()
+    qtbot.wait(100)
     first, second, third = [panel.grid.visualRect(panel.model.index(n)) for n in range(3)]
     assert second.top() == first.top() and third.top() > first.top()
     assert all(path.parent == folder and path.suffix == ".png" for path in panel.model.paths)
@@ -154,3 +157,17 @@ def test_popup_corners_and_cleanup(host, qtbot):
     qtbot.wait(20)
     assert panel.popup is None
     window.plugins.disable("example.images")
+
+
+def test_two_columns_when_no_vertical_scrollbar_is_needed(host, qtbot):
+    window, folder = host
+    (folder / "6.png").unlink()
+    (folder / "7.png").unlink()
+    window.plugins.enable("example.images")
+    panel = window.plugins.records["example.images"].instance
+    window.panel_hovers.controllers["example.images"].resize_extent(310)
+    window.panel_hovers.controllers["example.images"].pin()
+    qtbot.waitUntil(lambda: panel.model.rowCount() == 6)
+    qtbot.wait(100)
+    first, second, third = [panel.grid.visualRect(panel.model.index(n)) for n in range(3)]
+    assert second.top() == first.top() and third.top() > first.top()
