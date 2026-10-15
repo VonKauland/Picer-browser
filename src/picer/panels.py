@@ -17,12 +17,14 @@ from PySide6.QtCore import (
     QTimer,
     QVariantAnimation,
 )
-from PySide6.QtGui import QColor, QCursor, QImage, QPainter, QPainterPath, QRegion
+from PySide6.QtGui import QColor, QCursor, QImage, QPainter, QPainterPath, QPen, QRegion
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QDockWidget,
     QGraphicsBlurEffect,
     QMenu,
+    QTabBar,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -263,6 +265,66 @@ class PanelGrip(QWidget):
                 self.controller.dock.close()
 
 
+class PanelTab(QAbstractButton):
+    """Paint-only scaling leaves the narrow rail and content geometry stable."""
+
+    def __init__(self, surface, target):
+        super().__init__(surface)
+        self.target = target
+        self.scale = 0.0
+        self.setText(target.dock.windowTitle())
+        self.setToolTip(self.text())
+        self.setAccessibleName(self.text())
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(180)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.valueChanged.connect(self.animate)
+        self.clicked.connect(lambda: target.collection.activate_tab(target))
+
+    def animate(self, value):
+        self.scale = float(value)
+        self.update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.animation.stop()
+        self.scale = 0.0
+        self.animation.setStartValue(0.0)
+        self.animation.setEndValue(1.0)
+        self.animation.start()
+
+    def hideEvent(self, event):
+        self.animation.stop()
+        super().hideEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        center = QRectF(self.rect()).center()
+        painter.translate(center)
+        painter.scale(self.scale, self.scale)
+        painter.translate(-center)
+        selected = self.isChecked()
+        painter.setBrush(QColor("#858585" if selected else "#38383A"))
+        painter.setPen(
+            QPen(QColor(colors_for(self)["accent"]), 1) if selected else Qt.PenStyle.NoPen
+        )
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 3, 3)
+        painter.setPen(QColor("#FFFFFF" if selected else "#ADADB2"))
+        font = painter.font()
+        font.setPixelSize(10)
+        painter.setFont(font)
+        # Each glyph owns a padded cell: no multiline layout can cross the outline.
+        for index, character in enumerate(self.text()):
+            cell = QRect(3, 6 + index * 14, self.width() - 6, 14)
+            painter.save()
+            painter.setClipRect(cell)
+            painter.drawText(cell, Qt.AlignmentFlag.AlignCenter, character)
+            painter.restore()
+
+
 class DockSurface(GlassSurface):
     def __init__(self, host, content):
         super().__init__(host.glass)
@@ -272,6 +334,7 @@ class DockSurface(GlassSurface):
         layout = QVBoxLayout(self)
         layout.addWidget(content)
         self.grip = PanelGrip(self)
+        self.tabs = {}
 
     def arrange(self, area=None):
         if area is not None:
@@ -290,8 +353,28 @@ class DockSurface(GlassSurface):
                 self.width() - 16 if left else 0, (self.height() - 44) // 2, 16, 44
             )
             self.grip.setCursor(Qt.CursorShape.SizeHorCursor)
+        top = 3
+        for tab in self.tabs.values():
+            height = len(tab.text()) * 14 + 12
+            tab.setGeometry(self.grip.x(), top, 16, height)
+            top += height + 4
+            tab.raise_()
         self.grip.raise_()
         self.grip.update()
+
+    def set_tabs(self, controllers, selected):
+        targets = {item.plugin_id: item for item in controllers}
+        for key in list(self.tabs):
+            if key not in targets:
+                tab = self.tabs.pop(key)
+                tab.hide()
+                tab.deleteLater()
+        for key, target in targets.items():
+            if key not in self.tabs:
+                self.tabs[key] = PanelTab(self, target)
+                self.tabs[key].show()
+            self.tabs[key].setChecked(target is selected)
+        self.arrange()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -856,11 +939,13 @@ class PanelHovers(QObject):
 
     def register(self, dock, plugin_id, manager):
         self.controllers[plugin_id] = HiddenPanel(self, dock, plugin_id, manager)
+        self.layout_strips()
 
     def unregister(self, plugin_id):
         controller = self.controllers.pop(plugin_id, None)
         if controller:
             controller.dispose()
+            self.layout_strips()
 
     def close_all(self):
         self.show_drop_hint(None)
@@ -926,7 +1011,43 @@ class PanelHovers(QObject):
         finally:
             self.laying_out = False
 
+    def activate_tab(self, controller):
+        for other in self.controllers.values():
+            if other.area == controller.area and other is not controller:
+                other.collapse(immediate=True)
+        if controller.dock.isHidden():
+            controller.reveal()
+        else:
+            controller.dock.raise_()
+        self.layout_strips()
+
+    def layout_tabs(self):
+        groups = {}
+        for controller in self.controllers.values():
+            if controller.area == DOCK_AREAS["bottom"]:
+                continue
+            record = controller.manager.records.get(controller.plugin_id)
+            if record is not None and record.state == "enabled":
+                groups.setdefault(controller.area, []).append(controller)
+        for controllers in groups.values():
+            fixed = [c for c in controllers if not c.dock.isHidden()]
+            if len(fixed) > 1:
+                first = fixed[0].dock
+                for controller in fixed[1:]:
+                    if controller.dock not in self.host.tabifiedDockWidgets(first):
+                        self.host.tabifyDockWidget(first, controller.dock)
+            for controller in controllers:
+                surface = controller.surface or controller.dock.widget()
+                surface.set_tabs(controllers if len(controllers) > 1 else [], controller)
+        # Qt still owns tab selection/stack geometry; its native bottom tabs take no space.
+        for bar in self.host.findChildren(
+            QTabBar, options=Qt.FindChildOption.FindDirectChildrenOnly
+        ):
+            bar.setFixedHeight(0)
+            bar.hide()
+
     def _layout_strips(self):
+        self.layout_tabs()
         areas = {}
         for controller in self.controllers.values():
             if controller.dock.property("progressPanel"):
