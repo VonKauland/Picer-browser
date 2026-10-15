@@ -1,9 +1,10 @@
 """Host-owned component menus and the five persistent quick-action slots."""
 
 from PySide6.QtGui import QActionGroup, QColor, QIcon, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QMenu, QMessageBox
+from PySide6.QtWidgets import QMenu
 
 from picer.host_style import mark_host
+from picer.messages import MessageBox as QMessageBox
 from picer.plugins.api import PluginError
 
 TYPES = {"skin": "皮肤", "function": "功能", "panel": "面板"}

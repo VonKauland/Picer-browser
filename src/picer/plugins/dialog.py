@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -25,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from picer.components import TYPES, component_icon
 from picer.host_style import mark_host
+from picer.messages import MessageBox as QMessageBox
 from picer.plugins.api import PluginError
 from picer.plugins.settings import SettingsForm
 from picer.ui import Card, StyledDialog, Toggle, ui_icon

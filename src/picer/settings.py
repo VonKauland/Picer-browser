@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
 from picer.color_editor import ColorEditor
 from picer.confirmation import confirm
 from picer.host_style import mark_host
+from picer.messages import MessageBox as QMessageBox
 from picer.panels import DOCK_AREAS
 from picer.plugins.api import PluginError
 from picer.preferences import DEFAULTS, read_preferences

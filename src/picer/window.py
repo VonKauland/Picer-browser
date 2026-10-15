@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMenu,
-    QMessageBox,
     QVBoxLayout,
     QWidget,
 )
@@ -40,6 +39,7 @@ from picer.host_style import HostStyleFilter, mark_host, scope_style
 from picer.imaging import read_image
 from picer.input_bindings import InputBindings, mouse_value
 from picer.loading import ImageLoader
+from picer.messages import MessageBox as QMessageBox
 from picer.navigation import NavigationKeys
 from picer.notifications import NotificationBubble
 from picer.panel_scrollbars import PanelScrollbars

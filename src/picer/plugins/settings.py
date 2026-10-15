@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.host_style import mark_host
+from picer.messages import MessageBox as QMessageBox
 from picer.ui import Card, StyledDialog, Toggle, form_row, ui_icon
 
 
