@@ -246,10 +246,10 @@ class EditingSession(QObject):
                 pen.setCosmetic(True)
                 self.outline.setPen(pen)
             return True
-        if self.origin and event.type() == QEvent.Type.MouseMove:
+        if self.origin is not None and event.type() == QEvent.Type.MouseMove:
             self.outline.setRect(QRectF(self.origin, point).normalized())
             return True
-        if self.origin and event.type() == QEvent.Type.MouseButtonRelease:
+        if self.origin is not None and event.type() == QEvent.Type.MouseButtonRelease:
             rect = QRectF(self.origin, point).normalized()
             self.cancel_tool()
             if rect.width() > 1 and rect.height() > 1:

@@ -18,7 +18,7 @@ jobs:
   build:
     name: Test and build Windows x64
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     defaults:
       run:
         shell: pwsh

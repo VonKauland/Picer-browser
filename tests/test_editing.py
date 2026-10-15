@@ -204,14 +204,15 @@ def test_preset_form_and_save_confirmation_do_not_write_implicitly(editor, qtbot
     assert window.current_path.is_file()
 
 
-def test_crop_canvas_select_and_stale_navigation(editor, qtbot):
+@pytest.mark.parametrize("offset", [0, 10])
+def test_crop_canvas_select_and_stale_navigation(editor, qtbot, offset):
     window, path, panel = editor
     panel.switches["crop"].setChecked(True)
     settle(panel, qtbot)
     panel.session.begin_tool("crop")
     view = window.view
     rect = view.mapFromScene(view.image_item.sceneBoundingRect()).boundingRect()
-    start = rect.topLeft() + QPoint(10, 10)
+    start = rect.topLeft() + QPoint(offset, offset)
     end = rect.center()
     qtbot.mousePress(view.viewport(), Qt.MouseButton.LeftButton, pos=start)
     qtbot.mouseMove(view.viewport(), pos=end)
