@@ -178,6 +178,8 @@ class EditingSession(QObject):
                     self.host.loader.cache.clear()
                     self.host.loader.cache_bytes = 0
                     self.host.open_image(result["path"])
+            if generation != self.generation:
+                self.timer.start(0)
             self.changed.emit()
 
         try:

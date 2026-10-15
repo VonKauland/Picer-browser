@@ -387,6 +387,8 @@ class EditingPanel(QWidget):
                 else:
                     editor.setValue(round(value) if extra else value)
         self.curve.nodes = copy.deepcopy(state["curves"]["points"][state["curves"]["channel"]])
+        if self.curve.selected is not None and self.curve.selected >= len(self.curve.nodes):
+            self.curve.selected = None
         self.curve.update()
         color = QColor.fromHsv(state["selective"]["hue"], 220, 230).name()
         self.color.setStyleSheet(f"background: {color}; border-radius: 5px; min-height: 20px;")

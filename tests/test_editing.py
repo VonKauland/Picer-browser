@@ -273,3 +273,36 @@ def test_animated_editor_rejects_destructive_frame_conversion(qtbot, tmp_path):
     assert "动态图" in panel.session.error and not panel.save_button.isEnabled()
     assert window.plugins.records["example.editor"].state == "enabled"
     window.plugins.shutdown()
+
+
+def test_navigation_during_save_resumes_new_image_editor(editor, qtbot, monkeypatch):
+    from threading import Event
+
+    import picer.editing.session as session_module
+
+    window, path, panel = editor
+    other = path.with_name("new.png")
+    Image.new("RGB", (200, 100), "blue").save(other)
+    entered, release = Event(), Event()
+    original_save = session_module.save_image
+
+    def blocked(*args, **kwargs):
+        entered.set()
+        release.wait(5)
+        return original_save(*args, **kwargs)
+
+    monkeypatch.setattr(session_module, "save_image", blocked)
+    assert panel.session.save(False)
+    try:
+        qtbot.waitUntil(entered.is_set)
+        window.open_image(other)
+        qtbot.waitUntil(lambda: panel.session.path == other)
+        qtbot.wait(180)  # The image-change debounce expires while the write is pending.
+        assert panel.session.source is None
+    finally:
+        release.set()
+    qtbot.waitUntil(
+        lambda: panel.session.source is not None and not panel.session.saving, timeout=5000
+    )
+    assert window.current_path == other and panel.session.native == (200, 100)
+    assert window.view.image_item.pixmap().toImage().pixelColor(0, 0).blue() > 240
