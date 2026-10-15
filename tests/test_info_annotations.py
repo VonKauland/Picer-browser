@@ -42,16 +42,16 @@ def test_categories_plain_centers_restore_without_overwriting_ratings(info, qtbo
     host, plugin, path = info
     qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(82, 17))
     assert plugin.context.get_setting("ratings")[path] == 3.5
-    qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(118, 50))
+    qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(118, 47))
     assert plugin.context.get_setting("color_labels")[path] == "blue"
     image = plugin.rating.grab().toImage()
-    assert image.pixelColor(118, 50).name().lower() == "#488fff"
+    assert image.pixelColor(118, 47).name().lower() == "#488fff"
     host.plugins.disable("example.info")
     host.plugins.enable("example.info")
     restored = host.plugins.records["example.info"].instance
     qtbot.waitUntil(lambda: restored.metadata is not None)
     assert restored.rating.value == 3.5 and restored.rating.category == "blue"
-    qtbot.mouseClick(restored.rating, Qt.MouseButton.LeftButton, pos=QPoint(118, 50))
+    qtbot.mouseClick(restored.rating, Qt.MouseButton.LeftButton, pos=QPoint(118, 47))
     assert path not in restored.context.get_setting("color_labels")
     assert restored.context.get_setting("ratings")[path] == 3.5
 

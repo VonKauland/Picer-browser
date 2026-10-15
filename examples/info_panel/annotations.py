@@ -75,7 +75,7 @@ class Annotations(QWidget):
         painter.setPen(QColor(colors["border"]))
         painter.drawLine(0, 0, self.width(), 0)
         if self.show_rating:
-            y = self.ROW_HEIGHT / 2
+            y = 19 if self.show_categories else self.ROW_HEIGHT / 2
             painter.setPen(QColor(colors["muted"]))
             painter.drawText(QRectF(0, y - 10, 30, 20), Qt.AlignmentFlag.AlignVCenter, "评分")
             for index in range(5):
@@ -94,7 +94,7 @@ class Annotations(QWidget):
                 QRectF(113, y - 10, 30, 20), Qt.AlignmentFlag.AlignVCenter, f"{self.value:g}"
             )
         if self.show_categories:
-            y = self.ROW_HEIGHT * (1.5 if self.show_rating else 0.5)
+            y = 47 if self.show_rating else self.ROW_HEIGHT / 2
             painter.setPen(QColor(colors["muted"]))
             painter.drawText(QRectF(0, y - 10, 30, 20), Qt.AlignmentFlag.AlignVCenter, "分类")
             for index, (key, _, color) in enumerate(CATEGORIES):
