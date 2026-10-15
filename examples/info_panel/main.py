@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from picer.plugins import SettingField
+from picer.plugins import PluginError, SettingField
 
 from .annotations import Annotations
 from .exif_view import ExifView
@@ -145,6 +145,7 @@ class Plugin:
         layout.addWidget(self.rating, 0)
         self.dock = context.add_panel(self.panel, area="right")
         context.subscribe("image.changed", self.on_image)
+        context.subscribe("annotations.changed", self.on_annotations)
         self.apply_settings()
         self.refresh()
 
@@ -215,39 +216,35 @@ class Plugin:
         self.exif_view.set_data(data.get("exif_sections", {}))
         self.exif_box.setVisible(bool(data["exif"]))
         self.warning.setText("\n".join(data["warnings"]))
-        ratings = self.context.get_setting("ratings", {})
-        rating = (
-            ratings.get(data["path"], data.get("embedded_rating", 0))
-            if isinstance(ratings, dict)
-            else 0
-        )
-        categories = self.context.get_setting("color_labels", {})
-        category = categories.get(data["path"], "") if isinstance(categories, dict) else ""
-        self.rating.set_values(rating, category)
+        self.update_annotations()
         self.rating.setEnabled(True)
 
+    def update_annotations(self):
+        if self.metadata:
+            mark = self.context.image_annotation(self.metadata["path"])
+            rating = mark.get("rating")
+            self.rating.set_values(
+                self.metadata.get("embedded_rating", 0) if rating is None else rating,
+                mark.get("color", ""),
+            )
+
+    def on_annotations(self, event):
+        if self.metadata and event["path"] == self.metadata["path"]:
+            self.update_annotations()
+
+    def save_annotations(self, **values):
+        if self.metadata:
+            try:
+                self.context.set_image_annotation(self.metadata["path"], **values)
+            except PluginError as error:
+                self.update_annotations()
+                self.context.notify(f"标注未保存：{error}")
+
     def set_rating(self, value):
-        if not self.metadata:
-            return
-        ratings = self.context.get_setting("ratings", {})
-        ratings = ratings if isinstance(ratings, dict) else {}
-        path = self.metadata["path"]
-        ratings.pop(path, None)
-        ratings[path] = value
-        while len(ratings) > 256:
-            del ratings[next(iter(ratings))]
-        self.context.set_setting("ratings", ratings)
+        self.save_annotations(rating=value)
 
     def set_category(self, value):
-        if not self.metadata:
-            return
-        categories = self.context.get_setting("color_labels", {})
-        categories = categories if isinstance(categories, dict) else {}
-        path = self.metadata["path"]
-        categories.pop(path, None)
-        if value:
-            categories[path] = value
-        self.context.set_setting("color_labels", categories)
+        self.save_annotations(color=value)
 
     def deactivate(self):
         self.read_timer.stop()

@@ -1,7 +1,7 @@
 {
   "id": "example.info",
   "name": "图片信息",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",
@@ -9,6 +9,7 @@
   "permissions": [
     "ui.panels",
     "image.read",
+    "image.annotations",
     "events.subscribe",
     "settings",
     "tasks"

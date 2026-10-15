@@ -1,0 +1,10 @@
+{
+  "id": "example.images",
+  "name": "图片管理",
+  "version": "1.0.0",
+  "api_version": 1,
+  "type": "panel",
+  "entrypoint": "main:Plugin",
+  "description": "当前图片目录的双列平铺、搜索排序、半星与六色筛选；可查看本机已标记图片。",
+  "permissions": ["ui.panels", "image.read", "image.navigate", "events.subscribe", "settings", "tasks"]
+}

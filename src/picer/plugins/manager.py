@@ -21,6 +21,7 @@ from PySide6.QtCore import QObject, Qt, QThreadPool, Signal
 from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import QDockWidget, QWidget
 
+from picer.annotations import AnnotationStore
 from picer.host_style import PLUGIN_STYLE
 from picer.panels import DOCK_AREAS, DockTitleSpacer, ProgressDock, dock_surface, saved_layout
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
@@ -87,6 +88,12 @@ class PluginManager(QObject):
                 self.preferences = {key: data.get(key, {}) for key in ("enabled", "settings", "ui")}
         except (OSError, ValueError, UnicodeError) as error:
             self.diagnostics.append(f"配置读取失败：{error}")
+        self.annotations = AnnotationStore(
+            self.paths.config / "annotations.sqlite3",
+            self.preferences["settings"].get("example.info", {}),
+        )
+        if self.annotations.error:
+            self.diagnostics.append("图片标注库：" + self.annotations.error)
         # Restore core bindings before loading plugins that may use a freed shortcut.
         self.host.restore_shortcuts(
             self.preferences["ui"].get("shortcuts", {}),

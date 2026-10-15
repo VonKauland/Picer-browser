@@ -6,16 +6,8 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
+from picer.annotations import CATEGORIES
 from picer.ui import colors_for
-
-CATEGORIES = (
-    ("red", "红色", "#F65B62"),
-    ("orange", "橙色", "#FF9D42"),
-    ("yellow", "黄色", "#F4D94D"),
-    ("green", "绿色", "#59CD72"),
-    ("blue", "蓝色", "#488FFF"),
-    ("purple", "紫色", "#A271F1"),
-)
 
 
 class Annotations(QWidget):

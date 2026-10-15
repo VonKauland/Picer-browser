@@ -12,6 +12,7 @@ EXAMPLES = (
     ("double_page", "double-page.zip", "example.doublepage", True),
     ("touch_support", "touch-support.zip", "example.touch", True),
     ("file_browser", "file-browser.zip", "example.files", True),
+    ("image_manager", "image-manager.zip", "example.images", False),
     ("info_panel", "info-panel.zip", "example.info", True),
     ("progress_panel", "progress-panel.zip", "example.progress", True),
     ("macos_skin", "macos-skin.zip", "example.macos", False),

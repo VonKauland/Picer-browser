@@ -260,3 +260,25 @@ self.thumbnail_request.cancel()
 `ui.panels` 权限的面板可调用 `context.bind_panel_operation(name, callback)` 接入已定义的宿主操作，不额外注册功能按钮：`browser.parent`、`browser.selected`、`browser.favorite`、`slideshow.play`、`slideshow.stop`。回调均无参数。每个操作只能有一个提供者，停用 / 出错 / 卸载自动撤销；启用失败同样清理，键盘绑定仍保留。`context.handle_browser_key(event)` 让面板视图在 ShortcutOverride / KeyPress 阶段使用用户设置的父级 / 选中目录按键；文本编辑器应保留原生输入行为。回调只在 GUI 线程运行，通过宿主异常隔离调用。
 
 面板内部的 Qt 滚动区域由系统统一控制是否显示滚动条，不影响滚动能力；不覆盖原本禁止的横向滚动策略。自绘缩略条保持原有无滚动条设计。
+
+### Shared photo annotations (API v1 additive methods)
+
+`image_annotation(path)` reads one local record; `image_annotations()` returns a detached
+snapshot keyed by absolute image path. Both require `image.read`. Each record has `rating`
+(`None` or 0–5, in half-star steps) and `color` (empty, red, orange, yellow, green, blue,
+or purple). `set_image_annotation(path, rating=..., color=...)` additionally requires
+`image.annotations`; omitted fields are unchanged, rating 0 clears a score and empty color
+clears a category. These calls run on the GUI thread and never modify original image files.
+`annotations.changed` carries `{"path": "..."}` and uses the existing revocable subscription
+lifecycle. Device-local marks live separately in `config/annotations.sqlite3`; the first
+startup imports the shipped information panel's older ratings/color settings once, without
+overwriting newer records. Panel disable/uninstall does not delete photo annotations.
+
+The shipped `example.images` / 图片管理 panel is installed but **disabled by default**.
+When enabled it defaults to the right side, lists only supported image files in the current
+viewer's folder (no child directories), and uses a virtualized tiled view with two default
+columns. Search, sorting and star/color filters share the annotation index. Turning off
+“仅本文件夹” queries only existing supported images already marked in this installation;
+it never scans drives. Filter counts respect the search/scope and the other filter facet.
+Clicking the final star's left half in a rating row selects a half-star threshold. Thumbnail
+pixels always come from the shared host service, with bounded visible requests and watches.

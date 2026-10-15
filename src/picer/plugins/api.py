@@ -1,5 +1,6 @@
 """The public API available to trusted Python plugins."""
 
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ PERMISSIONS = {
     "ui.commands",
     "ui.panels",
     "image.read",
+    "image.annotations",
     "image.navigate",
     "image.layout",
     "input.touch",
@@ -150,6 +152,35 @@ class PluginContext:
         self._check("settings")
         self._manager.show_settings(self.plugin_id)
 
+    def image_annotations(self):
+        """Return an independent snapshot of this installation's recorded photo marks."""
+        self._check("image.read")
+        return self._manager.annotations.snapshot()
+
+    def image_annotation(self, path):
+        """Look up one mark without copying the device-wide index."""
+        self._check("image.read")
+        import os
+
+        if not isinstance(path, (str, Path)):
+            raise PluginError("图片路径无效")
+        value = self._manager.annotations.values.get(os.path.abspath(str(path)), (None, ""))
+        return {"rating": value[0], "color": value[1]}
+
+    def set_image_annotation(self, path, *, rating=None, color=None):
+        """Persist half-star/color marks without modifying the original image."""
+        self._check("image.read")
+        self._check("image.annotations")
+        if not isinstance(path, (str, Path)):
+            raise PluginError("图片路径无效")
+        try:
+            changed = self._manager.annotations.set(path, rating=rating, color=color)
+        except (ValueError, OSError, sqlite3.Error) as error:
+            raise PluginError(str(error)) from error
+        if changed:
+            for owner, callback in list(self._manager.subscribers.get("annotations.changed", [])):
+                self._manager._invoke(owner, callback, {"path": str(path)})
+
     def readable_suffixes(self) -> frozenset[str]:
         """Effective user-selected image formats; decoding capabilities are unchanged."""
         self._check("image.read")
@@ -220,6 +251,7 @@ class PluginContext:
             "image.changed",
             "animation.changed",
             "appearance.changed",
+            "annotations.changed",
         }:
             raise PluginError(f"未知事件：{event}")
         self._manager.subscribe(self.plugin_id, event, callback)

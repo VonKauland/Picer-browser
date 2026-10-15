@@ -123,7 +123,7 @@ def test_image_metadata_exif_histogram_and_visibility(window, tmp_path, qtbot, p
     assert plugin.groups["histogram"].isHidden()
     assert not plugin.exif_box.isHidden()
     qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(92, 11))
-    assert context.get_setting("ratings")[str((pictures / "1.jpg").resolve())] == 4
+    assert context.image_annotation((pictures / "1.jpg").resolve())["rating"] == 4
     assert Image.open(pictures / "1.jpg").getexif().get(18246) is None
     window.open_image(pictures / "3.png")
     qtbot.waitUntil(lambda: plugin.metadata is not None)

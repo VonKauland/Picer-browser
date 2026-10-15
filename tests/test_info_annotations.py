@@ -29,9 +29,9 @@ def test_all_half_stars_and_explicit_clear(info, qtbot):
         qtbot.mouseClick(
             plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(34 + int((half - 0.5) * 7.5), 17)
         )
-        assert plugin.context.get_setting("ratings")[path] == half / 2
+        assert plugin.context.image_annotation(path)["rating"] == half / 2
     qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(106, 17))
-    assert plugin.context.get_setting("ratings")[path] == 0
+    assert plugin.context.image_annotation(path)["rating"] == 0
     host.panel_hovers.controllers["example.info"].resize_extent(220)
     qtbot.wait(30)
     assert plugin.rating.width() <= plugin.panel.width()
@@ -41,9 +41,9 @@ def test_all_half_stars_and_explicit_clear(info, qtbot):
 def test_categories_plain_centers_restore_without_overwriting_ratings(info, qtbot):
     host, plugin, path = info
     qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(82, 17))
-    assert plugin.context.get_setting("ratings")[path] == 3.5
+    assert plugin.context.image_annotation(path)["rating"] == 3.5
     qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(118, 47))
-    assert plugin.context.get_setting("color_labels")[path] == "blue"
+    assert plugin.context.image_annotation(path)["color"] == "blue"
     image = plugin.rating.grab().toImage()
     assert image.pixelColor(118, 47).name().lower() == "#488fff"
     host.plugins.disable("example.info")
@@ -52,8 +52,8 @@ def test_categories_plain_centers_restore_without_overwriting_ratings(info, qtbo
     qtbot.waitUntil(lambda: restored.metadata is not None)
     assert restored.rating.value == 3.5 and restored.rating.category == "blue"
     qtbot.mouseClick(restored.rating, Qt.MouseButton.LeftButton, pos=QPoint(118, 47))
-    assert path not in restored.context.get_setting("color_labels")
-    assert restored.context.get_setting("ratings")[path] == 3.5
+    assert not restored.context.image_annotation(path)["color"]
+    assert restored.context.image_annotation(path)["rating"] == 3.5
 
 
 def test_footer_stays_at_bottom_with_exif_expanded_and_scrolled(info, qtbot):
