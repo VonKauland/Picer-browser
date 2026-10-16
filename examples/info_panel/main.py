@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.plugins import PluginError, SettingField
+from picer.ui import Toggle
 
 from .annotations import Annotations
 from .exif_view import ExifView
@@ -137,6 +138,15 @@ class Plugin:
         self.exif_box, exif_layout = section("相机 EXIF")
         self.exif_view = ExifView(self.panel)
         exif_layout.addWidget(self.exif_view)
+        focus_row = QHBoxLayout()
+        focus_row.addWidget(DetailLabel("显示对焦点"), 1)
+        self.focus_switch = Toggle()
+        self.focus_switch.setAccessibleName("在图片中显示记录的对焦点")
+        self.focus_switch.setChecked(bool(context.get_setting("show_focus_points", False)))
+        self.focus_switch.setEnabled(False)
+        self.focus_switch.toggled.connect(self.set_focus_enabled)
+        focus_row.addWidget(self.focus_switch)
+        exif_layout.addLayout(focus_row)
         layout.addWidget(self.exif_box, 0)
         self.exif_box.hide()
         self.rating = Annotations()
@@ -172,9 +182,14 @@ class Plugin:
         )
 
     def on_image(self, event):
+        if event and event.reason == "rotated" and self.metadata:
+            self.update_focus()
+            return
         self.refresh()
 
     def refresh(self):
+        self.context.show_focus_points(None)
+        self.focus_switch.setEnabled(False)
         self.read_timer.stop()
         if self.token:
             self.token.cancel()
@@ -215,9 +230,33 @@ class Plugin:
         )
         self.exif_view.set_data(data.get("exif_sections", {}))
         self.exif_box.setVisible(bool(data["exif"]))
+        self.update_focus()
         self.warning.setText("\n".join(data["warnings"]))
         self.update_annotations()
         self.rating.setEnabled(True)
+
+    def set_focus_enabled(self, enabled):
+        self.context.set_setting("show_focus_points", bool(enabled))
+        self.update_focus()
+
+    def update_focus(self):
+        data = self.metadata.get("focus_points", {}) if self.metadata else {}
+        available = bool(data.get("boxes"))
+        self.focus_switch.blockSignals(True)
+        self.focus_switch.setChecked(
+            available and bool(self.context.get_setting("show_focus_points", False))
+        )
+        self.focus_switch.blockSignals(False)
+        self.focus_switch.setEnabled(available)
+        self.focus_switch.setToolTip(
+            "显示照片记录的合焦区域" if available else "此照片未记录可识别的对焦点"
+        )
+        try:
+            self.context.show_focus_points(
+                data if available and self.focus_switch.isChecked() else None
+            )
+        except PluginError as error:
+            self.focus_switch.setToolTip(str(error))
 
     def update_annotations(self):
         if self.metadata:

@@ -81,7 +81,7 @@ class EditingSession(QObject):
                     try:
                         with Image.open(path) as opened:
                             if getattr(opened, "n_frames", 1) > 1:
-                                return {"error": "动态图暂不支持临时编辑"}
+                                return {"error": "动态图暂不支持简易编辑"}
                     except OSError:
                         pass  # RAW and Qt-only formats use the shared decoder below.
                     image = read_image(path, edge=1600, token=token)

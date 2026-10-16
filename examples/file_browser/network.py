@@ -24,6 +24,7 @@ from picer.plugins import PluginError, ui_icon
 from picer.ui import StyledDialog, colors_for
 
 from .icons import folder_icon
+from .shares import list_shares
 from .thumbnails import configure_view, paint_item
 
 
@@ -37,10 +38,14 @@ def normalize_path(value):
     value = value.strip().replace("/", "\\")
     if not is_network_path(value) or any(ord(c) < 32 or c in '<>:"|?*' for c in value):
         raise ValueError("请输入网络共享路径，例如 \\\\NAS\\Photos")
-    path = PureWindowsPath(ntpath.normpath(value))
+    value = ntpath.normpath(value).rstrip("\\")
+    parts = value[2:].split("\\")
+    if len(parts) == 1 and parts[0] not in ("", ".", ".."):
+        return value
+    path = PureWindowsPath(value)
     parts = path.drive[2:].split("\\")
     if len(parts) != 2 or any(p in ("", ".", "..") for p in parts) or not path.is_absolute():
-        raise ValueError("路径需要包含服务器及共享文件夹")
+        raise ValueError("请输入服务器或共享文件夹路径")
     return str(path)
 
 
@@ -102,7 +107,7 @@ class LocationDialog(StyledDialog):
         try:
             path = normalize_path(self.path.text())
             parsed = PureWindowsPath(path)
-            name = self.name.text().strip() or parsed.name or parsed.drive.split("\\")[-1]
+            name = self.name.text().strip() or parsed.name or path.rstrip("\\").split("\\")[-1]
             if any(ord(c) < 32 for c in name) or len(name) > 48:
                 raise ValueError("名称最多 48 个字符")
             if any(row["path"].casefold() == path.casefold() for row in self.entries):
@@ -160,10 +165,13 @@ class NetworkLocations(QWidget):
         self.busy = False
         self.token = None
         self.folder_icon = folder_icon(network=True)
+        self.server = None
+        self.server_rows = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
-        row.addWidget(QLabel("网络位置"), 1)
+        self.heading = QLabel("网络位置")
+        row.addWidget(self.heading, 1)
         self.add_button = QPushButton()
         self.add_button.setObjectName("circleButton")
         self.add_button.setFixedSize(32, 32)
@@ -199,7 +207,12 @@ class NetworkLocations(QWidget):
         path = selected.data(Qt.ItemDataRole.UserRole) if selected else None
         query = self.owner.search.text().casefold() if self.owner.tabs.currentIndex() == 3 else ""
         self.list.clear()
-        for entry in saved_locations(self.owner.context):
+        entries = (
+            self.server_rows
+            if self.server_rows is not None
+            else saved_locations(self.owner.context)
+        )
+        for entry in entries:
             item = QListWidgetItem(self.folder_icon, entry["name"])
             item.setData(Qt.ItemDataRole.UserRole, entry["path"])
             item.setToolTip(entry["path"])
@@ -209,7 +222,20 @@ class NetworkLocations(QWidget):
             if path == entry["path"]:
                 self.list.setCurrentItem(item)
         self.list.setIconSize(self.owner.tree.iconSize())
+        self.empty.setText(
+            "没有可见的共享文件夹。" if self.server else "尚未添加网络位置，点击 ＋ 添加。"
+        )
         self.empty.setVisible(self.list.count() == 0)
+
+    def show_saved(self):
+        self.cancel_navigation()
+        self.server = self.server_rows = None
+        self.heading.setText("网络位置")
+        self.add_button.show()
+        self.owner.location.set_virtual("网络位置")
+        self.owner.note.setText("")
+        self.owner.search.clear()
+        self.reload()
 
     def add_location(self):
         dialog = LocationDialog(saved_locations(self.owner.context), self.owner.panel)
@@ -236,8 +262,9 @@ class NetworkLocations(QWidget):
         path = item.data(Qt.ItemDataRole.UserRole)
         menu = QMenu(self)
         menu.setStyleSheet(PLUGIN_STYLE)
-        menu.addAction("打开", lambda: self.open_item(item))
-        menu.addAction("移除网络位置", lambda: self.remove(path))
+        menu.addAction("打开", lambda: self.owner.open_folder(path))
+        if self.server_rows is None:
+            menu.addAction("移除网络位置", lambda: self.remove(path))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(self.list.viewport().mapToGlobal(position))
 
@@ -261,10 +288,13 @@ class NetworkLocations(QWidget):
         self.busy = True
         self.owner.note.setText("正在连接网络位置…")
         self.timeout.start()
+        previous = self.owner.location.text()
 
         def work(token):
             token.checkpoint()
             try:
+                if len(path[2:].rstrip("\\").split("\\")) == 1:
+                    return list_shares(path, token)
                 readable = Path(path).is_dir()
             except OSError:
                 readable = False
@@ -276,7 +306,28 @@ class NetworkLocations(QWidget):
             if not self.owner.active or generation != self.generation:
                 return
             self.timeout.stop()
-            if readable:
+            if isinstance(readable, list):
+                self.owner.remember_location(path, remember)
+                self.owner.tabs.setCurrentIndex(3)
+                self.server, self.server_rows = path, readable
+                self.heading.setText("共享文件夹")
+                self.add_button.hide()
+                self.owner.location.set_virtual(path)
+                self.owner.search.clear()
+                self.owner.note.setText("")
+                self.reload()
+                for i in range(self.list.count()):
+                    item = self.list.item(i)
+                    if (
+                        item.data(Qt.ItemDataRole.UserRole).rstrip("\\").casefold()
+                        == previous.rstrip("\\").casefold()
+                    ):
+                        self.list.setCurrentItem(item)
+                        self.list.scrollToItem(item, self.list.ScrollHint.PositionAtTop)
+                        break
+                if on_open:
+                    on_open()
+            elif readable:
                 self.owner.open_folder(
                     path, remember=remember, on_open=on_open, _network_ready=True
                 )

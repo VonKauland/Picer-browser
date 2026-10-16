@@ -32,6 +32,7 @@ from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
 from picer.drops import ImageDropTarget
+from picer.focus_points import FocusPoints
 from picer.folder_navigation import FolderNavigation
 from picer.formats import enabled_formats
 from picer.fullscreen import FullscreenChrome
@@ -175,6 +176,7 @@ class MainWindow(QMainWindow):
         self.navigation_feedback = 0
         self.last_error = ""
         self.view = ImageView()
+        self.focus_points = FocusPoints(self)
         self.title_bar = TitleBar(self)
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -377,6 +379,7 @@ class MainWindow(QMainWindow):
         self.panel_scrollbars.refresh()
         self.double_page.refresh()
         self.panel_hovers.update_progress_ring()
+        self.focus_points.refresh()
         self.update()
 
     def restore_shortcuts(self, shortcuts, bindings=None):
@@ -532,6 +535,7 @@ class MainWindow(QMainWindow):
 
     def replace_image(self, image) -> None:
         self.image_edited = True
+        self.focus_points.clear()
         self.double_page.clear()
         self.loader.generation += 1
         self.loader.refine.stop()
@@ -559,6 +563,7 @@ class MainWindow(QMainWindow):
         self.view.fit_image()
         self.image_revision += 1
         self.plugins.emit_image("rotated")
+        self.focus_points.refresh()
 
     def plugin_notification(self, message: str) -> None:
         self.notify(message)
@@ -777,6 +782,7 @@ class MainWindow(QMainWindow):
         self.update_actions()
         self.image_revision += 1
         self.double_page.refresh()
+        self.focus_points.clear()
         self.plugins.emit_image("opened")
         if self.app_preferences["focus_image"]:
             self.view.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -788,6 +794,7 @@ class MainWindow(QMainWindow):
             image = image.transformed(QTransform().rotate(self.image_rotation))
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
         self.view.image_item.setScale(self.view.native_width / image.width())
+        self.focus_points.refresh()
         self.view.scene.setSceneRect(self.view.scene.itemsBoundingRect())
         if self.view.fit_mode:
             self.view.fit_image()

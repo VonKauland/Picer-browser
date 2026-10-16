@@ -358,6 +358,7 @@ class PluginManager(QObject):
         if not self.host.touch_owners and hasattr(self.host, "inputs"):
             self.host.inputs.touch_start = None
         self.host.double_page.set_enabled(plugin_id, False)
+        self.host.focus_points.remove(plugin_id)
         if record.manifest.type == "skin" and was_enabled:
             self.host.apply_skin(None, COLORS)
         self.host.panel_hovers.unregister(plugin_id)

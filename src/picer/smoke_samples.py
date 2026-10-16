@@ -4,6 +4,8 @@ import struct
 
 from PIL import Image
 
+from picer.camera_metadata import CANON_UUID
+
 
 def make_stills(folder):
     """Exercise independent Qt still-image codecs without downloaded samples."""
@@ -117,3 +119,71 @@ def make_dng(path):
         + extra
         + pixels
     )
+
+
+def _metadata_tiff(entries):
+    end = 8 + 2 + 12 * len(entries) + 4
+    records, extra = [], bytearray()
+    for tag, kind, raw, count in entries:
+        data = raw if len(raw) <= 4 else struct.pack("<I", end + len(extra))
+        records.append(struct.pack("<HHI", tag, kind, count) + data.ljust(4, b"\0"))
+        if len(raw) > 4:
+            extra.extend(raw)
+    return (
+        b"II*\0\x08\0\0\0" + struct.pack("<H", len(entries)) + b"".join(records) + b"\0" * 4 + extra
+    )
+
+
+def _metadata_atom(kind, data):
+    return struct.pack(">I4s", len(data) + 8, kind) + data
+
+
+def _metadata_af_words():
+    # Two recorded areas; only the second was in focus. Y is upward on EOS.
+    return [
+        0,
+        2,
+        2,
+        2,
+        6000,
+        4000,
+        6000,
+        4000,
+        300,
+        300,
+        200,
+        200,
+        600,
+        65536 - 600,
+        400,
+        65536 - 400,
+        2,
+    ]
+
+
+def make_cr3_metadata(path):
+    words = _metadata_af_words()
+    camera = _metadata_tiff(
+        [
+            (271, 2, b"Canon\0", 6),
+            (272, 2, b"Canon EOS Test\0", 15),
+            (274, 3, struct.pack("<H", 6), 1),
+        ]
+    )
+    exif = _metadata_tiff(
+        [
+            (33434, 5, struct.pack("<II", 1, 125), 1),
+            (33437, 5, struct.pack("<II", 28, 10), 1),
+            (34855, 3, struct.pack("<H", 400), 1),
+            (42036, 2, b"Test Lens\0", 10),
+        ]
+    )
+    maker = _metadata_tiff([(0x26, 3, struct.pack("<" + "H" * len(words), *words), len(words))])
+    payload = b"".join(
+        _metadata_atom(k, v) for k, v in [(b"CMT1", camera), (b"CMT2", exif), (b"CMT3", maker)]
+    )
+    path.write_bytes(
+        _metadata_atom(b"ftyp", b"crx \0\0\0\0crx ")
+        + _metadata_atom(b"moov", _metadata_atom(b"uuid", CANON_UUID + payload))
+    )
+    return path

@@ -1,5 +1,6 @@
 """Install real example ZIPs and exercise their models, metadata and animations."""
 
+import sys
 import zipfile
 from importlib import import_module
 from pathlib import Path, PureWindowsPath
@@ -1015,13 +1016,13 @@ def test_network_locations_add_search_remove_and_restart(window, tmp_path, qtbot
         "",
         "C:\\Photos",
         "https://NAS/photos",
-        r"\\NAS",
         r"\\?\C:\Photos",
         "\\\\NAS\\Photos\nX",
     ):
         with pytest.raises(ValueError):
             module.normalize_path(invalid)
     assert module.normalize_path("//NAS/Photos/旅行") == r"\\NAS\Photos\旅行"
+    assert module.normalize_path(r"\\192.168.0.20") == r"\\192.168.0.20"
     for invalid in (None, {}, [{"name": "无效", "path": "C:/local"}], [None]):
         plugin.context.set_setting("network_locations", invalid)
         assert module.saved_locations(plugin.context) == []
@@ -1171,6 +1172,104 @@ def test_network_task_capacity_failure_keeps_browser_available(window, tmp_path,
         plugin.open_folder(r"\\NAS\Photos")
     assert not plugin.network.busy and not plugin.network.timeout.isActive()
     assert "繁忙" in plugin.note.text()
+
+
+def test_network_server_root_lists_shares_and_goes_up(window, tmp_path, qtbot, monkeypatch):
+    plugin = enable(window, tmp_path, "file_browser")
+    module = import_module(plugin.__class__.__module__.rsplit(".", 1)[0] + ".network")
+    server = r"\\192.168.0.20"
+    plugin.context.set_setting("network_locations", [{"name": "NAS", "path": server}])
+    monkeypatch.setattr(
+        module,
+        "list_shares",
+        lambda path, token: [
+            {"name": "Photos", "path": path + r"\Photos"},
+        ],
+    )
+    plugin.tabs.setCurrentIndex(3)
+    plugin.open_selected()  # no selection is harmless
+    plugin.open_folder(server)
+    qtbot.waitUntil(lambda: plugin.network.server == server)
+    assert plugin.location.virtual_label == server
+    assert plugin.network.list.item(0).text() == "Photos"
+    assert not plugin.network.add_button.isVisible()
+    plugin.go_up()
+    assert plugin.network.server is None
+    assert plugin.network.list.item(0).text() == "NAS"
+    assert plugin.network.add_button.isVisible()
+    calls = []
+    plugin.tabs.setCurrentIndex(0)
+    plugin.location.setText(server + r"\Photos")
+    monkeypatch.setattr(plugin, "open_folder", calls.append)
+    plugin.go_up()
+    assert calls == [server]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Native NetShareEnum requires Windows")
+def test_native_nas_share_enumeration_abi(window, tmp_path):
+    from picer.plugins.tasks import TaskToken
+
+    plugin = enable(window, tmp_path, "file_browser")
+    module = import_module(plugin.__class__.__module__.rsplit(".", 1)[0] + ".shares")
+    try:
+        rows = module.list_shares(r"\\localhost", TaskToken())
+    except OSError as error:
+        assert "Windows 错误" in str(error)  # local sharing may be disabled on the runner
+    else:
+        assert all(row["path"].startswith("\\\\localhost" + "\\") for row in rows)
+
+
+def test_plugin_dialog_surfaces_are_opaque_and_accent_bordered(window, tmp_path, qtbot):
+    from PySide6.QtGui import QColor
+
+    from picer.editing.panel import SaveDialog
+
+    plugin = enable(window, tmp_path, "file_browser")
+    module = import_module(plugin.__class__.__module__.rsplit(".", 1)[0] + ".network")
+    window.app_preferences["accent_color"] = "#6699CC"
+    for dialog in (SaveDialog(plugin.panel, True), module.LocationDialog([], plugin.panel)):
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(20)
+        pixels = dialog.grab().toImage()
+        assert pixels.pixelColor(0, 0).alpha() == 0
+        assert pixels.pixelColor(5, dialog.height() // 2) == QColor("#242426")
+        border = pixels.pixelColor(dialog.width() // 2, dialog.height() - 1)
+        expected = QColor("#6699CC").darker(230)
+        assert border.alpha() == 255
+        assert abs(border.red() - expected.red()) < 4
+        dialog.hide()
+
+
+def test_focus_overlay_toggle_geometry_and_revocation(window, tmp_path, qtbot, pictures):
+    from picer.metadata import inspect_image
+
+    files = enable(window, tmp_path, "file_browser")
+    path = pictures / "1.jpg"
+    window.open_image(path)
+    qtbot.waitUntil(lambda: window.current_path == path)
+    boxes = {"boxes": [(0.1, 0.2, 0.2, 0.1)], "orientation": 1}
+    files.context.show_focus_points(boxes)
+    overlay = window.focus_points.item
+    assert overlay.isVisible() and overlay.parentItem() is window.view.image_item
+    assert overlay.path().boundingRect().x() == pytest.approx(8)
+    window.rotate_image()
+    assert overlay.path().boundingRect().x() == pytest.approx(42)
+    assert overlay.path().boundingRect().y() == pytest.approx(8)
+    window.plugins.disable("example.files")
+    assert not overlay.isVisible()
+    info = enable(window, tmp_path, "info_panel")
+    info.read_timer.stop()
+    if info.token:
+        info.token.cancel()
+    data = inspect_image(path)
+    data["focus_points"] = boxes
+    info.show_metadata(data)
+    info.focus_switch.setChecked(True)
+    assert overlay.isVisible()
+    info.focus_switch.setChecked(False)
+    assert not overlay.isVisible()
+    assert info.context.get_setting("show_focus_points") is False
 
 
 def test_network_double_click_enter_failure_and_disable(window, tmp_path, qtbot, monkeypatch):

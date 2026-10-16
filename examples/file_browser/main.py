@@ -413,7 +413,7 @@ class Plugin:
         elif index == 2:
             self.recent.reload()
         elif network:
-            self.network.reload()
+            self.network.show_saved()
         self.note.setText(
             "尚未收藏文件夹。快速设置 → 加入快速访问。"
             if index == 1 and not self.favorites.count()
@@ -520,10 +520,7 @@ class Plugin:
                 self.note.setText("文件夹不存在，请修改首页路径或输入其他路径。")
                 return False
             target = str(path.resolve())
-        if remember and (self.history_index < 0 or self.history[self.history_index] != target):
-            self.history = self.history[: self.history_index + 1] + [target]
-            self.history = self.history[-64:]
-            self.history_index = len(self.history) - 1
+        self.remember_location(target, remember)
         if target:
             recent = saved_paths(self.context, "recent_folders")
             updated = [target] + [entry for entry in recent if entry != target][:63]
@@ -553,6 +550,8 @@ class Plugin:
         self.parent_entry.setVisible(bool(target))
         parent = str(Path(target).parent) if target else ""
         at_root = bool(target) and parent == target
+        if is_network_path(target) and len(target[2:].rstrip("\\").split("\\")) == 2:
+            parent, at_root = "\\\\" + target[2:].split("\\")[0], False
         self.parent_entry.setText("..  此电脑" if at_root else "..  上层文件夹")
         self.parent_entry.setToolTip(f"双击返回：{'此电脑' if at_root else parent} · Backspace")
         self.note.setText("")
@@ -566,6 +565,11 @@ class Plugin:
         if on_open:
             on_open()
         return True
+
+    def remember_location(self, target, remember=True):
+        if remember and (self.history_index < 0 or self.history[self.history_index] != target):
+            self.history = (self.history[: self.history_index + 1] + [target])[-64:]
+            self.history_index = len(self.history) - 1
 
     def restore_return_selection(self):
         self.return_attempts += 1
@@ -592,12 +596,21 @@ class Plugin:
             self.note.setText("系统图片目录不存在，已暂时打开用户目录。可在设置中自定义首页。")
 
     def go_up(self):
+        if self.tabs.currentIndex() == 3 and self.network.server:
+            self.network.show_saved()
+            return
         path = self.location.text()
         if path:
+            if is_network_path(path) and len(path[2:].rstrip("\\").split("\\")) == 2:
+                self.open_folder("\\\\" + path[2:].split("\\")[0])
+                return
             parent = str(Path(path).parent)
             self.open_folder("" if parent == path else parent)
 
     def go_back(self):
+        if self.tabs.currentIndex() == 3 and self.network.server:
+            self.network.show_saved()
+            return
         if self.history_index > 0:
             target = self.history_index - 1
             self.open_folder(

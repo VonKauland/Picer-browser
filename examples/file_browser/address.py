@@ -122,7 +122,7 @@ QPushButton#crumbButton:focus, QPushButton#addressButton:focus { border: none; }
 
     def setText(self, path):
         self.path = str(path)
-        self.setToolTip(self.path)
+        self.setToolTip(self.virtual_label or self.path)
         for button in self.buttons:
             button.hide()
             button.deleteLater()
@@ -136,6 +136,8 @@ QPushButton#crumbButton:focus, QPushButton#addressButton:focus { border: none; }
         )
         for index, (label, target) in enumerate(parts):
             button = CrumbButton(label, target, index < len(parts) - 1, self.row)
+            if target is None:
+                button.setToolTip(label)
             button.clicked.connect(
                 lambda checked=False, target=target: (
                     self.pathRequested.emit(str(target)) if target is not None else None

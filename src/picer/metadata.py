@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import ExifTags, Image, ImageStat
 
+from picer.camera_metadata import LIMIT, read_cr3, tiff_focus
 from picer.exif import sections
 from picer.imaging import RAW_SUFFIXES, read_image
 
@@ -15,6 +16,17 @@ def describe(value):
         return f"{len(value)} 字节 · SHA256 {hashlib.sha256(value).hexdigest()[:16]}"
     text = str(value)
     return text[:2048] + ("…" if len(text) > 2048 else "")
+
+
+def orientation_value(value):
+    value = getattr(value, "values", value)
+    if isinstance(value, (list, tuple)):
+        value = value[0] if value else 1
+    try:
+        number = int(value)
+        return number if 1 <= number <= 8 else 1
+    except (ValueError, TypeError, OverflowError):
+        return 1
 
 
 def add_sample(result, sample, mean_label):
@@ -45,6 +57,7 @@ def inspect_image(path: Path, token=None) -> dict:
         "exif": {},
         "extra": {},
         "warnings": [],
+        "focus_points": {"boxes": [], "orientation": 1},
     }
     if path.suffix.lower() in RAW_SUFFIXES:
         return inspect_raw(path, result, token)
@@ -74,6 +87,12 @@ def inspect_image(path: Path, token=None) -> dict:
             icc = source.info.get("icc_profile")
             result["color"]["ICC 配置"] = describe(icc) if icc else "未嵌入"
             exif = source.getexif()
+            raw_exif = source.info.get("exif", b"")
+            if isinstance(raw_exif, bytes):
+                result["focus_points"] = {
+                    "boxes": tiff_focus(raw_exif.removeprefix(b"Exif\0\0")),
+                    "orientation": orientation_value(exif.get(274, 1)),
+                }
             camera_tags = {}
             for tag, value in exif.items():
                 if tag not in (34665, 34853, 40965):
@@ -116,8 +135,17 @@ def inspect_raw(path, result, token):
 
     # Parse camera tags independently: a decoder/histogram failure must not hide EXIF.
     try:
-        with path.open("rb") as handle:
-            tags = exifread.process_file(handle, details=False, extract_thumbnail=False)
+        boxes = []
+        if path.suffix.lower() == ".cr3":
+            tags, boxes = read_cr3(path, token)
+        else:
+            with path.open("rb") as handle:
+                tags = exifread.process_file(handle, details=False, extract_thumbnail=False)
+            if str(tags.get("Image Make", "")).strip() == "Canon":
+                with path.open("rb") as handle:
+                    boxes = tiff_focus(handle.read(LIMIT))
+        orientation = tags.get("Orientation", tags.get("Image Orientation", 1))
+        result["focus_points"] = {"boxes": boxes, "orientation": orientation_value(orientation)}
         result["exif"] = {str(key): describe(value) for key, value in tags.items()}
         result["exif_sections"] = sections(tags)
     except (OSError, ValueError, TypeError, KeyError) as error:

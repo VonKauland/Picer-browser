@@ -161,7 +161,7 @@ class PluginContext:
         for permission in ("ui.panels", "image.read", "image.modify", "tasks"):
             self._check(permission)
         if self.plugin_id in self._manager.editing_sessions:
-            raise PluginError("每个组件只能创建一个临时编辑会话")
+            raise PluginError("每个组件只能创建一个简易编辑会话")
         from picer.editing.session import EditingSession
 
         session = EditingSession(self, self._manager.host)
@@ -280,6 +280,17 @@ class PluginContext:
         """Immutable GIF/WebP playback snapshot; inactive for still images."""
         self._check("image.read")
         return self._manager.host.animation.state
+
+    def show_focus_points(self, data: dict | None) -> None:
+        """Display recorded normalized AF boxes for this image; None removes them."""
+        self._check("image.read")
+        self._check("ui.panels")
+        if data is not None and not isinstance(data, dict):
+            raise PluginError("对焦点数据无效")
+        try:
+            self._manager.host.focus_points.set(self.plugin_id, data)
+        except ValueError as error:
+            raise PluginError(str(error)) from error
 
     def seek_animation(self, frame: int) -> None:
         self._check("image.navigate")

@@ -284,8 +284,20 @@ class DialogHeader(QWidget):
         self.origin = None
 
 
+class DialogSurface(QFrame):
+    """Paint an opaque surface even when inherited plugin QSS is transparent."""
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        colors = colors_for(self)
+        painter.setBrush(QColor("#242426"))
+        painter.setPen(QPen(QColor(colors["accent"]).darker(230), 1))
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 18, 18)
+
+
 class StyledDialog(QDialog):
-    def __init__(self, title, subtitle="", parent=None, *, surface_type=QFrame):
+    def __init__(self, title, subtitle="", parent=None, *, surface_type=DialogSurface):
         super().__init__(parent)
         self.setWindowTitle("揽映 · " + title)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
