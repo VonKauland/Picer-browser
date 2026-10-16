@@ -62,6 +62,15 @@ def inspect_image(path: Path, token=None) -> dict:
     }
     if path.suffix.lower() in RAW_SUFFIXES:
         return inspect_raw(path, result, token)
+    if path.suffix.lower() == ".psd":
+        from picer.psd import psd_info
+
+        try:
+            result["dimensions"] = psd_info(path)
+        except (OSError, ValueError) as error:
+            result["warnings"].append(f"PSD 合成图信息无法读取：{error}")
+        checkpoint()
+        return result
     from picer.video import VIDEO_SUFFIXES, video_info
 
     if path.suffix.lower() in VIDEO_SUFFIXES:

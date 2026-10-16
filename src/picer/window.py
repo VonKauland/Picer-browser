@@ -44,7 +44,7 @@ from picer.messages import MessageBox as QMessageBox
 from picer.navigation import NavigationKeys
 from picer.notifications import NotificationBubble
 from picer.panel_scrollbars import PanelScrollbars
-from picer.panels import GlassBackdrop, PanelHovers
+from picer.panels import PANEL_BOTTOM_GAP, GlassBackdrop, PanelHovers
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
@@ -164,6 +164,7 @@ class MainWindow(QMainWindow):
         QApplication.instance().installEventFilter(self._skin_filter)
         self.setStyleSheet(scope_style(STYLE))
         self.setAcceptDrops(True)
+        self.setContentsMargins(0, 0, 0, PANEL_BOTTOM_GAP)
         self.paths: list[Path] = []
         self.path_positions = {}
         self.path_source = None
@@ -180,7 +181,7 @@ class MainWindow(QMainWindow):
         self.title_bar = TitleBar(self)
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(6, 0, 6, 6)
+        layout.setContentsMargins(6, 0, 6, 0)
         layout.setSpacing(0)
         self.chrome_slot = QWidget(self)
         self.chrome_slot.setFixedHeight(48)

@@ -288,7 +288,8 @@ class ImageLoader(QObject):
             reader = QImageReader(str(path))
             raw = path.suffix.lower() in RAW_SUFFIXES
             video = path.suffix.lower() in VIDEO_SUFFIXES
-            if not raw and not video and not reader.canRead():
+            psd = path.suffix.lower() == ".psd"
+            if not raw and not video and not psd and not reader.canRead():
                 raise ValueError(reader.errorString())
             options = self.host.app_preferences["auto_orient"]
             self.options = options
@@ -301,6 +302,7 @@ class ImageLoader(QObject):
             animated_format = bytes(reader.format()).lower() in {b"gif", b"webp"}
             small = (
                 not raw
+                and not psd
                 and not video
                 and not animated_format
                 and path.stat().st_size < 2 * 1048576

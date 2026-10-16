@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.file_drag import ImageFileDrag
 from picer.host_style import prepare_popup
 from picer.ui import RoundedSlider, ui_icon
 
@@ -101,6 +102,12 @@ class Plugin:
         self.watcher.fileChanged.connect(self.file_changed)
         self.model = PhotoModel(self.panel)
         self.grid = PhotoGrid(self)
+        self.file_drag = ImageFileDrag(
+            self.grid,
+            lambda index: self.model.paths[index.row()],
+            context.readable_suffixes,
+            lambda path: self.pixels.get(str(path)),
+        )
         self.grid.setModel(self.model)
         self.grid.clicked.connect(self.open_index)
         layout.addWidget(self.grid, 1)
@@ -398,6 +405,7 @@ class Plugin:
         self.scope_job = self.context.run_task(work, done, image_bound=False)
 
     def deactivate(self):
+        self.file_drag.stop()
         self.active = False
         self.refresh_timer.stop()
         self.load_timer.stop()

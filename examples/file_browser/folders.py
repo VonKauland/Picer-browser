@@ -170,6 +170,15 @@ class FolderContents(QObject):
 
     @staticmethod
     def can_read(path, token):
+        if Path(path).suffix.lower() == ".psd":
+            try:
+                from picer.psd import psd_info
+
+                token.checkpoint()
+                psd_info(path)
+                return True
+            except (OSError, ValueError):
+                return False
         if Path(path).suffix.lower() not in RAW_SUFFIXES:
             return QImageReader(path).canRead()
         try:

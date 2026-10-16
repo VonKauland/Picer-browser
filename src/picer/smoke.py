@@ -28,7 +28,14 @@ from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.progress_ring import RING_SIZE
 from picer.settings import ApplicationSettings
-from picer.smoke_samples import make_animation, make_cr3_metadata, make_dng, make_stills, make_video
+from picer.smoke_samples import (
+    make_animation,
+    make_cr3_metadata,
+    make_dng,
+    make_psd,
+    make_stills,
+    make_video,
+)
 from picer.ui import RoundedSlider, colors_for
 
 
@@ -530,6 +537,22 @@ def verify_media(window):
     directory = window.paths_layout.cache / "smoke-media"
     directory.mkdir(parents=True, exist_ok=True)
     previous = window.current_path
+    psd = make_psd(directory / "merged-preview.psd", depth=16, compression=3).resolve()
+    assert window.open_image(psd)
+    wait_for(lambda: window.current_path == psd, timeout=10_000)
+    wait_for(lambda: window.view.image_item.pixmap().width() == 40)
+    assert abs(window.view.image_item.pixmap().toImage().pixelColor(0, 0).blue() - 200) <= 1
+    info = window.plugins.records["example.info"].instance
+    wait_for(
+        lambda: info.metadata is not None and info.metadata["path"] == str(psd), timeout=10_000
+    )
+    assert info.metadata["dimensions"]["预览类型"] == "已保存的合成图"
+    browser = window.plugins.records["example.files"].instance
+    mime = browser.file_drags[0].mime_data(psd)
+    assert mime is not None and Path(mime.urls()[0].toLocalFile()) == psd
+    assert not mime.hasImage() and browser.file_drags[0].mime_data(directory) is None
+    assert mime.hasFormat('application/x-qt-windows-mime;value="Preferred DropEffect"')
+    print("Packaged merged-only PSD preview, file URL drag MIME and folder exclusion passed")
     progress = window.plugins.records["example.progress"].instance
     for extension in ("gif", "webp"):
         path = directory / f"motion.{extension}"
@@ -721,7 +744,7 @@ def run(window, args, folder, done):
         for key in ("example.files", "example.info"):
             dock = window.plugins.panels[key]
             assert not (dock.allowedAreas() & DOCK_AREAS["bottom"])
-            assert window.height() - 1 - dock.geometry().bottom() <= 1
+            assert window.height() - 1 - dock.geometry().bottom() == 8
         archives = (
             (args.plugin_archive, "example.negative"),
             (args.skin_archive, "example.macos"),

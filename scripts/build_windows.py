@@ -154,6 +154,8 @@ def main() -> None:
             "picer.editing",
             "--hidden-import",
             "ctypes.wintypes",
+            "--hidden-import",
+            "picer.file_drag",
             "--copy-metadata",
             "rawpy",
             "--copy-metadata",

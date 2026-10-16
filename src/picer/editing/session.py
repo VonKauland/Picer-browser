@@ -86,8 +86,8 @@ class EditingSession(QObject):
                 if base is None:
                     from picer.video import VIDEO_SUFFIXES
 
-                    if path.suffix.lower() in VIDEO_SUFFIXES:
-                        return {"error": "视频仅支持静态预览，不支持简易编辑"}
+                    if path.suffix.lower() in VIDEO_SUFFIXES | {".psd"}:
+                        return {"error": "视频和 PSD 仅支持预览，不支持简易编辑"}
                     mark = fingerprint(path)
                     try:
                         with Image.open(path) as opened:

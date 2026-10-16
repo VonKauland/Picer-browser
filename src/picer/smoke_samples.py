@@ -1,10 +1,67 @@
 """Small generated media used by source tests and the real packaged EXE check."""
 
 import struct
+import zlib
 
 from PIL import Image
 
 from picer.camera_metadata import CANON_UUID
+
+
+def make_psd(path, *, depth=8, compression=0, layer_bytes=0):
+    """A merged PSD with optional sparse layer area, never a layer fixture."""
+    width, height = 40, 24
+    rows = []
+    for base in (90, 140, 200):
+        for _ in range(height):
+            row = b"".join(
+                struct.pack(
+                    {8: ">B", 16: ">H", 32: ">f"}[depth],
+                    (base + x)
+                    if depth == 8
+                    else (base + x) * 257
+                    if depth == 16
+                    else (base + x) / 255,
+                )
+                for x in range(width)
+            )
+            rows.append(row)
+    if compression == 1:
+        encoded = [
+            b"".join(
+                bytes([len(row[i : i + 128]) - 1]) + row[i : i + 128]
+                for i in range(0, len(row), 128)
+            )
+            for row in rows
+        ]
+        pixels = b"".join(struct.pack(">H", len(row)) for row in encoded) + b"".join(encoded)
+    else:
+        if compression == 3:
+            predicted = []
+            for row in rows:
+                if depth == 16:
+                    values = [v[0] for v in struct.iter_unpack(">H", row)]
+                    row = b"".join(
+                        struct.pack(">H", (value - (values[i - 1] if i else 0)) & 65535)
+                        for i, value in enumerate(values)
+                    )
+                else:
+                    if depth == 32:
+                        row = b"".join(row[i::4] for i in range(4))
+                    row = bytes(
+                        (value - (row[i - 1] if i else 0)) & 255 for i, value in enumerate(row)
+                    )
+                predicted.append(row)
+            rows = predicted
+        pixels = b"".join(rows)
+        if compression in (2, 3):
+            pixels = zlib.compress(pixels)
+    with path.open("wb") as handle:
+        handle.write(b"8BPS\0\1" + b"\0" * 6 + struct.pack(">HIIHH", 3, height, width, depth, 3))
+        handle.write(struct.pack(">III", 0, 0, layer_bytes))
+        handle.seek(layer_bytes, 1)
+        handle.write(struct.pack(">H", compression) + pixels)
+    return path
 
 
 def make_stills(folder):

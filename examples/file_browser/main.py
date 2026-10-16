@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.file_drag import ImageFileDrag
 from picer.host_style import PLUGIN_STYLE
 from picer.imaging import supported_suffixes
 from picer.messages import MessageBox as QMessageBox
@@ -160,6 +161,14 @@ class Plugin:
         self.tiles.doubleClicked.connect(self.enter_folder)
         for view in (self.tree, self.tiles):
             view.viewport().setProperty("browserViewport", True)
+        self.file_drags = [
+            ImageFileDrag(
+                view,
+                lambda index: None if self.model.isDir(index) else self.model.filePath(index),
+                context.readable_suffixes,
+            )
+            for view in (self.tree, self.tiles)
+        ]
         self.views = QStackedWidget()
         self.views.addWidget(self.tree)
         self.views.addWidget(self.tiles)
@@ -658,6 +667,8 @@ class Plugin:
             QMessageBox.warning(self.panel, "无法打开", f"无法读取图片：{path.name}")
 
     def deactivate(self):
+        for drag in self.file_drags:
+            drag.stop()
         self.active = False
         self.network.stop()
         self.image_timer.stop()

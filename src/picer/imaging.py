@@ -23,6 +23,7 @@ QImageReader.setAllocationLimit(512)
 def supported_suffixes():
     return (
         RAW_SUFFIXES
+        | {".psd"}
         | VIDEO_SUFFIXES
         | {f".{bytes(fmt).decode().lower()}" for fmt in QImageReader.supportedImageFormats()}
     )
@@ -40,6 +41,10 @@ def read_image(path, *, edge=0, auto_orient=True, token=None, camera_preview=Fal
     if token:
         token.checkpoint()
     path = Path(path)
+    if path.suffix.lower() == ".psd":
+        from picer.psd import read_psd
+
+        return read_psd(path, edge=edge, token=token)
     if path.suffix.lower() in VIDEO_SUFFIXES:
         from picer.video import read_video
 

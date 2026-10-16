@@ -49,6 +49,7 @@ DOCK_AREAS = {
     "right": Qt.DockWidgetArea.RightDockWidgetArea,
     "bottom": Qt.DockWidgetArea.BottomDockWidgetArea,
 }
+PANEL_BOTTOM_GAP = 8
 
 
 def saved_layout(manager, plugin_id):
@@ -863,7 +864,7 @@ class HiddenPanel(QObject):
         host = self.host.rect().adjusted(
             12, max(self.host.title_bar.height() + 10, canvas.top()), -12, -12
         )
-        host.setBottom(self.host.height() - 1)
+        host.setBottom(self.host.height() - 1 - PANEL_BOTTOM_GAP)
         width = min(max(self.last_size.width(), 240), host.width())
         height = min(max(self.last_size.height(), 160), host.height())
         if self.area == Qt.DockWidgetArea.BottomDockWidgetArea:
@@ -1253,6 +1254,12 @@ class PanelHovers(QObject):
         for bar in self.host.findChildren(
             QTabBar, options=Qt.FindChildOption.FindDirectChildrenOnly
         ):
+            # Hidden native tabs still reserve their styled size hint without this.
+            bar.setStyleSheet(
+                "QTabBar { min-height: 0; max-height: 0; padding: 0; margin: 0; border: 0; }"
+                "QTabBar::tab { height: 0; min-height: 0; max-height: 0;"
+                " padding: 0; margin: 0; border: 0; }"
+            )
             bar.setFixedHeight(0)
             bar.hide()
 
