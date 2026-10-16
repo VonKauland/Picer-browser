@@ -57,6 +57,8 @@ def test_hidden_indicators_and_tab_reveal_keep_preferences(host, qtbot):
     files.reveal()
     qtbot.wait(50)
     tab = files.surface.tabs["example.info"]
+    # Check an actual intermediate frame without depending on a loaded CI timer tick.
+    tab.animation.setCurrentTime(tab.animation.duration() // 2)
     assert 0 < tab.scale < 1
     tab.click()
     qtbot.wait(30)

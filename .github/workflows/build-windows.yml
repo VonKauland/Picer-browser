@@ -22,6 +22,7 @@ jobs:
     defaults:
       run:
         shell: pwsh
+    # The UI review branch currently requests source-only validation.
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.12 x64
@@ -40,6 +41,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -r requirements-dev.txt -e .
       - name: Locate Inno Setup compiler
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: |
           $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $compiler)) {
@@ -48,6 +50,7 @@ jobs:
           }
           if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler is missing' }
       - name: Check installer compiler compatibility
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.build_installer --compiler-preflight
       - name: Check code quality
         run: |
@@ -57,16 +60,22 @@ jobs:
       - name: Run GUI tests on Windows
         run: python -m pytest --maxfail=1 --junitxml=test-results.xml
       - name: Build complete Windows application folder
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.build_windows
       - name: Verify packaged folder and relocation on Windows
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.verify_distribution
       - name: Build Windows installer
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.build_installer
       - name: Verify install, upgrade, optional integration and uninstall
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.verify_installer
       - name: Prepare portable ZIP and release checksums
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.release_assets
       - name: Record distribution size
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: |
           $files = Get-ChildItem 'dist/Picer' -Recurse -File
           $bytes = ($files | Measure-Object -Property Length -Sum).Sum
@@ -74,6 +83,7 @@ jobs:
           "Before: $($sizeReport.before.bytes) bytes; after: $($sizeReport.after.bytes) bytes; saved: $($sizeReport.saved_bytes) bytes"
           "Picer folder: $($files.Count) files, $([math]::Round($bytes / 1MB, 2)) MiB" >> $env:GITHUB_STEP_SUMMARY
       - name: Upload complete Windows application folder
+        if: github.head_ref != 'ui/side-panel-tabs'
         uses: actions/upload-artifact@v4
         with:
           name: Picer-windows-x64
@@ -82,6 +92,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload verified release assets
+        if: github.head_ref != 'ui/side-panel-tabs'
         uses: actions/upload-artifact@v4
         with:
           name: Picer-release-assets

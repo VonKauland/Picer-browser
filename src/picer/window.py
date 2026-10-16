@@ -51,6 +51,7 @@ from picer.plugins.skins import COLORS
 from picer.preferences import DEFAULTS, read_preferences
 from picer.spread import DoublePage
 from picer.thumbnails import ThumbnailService
+from picer.window_frame import WindowFrame
 from picer.windows_integration import reveal_file
 
 
@@ -306,6 +307,14 @@ class MainWindow(QMainWindow):
         self.notifications = NotificationBubble(self)
         self.update_actions()
         self.title_bar.arrange()
+        self.window_frame = WindowFrame(self)
+
+    def nativeEvent(self, event_type, message):
+        frame = getattr(self, "window_frame", None)
+        result = frame.native_event(message) if frame else None
+        if result is not None:
+            return True, result
+        return super().nativeEvent(event_type, message)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -420,6 +429,7 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "plugins"):
+            self.title_bar.sync_window_state()
             self.fullscreen_chrome.sync()
             self.plugins.fullscreen_changed(self.isFullScreen())
 
@@ -630,6 +640,7 @@ class MainWindow(QMainWindow):
         if self.current_path:
             ui["last_image"] = str(self.current_path)
         self.plugins._save()
+        self.window_frame.dispose()
         self.notifications.dispose()
         self.navigation_keys.dispose()
         self.inputs.dispose()
@@ -689,26 +700,6 @@ class MainWindow(QMainWindow):
         dialog = AboutDialog(self)
         dialog.exec()
         dialog.deleteLater()
-
-    def mousePressEvent(self, event) -> None:
-        if (
-            event.button() == Qt.MouseButton.LeftButton
-            and not self.isMaximized()
-            and not self.isFullScreen()
-        ):
-            position = event.position()
-            edges = Qt.Edge(0)
-            if position.x() < 6:
-                edges |= Qt.Edge.LeftEdge
-            if position.x() >= self.width() - 6:
-                edges |= Qt.Edge.RightEdge
-            if position.y() < 6:
-                edges |= Qt.Edge.TopEdge
-            if position.y() >= self.height() - 6:
-                edges |= Qt.Edge.BottomEdge
-            if edges and self.windowHandle():
-                self.windowHandle().startSystemResize(edges)
-        super().mousePressEvent(event)
 
     def choose_image(self) -> None:
         patterns = " ".join(f"*{suffix}" for suffix in sorted(self.supported_suffixes))
