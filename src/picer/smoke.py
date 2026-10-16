@@ -987,14 +987,15 @@ def run(window, args, folder, done):
             QTimer.singleShot(550, lambda: guarded(lambda: expanded(controller)))
 
         def expanded(controller):
-            assert controller.popup is not None and controller.progress >= 0.99
+            wait_for(lambda: controller.popup is not None and controller.progress >= 0.99)
             assert controller.popup.uses_glass() and window.glass.active()
             assert controller.dock.isHidden()
+            QCursor.setPos(window.mapToGlobal(QPoint(window.width() // 2, 60)))
             controller.collapse()
             QTimer.singleShot(400, lambda: guarded(lambda: collapsed(controller)))
 
         def collapsed(controller):
-            assert controller.popup is None and controller.dock.widget() is not None
+            wait_for(lambda: controller.popup is None and controller.dock.widget() is not None)
             # Drag the hidden strip using actual mouse events, then click it during reveal to pin.
             strip = controller.strip
             QTest.mousePress(strip, Qt.MouseButton.LeftButton, pos=strip.rect().center())
@@ -1002,11 +1003,19 @@ def run(window, args, folder, done):
             QTest.mouseMove(strip, strip.mapFrom(window, target))
             QTest.mouseRelease(strip, Qt.MouseButton.LeftButton, pos=strip.mapFrom(window, target))
             assert controller.area == DOCK_AREAS["right"]
-            assert controller.dock.isHidden()
+            # Joining the fixed information panel must adopt the destination's mode.
+            info = window.panel_hovers.controllers["example.info"]
+            assert not controller.dock.isHidden() and not info.dock.isHidden()
+            assert controller.dock.widget().tabs["example.files"].width() == 36
+            controller.dock.close()
+            assert controller.dock.isHidden() and info.dock.isHidden()
             assert window.plugins.preferences["ui"]["panels"]["example.files"] is False
+            assert window.plugins.preferences["ui"]["panels"]["example.info"] is False
             controller.reveal()
+            assert not controller.surface.tabs
             QTest.mouseClick(strip, Qt.MouseButton.LeftButton, pos=strip.rect().center())
-            assert not controller.dock.isHidden() and controller.popup is None
+            assert not controller.dock.isHidden() and not info.dock.isHidden()
+            assert controller.popup is None
             assert window.plugins.preferences["ui"]["panels"]["example.files"] is True
             controller.move_to(DOCK_AREAS["left"])
             QTest.qWait(50)
@@ -1028,7 +1037,7 @@ def run(window, args, folder, done):
                 "Packaged examples: file tree, settings, metadata/EXIF, histogram, progress, "
                 "thumbnails, embedded/app settings, transparent popups/rounded sliders, "
                 "macOS isolation, glass, hover morph, "
-                "hidden-strip drag/pin and grips passed"
+                "hidden-strip drag/pin, linked side modes, outward tabs and grips passed"
             )
             verify_media(window)
             verify_input_features(window)
