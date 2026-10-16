@@ -1252,10 +1252,12 @@ def test_focus_overlay_toggle_geometry_and_revocation(window, tmp_path, qtbot, p
     files.context.show_focus_points(boxes)
     overlay = window.focus_points.item
     assert overlay.isVisible() and overlay.parentItem() is window.view.image_item
-    assert overlay.path().boundingRect().x() == pytest.approx(8)
+    rect = overlay.path().boundingRect()
+    assert rect.center().x() == pytest.approx(16)
+    assert rect.width() == pytest.approx(16 / 3)
     window.rotate_image()
-    assert overlay.path().boundingRect().x() == pytest.approx(42)
-    assert overlay.path().boundingRect().y() == pytest.approx(8)
+    assert overlay.path().boundingRect().center().x() == pytest.approx(45)
+    assert overlay.path().boundingRect().center().y() == pytest.approx(16)
     window.plugins.disable("example.files")
     assert not overlay.isVisible()
     info = enable(window, tmp_path, "info_panel")

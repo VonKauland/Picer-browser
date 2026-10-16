@@ -477,6 +477,7 @@ class MainWindow(QMainWindow):
         path, generation, rotation = self.current_path, self.loader.generation, self.image_rotation
         revision = self.image_revision
         auto_orient = self.app_preferences["auto_orient"]
+        camera_preview = self.loader.camera_preview(path)
         self.notify("正在复制原图")
 
         def finish(image, error):
@@ -503,7 +504,9 @@ class MainWindow(QMainWindow):
             return
         self.loader.submit(
             "full",
-            lambda token: read_image(path, auto_orient=auto_orient, token=token),
+            lambda token: read_image(
+                path, auto_orient=auto_orient, token=token, camera_preview=camera_preview
+            ),
             finish,
         )
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Event, Thread
 from time import sleep
 
-from PIL import Image
+from PIL import Image, PngImagePlugin
 from PySide6.QtCore import QElapsedTimer, QMimeData, QPoint, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
@@ -28,7 +28,7 @@ from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.progress_ring import RING_SIZE
 from picer.settings import ApplicationSettings
-from picer.smoke_samples import make_animation, make_cr3_metadata, make_dng, make_stills
+from picer.smoke_samples import make_animation, make_cr3_metadata, make_dng, make_stills, make_video
 from picer.ui import RoundedSlider, colors_for
 
 
@@ -593,8 +593,33 @@ def verify_media(window):
     print(
         "Packaged tiny image/frame rings, thumbnail anchoring and static inner-ring removal passed"
     )
+    video = make_video(directory / "static.mp4").resolve()
+    assert window.open_image(video)
+    wait_for(lambda: window.current_path == video, timeout=10_000)
+    assert not window.animation.state.active
+    thumbnails = []
+    window.plugins.records["example.info"].context.request_thumbnail(video, thumbnails.append)
+    wait_for(lambda: bool(thumbnails), timeout=10_000)
+    assert not thumbnails[0].isNull() and thumbnails[0].pixelColor(0, 0).alpha() < 255
+    print("Packaged static video first-frame, frosted film border and shared thumbnail passed")
+    ai_path = (directory / "stable-diffusion.png").resolve()
+    ai_text = PngImagePlugin.PngInfo()
+    ai_text.add_text(
+        "parameters",
+        "mountain <lora:light:0.7>\nNegative prompt: blur\n"
+        "Steps: 20, Sampler: Euler, Seed: 42, Model: example, VAE: example-vae",
+    )
+    Image.new("RGB", (64, 48)).save(ai_path, pnginfo=ai_text)
+    assert window.open_image(ai_path)
+    info = window.plugins.records["example.info"].instance
+    wait_for(
+        lambda: info.metadata is not None and info.metadata["path"] == str(ai_path), timeout=10_000
+    )
+    assert info.metadata["ai_generation"]["fields"]["Seed"] == "42"
+    assert info.ai_notice.text() == "此图片为Stable Diffusion生成" and not info.ai_box.isHidden()
+    print("Packaged embedded AI generation record and selectable information list passed")
     raw = directory / "synthetic.dng"
-    make_dng(raw)
+    make_dng(raw, embedded=True)
     raw = raw.resolve()
     assert window.open_image(raw)
     try:
@@ -629,6 +654,16 @@ def verify_media(window):
     )
     assert info.metadata["exif_sections"]["基础信息"]["相机制造商"] == "Picer RAW Camera"
     assert not info.exif_box.isHidden() and "Picer RAW Camera" in info.exif_view.text()
+    assert info.camera_switch.isEnabled()
+    info.camera_switch.setChecked(True)
+    wait_for(lambda: window.view.image_item.pixmap().width() == 160, timeout=10_000)
+    assert window.view.image_item.pixmap().toImage().pixelColor(10, 10).red() > 240
+    info.camera_switch.setChecked(False)
+    wait_for(lambda: window.view.image_item.pixmap().width() == 256, timeout=10_000)
+    wait_for(
+        lambda: info.metadata is not None and info.metadata["path"] == str(raw), timeout=10_000
+    )
+    print("Packaged actual LibRaw embedded camera preview switch and cache isolation passed")
     print("Packaged RAW EXIF camera table passed")
     from picer.metadata import inspect_image
 

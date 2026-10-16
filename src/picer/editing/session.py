@@ -25,6 +25,7 @@ class EditingSession(QObject):
         self.touched = False
         self.path, self.source, self.stamp = None, None, None
         self.native = (0, 0)
+        self.camera_preview = False
         self.state = defaults()
         self.error, self.busy, self.saving = "", False, False
         self.generation = 0
@@ -38,10 +39,15 @@ class EditingSession(QObject):
         self.on_image(None)
 
     def on_image(self, event):
-        if not self.active or self.applying or (event and event.reason != "opened"):
+        if (
+            not self.active
+            or self.applying
+            or (event and event.reason not in ("opened", "raw-preview"))
+        ):
             return
         self.cancel_tool()
         self.path = self.host.current_path
+        self.camera_preview = bool(self.path and self.host.loader.camera_preview(self.path))
         self.source, self.stamp = None, None
         self.native = (0, 0)
         self.state = defaults()
@@ -71,12 +77,17 @@ class EditingSession(QObject):
             self.stamp,
         )
         self.busy = True
+        camera_preview = self.camera_preview
         self.changed.emit()
 
         def work(token):
             try:
                 base, size, mark = source, native, stamp
                 if base is None:
+                    from picer.video import VIDEO_SUFFIXES
+
+                    if path.suffix.lower() in VIDEO_SUFFIXES:
+                        return {"error": "视频仅支持静态预览，不支持简易编辑"}
                     mark = fingerprint(path)
                     try:
                         with Image.open(path) as opened:
@@ -84,7 +95,7 @@ class EditingSession(QObject):
                                 return {"error": "动态图暂不支持简易编辑"}
                     except OSError:
                         pass  # RAW and Qt-only formats use the shared decoder below.
-                    image = read_image(path, edge=1600, token=token)
+                    image = read_image(path, edge=1600, token=token, camera_preview=camera_preview)
                     base = to_pillow(image)
                     size = (
                         int(image.text("picer.native_width")),
@@ -158,11 +169,21 @@ class EditingSession(QObject):
         )
         self.cancel_tool()
         self.saving = True
+        camera_preview = self.camera_preview
         self.changed.emit()
 
         def work(token):
             try:
-                return {"path": save_image(path, state, stamp, overwrite=overwrite, token=token)}
+                return {
+                    "path": save_image(
+                        path,
+                        state,
+                        stamp,
+                        overwrite=overwrite,
+                        token=token,
+                        camera_preview=camera_preview,
+                    )
+                }
             except Exception as error:
                 return {"error": str(error)}
 

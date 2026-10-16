@@ -168,7 +168,9 @@ class Plugin:
             if target:
                 self.watcher.addPaths(target)
         local = self.filters["local"]
-        suffixes = self.context.readable_suffixes()
+        from picer.video import VIDEO_SUFFIXES
+
+        suffixes = self.context.readable_suffixes() - VIDEO_SUFFIXES
         source_key = (folder if local else None, local, suffixes)
         cached = list(self.source_paths) if self.source_key == source_key else None
         known = [
@@ -349,7 +351,9 @@ class Plugin:
         local = popup.state["local"]
         notes = self.context.image_annotations()
         folder = self.current.parent if self.current else None
-        suffixes = self.context.readable_suffixes()
+        from picer.video import VIDEO_SUFFIXES
+
+        suffixes = self.context.readable_suffixes() - VIDEO_SUFFIXES
 
         def work(token):
             paths = []

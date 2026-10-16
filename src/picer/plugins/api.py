@@ -292,6 +292,16 @@ class PluginContext:
         except ValueError as error:
             raise PluginError(str(error)) from error
 
+    def set_raw_camera_preview(self, enabled: bool) -> None:
+        """Prefer embedded camera-rendered RAW pixels; revoked with this panel."""
+        self._check("image.read")
+        self._check("ui.panels")
+        if type(enabled) is not bool:
+            raise PluginError("机内直出开关无效")
+        if enabled and self._manager.host.image_edited:
+            raise PluginError("请先保存或取消当前编辑")
+        self._manager.host.loader.set_camera_preview(self.plugin_id, enabled)
+
     def seek_animation(self, frame: int) -> None:
         self._check("image.navigate")
         state = self._manager.host.animation.state

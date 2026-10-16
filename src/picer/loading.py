@@ -10,6 +10,7 @@ from PySide6.QtGui import QImageReader
 from picer.animation import animation_source
 from picer.imaging import RAW_SUFFIXES, read_image
 from picer.plugins.tasks import TaskCancelled, Worker
+from picer.video import VIDEO_SUFFIXES
 
 
 class ImageLoader(QObject):
@@ -52,6 +53,73 @@ class ImageLoader(QObject):
         self.pending_thumbnail = None
         self.requested = None
         self.options = True
+        self.camera_preview_owners = set()
+
+    def camera_preview(self, path):
+        return bool(self.camera_preview_owners) and path.suffix.lower() in RAW_SUFFIXES
+
+    def set_camera_preview(self, owner, enabled):
+        previous = bool(self.camera_preview_owners)
+        if enabled:
+            self.camera_preview_owners.add(owner)
+        else:
+            self.camera_preview_owners.discard(owner)
+        path = self.requested or self.host.current_path
+        if (
+            previous != bool(self.camera_preview_owners)
+            and path
+            and path.suffix.lower() in RAW_SUFFIXES
+            and not self.closed
+            and not self.host.plugins._closed
+            and not self.host.image_edited
+        ):
+            if path != self.host.current_path:
+                self.open(path)
+                return
+            self.generation += 1
+            generation = self.generation
+            self.refine.stop()
+            self.prefetch_timer.stop()
+            for worker, lane, _ in self.jobs.values():
+                if lane != "index":
+                    worker.token.cancel()
+            camera, options = self.camera_preview(path), self.options
+            try:
+                key = self.key(path, 0)
+            except OSError:
+                return
+            cache_generation = self.cache_generation
+
+            def finish(image, error):
+                if generation != self.generation or self.host.current_path != path:
+                    return
+                if error:
+                    self.host.notify(f"RAW 效果切换失败：{error}")
+                    return
+                self.remember(key, image, generation=cache_generation)
+                size = (
+                    int(image.text("picer.native_width") or image.width()),
+                    int(image.text("picer.native_height") or image.height()),
+                )
+                self.host.source_size = size[::-1] if self.host.image_rotation % 180 else size
+                self.host.view.native_width = self.host.source_size[0]
+                self.host.refine_image(image)
+                self.host.image_revision += 1
+                self.host.double_page.refresh()
+                self.host.plugins.emit_image("raw-preview")
+
+            cached = self.cached(key)
+            if cached is not None:
+                finish(cached, None)
+            else:
+                self.submit(
+                    "full",
+                    lambda token: read_image(
+                        path, auto_orient=options, camera_preview=camera, token=token
+                    ),
+                    finish,
+                    foreground=True,
+                )
 
     def set_rapid(self, active):
         if self.closed or self.rapid == active:
@@ -97,7 +165,7 @@ class ImageLoader(QObject):
 
     def key(self, path, edge):
         stat = path.stat()
-        return (path, stat.st_mtime_ns, stat.st_size, edge, self.options)
+        return (path, stat.st_mtime_ns, stat.st_size, edge, self.options, self.camera_preview(path))
 
     def remember(self, key, image, *, generation=None):
         if generation is not None and generation != self.cache_generation:
@@ -219,10 +287,12 @@ class ImageLoader(QObject):
                 raise ValueError("文件不存在")
             reader = QImageReader(str(path))
             raw = path.suffix.lower() in RAW_SUFFIXES
-            if not raw and not reader.canRead():
+            video = path.suffix.lower() in VIDEO_SUFFIXES
+            if not raw and not video and not reader.canRead():
                 raise ValueError(reader.errorString())
             options = self.host.app_preferences["auto_orient"]
             self.options = options
+            camera_preview = self.camera_preview(path)
             edge = 960 if self.rapid else 1600
             full_key, preview_key = self.key(path, 0), self.key(path, edge)
             full = self.cached(full_key)
@@ -231,6 +301,7 @@ class ImageLoader(QObject):
             animated_format = bytes(reader.format()).lower() in {b"gif", b"webp"}
             small = (
                 not raw
+                and not video
                 and not animated_format
                 and path.stat().st_size < 2 * 1048576
                 and 0 < size.width() * size.height() <= 2_000_000
@@ -276,7 +347,13 @@ class ImageLoader(QObject):
                 image = (
                     source.preview(edge, token)
                     if source
-                    else read_image(path, edge=edge, auto_orient=options, token=token)
+                    else read_image(
+                        path,
+                        edge=edge,
+                        auto_orient=options,
+                        token=token,
+                        camera_preview=camera_preview,
+                    )
                 )
                 token.checkpoint()
                 return image, source
@@ -334,6 +411,7 @@ class ImageLoader(QObject):
 
     def load_full(self):
         path, generation, options = self.requested, self.generation, self.options
+        camera_preview = self.camera_preview(path) if path else False
         cache_generation = self.cache_generation
         if not path or self.rapid or self.host.animation.state.active:
             return
@@ -357,7 +435,9 @@ class ImageLoader(QObject):
 
         self.submit(
             "full",
-            lambda token: read_image(path, auto_orient=options, token=token),
+            lambda token: read_image(
+                path, auto_orient=options, token=token, camera_preview=camera_preview
+            ),
             finish,
             foreground=True,
         )
@@ -400,10 +480,11 @@ class ImageLoader(QObject):
                 if error is None:
                     self.remember(key, image, generation=cache_generation)
 
+            camera = self.camera_preview(path)
             self.submit(
                 "prefetch",
-                lambda token, path=path, edge=edge: read_image(
-                    path, edge=edge, auto_orient=options, token=token
+                lambda token, path=path, edge=edge, camera=camera: read_image(
+                    path, edge=edge, auto_orient=options, token=token, camera_preview=camera
                 ),
                 finish,
             )

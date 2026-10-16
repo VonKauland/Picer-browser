@@ -359,6 +359,7 @@ class PluginManager(QObject):
             self.host.inputs.touch_start = None
         self.host.double_page.set_enabled(plugin_id, False)
         self.host.focus_points.remove(plugin_id)
+        self.host.loader.set_camera_preview(plugin_id, False)
         if record.manifest.type == "skin" and was_enabled:
             self.host.apply_skin(None, COLORS)
         self.host.panel_hovers.unregister(plugin_id)

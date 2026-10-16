@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PIL import ExifTags, Image, ImageStat
 
+from picer.ai_metadata import generation_info
 from picer.camera_metadata import LIMIT, read_cr3, tiff_focus
 from picer.exif import sections
 from picer.imaging import RAW_SUFFIXES, read_image
@@ -61,6 +62,15 @@ def inspect_image(path: Path, token=None) -> dict:
     }
     if path.suffix.lower() in RAW_SUFFIXES:
         return inspect_raw(path, result, token)
+    from picer.video import VIDEO_SUFFIXES, video_info
+
+    if path.suffix.lower() in VIDEO_SUFFIXES:
+        try:
+            result["dimensions"] = video_info(path)
+        except Exception as error:
+            result["warnings"].append(f"视频信息无法读取：{error}")
+        checkpoint()
+        return result
     try:
         with Image.open(path) as source:
             result["dimensions"] = {
@@ -123,6 +133,7 @@ def inspect_image(path: Path, token=None) -> dict:
             source.draft("RGB", (1024, 1024))
             source.thumbnail((1024, 1024))
             add_sample(result, source, "平均 RGB（采样）")
+            result["ai_generation"] = generation_info(source.info, camera_tags)
     except (OSError, ValueError, Image.DecompressionBombError) as error:
         result["warnings"].append(f"部分元数据无法读取：{error}")
     checkpoint()
@@ -170,6 +181,7 @@ def inspect_raw(path, result, token):
         if token:
             token.checkpoint()
         image = read_image(path, edge=1024, token=token)
+        result["raw_camera_preview_available"] = image.text("picer.camera_preview") == "1"
         image = image.convertToFormat(image.Format.Format_RGBA8888)
         sample = Image.frombytes("RGBA", (image.width(), image.height()), bytes(image.constBits()))
         add_sample(result, sample, "平均 RGB（预览采样）")

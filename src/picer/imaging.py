@@ -6,7 +6,9 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QImageReader
+from PySide6.QtGui import QImage, QImageReader, QTransform
+
+from picer.video import VIDEO_SUFFIXES
 
 RAW_SUFFIXES = frozenset(
     ".3fr .arw .bay .cr2 .cr3 .crw .dcr .dng .erf .fff .iiq .k25 .kdc "
@@ -19,9 +21,11 @@ QImageReader.setAllocationLimit(512)
 
 
 def supported_suffixes():
-    return RAW_SUFFIXES | {
-        f".{bytes(fmt).decode().lower()}" for fmt in QImageReader.supportedImageFormats()
-    }
+    return (
+        RAW_SUFFIXES
+        | VIDEO_SUFFIXES
+        | {f".{bytes(fmt).decode().lower()}" for fmt in QImageReader.supportedImageFormats()}
+    )
 
 
 def pillow_image(image):
@@ -31,11 +35,15 @@ def pillow_image(image):
     ).copy()
 
 
-def read_image(path, *, edge=0, auto_orient=True, token=None):
+def read_image(path, *, edge=0, auto_orient=True, token=None, camera_preview=False):
     """Return detached pixels; RAW previews prefer the embedded JPEG."""
     if token:
         token.checkpoint()
     path = Path(path)
+    if path.suffix.lower() in VIDEO_SUFFIXES:
+        from picer.video import read_video
+
+        return read_video(path, edge=edge, token=token, auto_orient=auto_orient)
     if path.suffix.lower() in RAW_SUFFIXES:
         import rawpy
 
@@ -44,14 +52,26 @@ def read_image(path, *, edge=0, auto_orient=True, token=None):
             if raw.sizes.width * raw.sizes.height > MAX_PIXELS:
                 raise ValueError("图片超过 1.2 亿像素的读取上限")
             native = (raw.sizes.width, raw.sizes.height)
+            flip = getattr(raw.sizes, "flip", 0)
             image = None
-            if edge:
+            if edge or camera_preview:
                 try:
                     thumb = raw.extract_thumb()
                     if thumb.format == rawpy.ThumbFormat.JPEG:
                         with Image.open(BytesIO(thumb.data)) as source:
-                            source = ImageOps.exif_transpose(source) if auto_orient else source
-                            source.thumbnail((edge, edge))
+                            if source.width * source.height > MAX_PIXELS:
+                                raise ValueError("机内预览超过像素读取上限")
+                            orientation = source.getexif().get(274, 1)
+                            if auto_orient:
+                                source = ImageOps.exif_transpose(source)
+                                if orientation == 1:
+                                    source = source.rotate(
+                                        {3: 180, 5: 90, 6: 270}.get(flip, 0), expand=True
+                                    )
+                            if camera_preview:
+                                native = source.size
+                            if edge:
+                                source.thumbnail((edge, edge))
                             image = pillow_image(source)
                     else:
                         data = thumb.data
@@ -62,6 +82,13 @@ def read_image(path, *, edge=0, auto_orient=True, token=None):
                             data.strides[0],
                             QImage.Format.Format_RGB888,
                         ).copy()
+                        if auto_orient and flip in (3, 5, 6):
+                            image = image.transformed(
+                                QTransform().rotate({3: 180, 5: -90, 6: 90}[flip])
+                            )
+                        if camera_preview:
+                            native = (image.width(), image.height())
+                    image.setText("picer.camera_preview", "1")
                 except rawpy.LibRawNoThumbnailError:
                     pass
                 except rawpy.LibRawUnsupportedThumbnailError:

@@ -160,6 +160,8 @@ def main() -> None:
             "numpy",
             "--copy-metadata",
             "ExifRead",
+            "--copy-metadata",
+            "av",
             "--add-data",
             str(bundles) + ";picer/bundles",
             "--paths",

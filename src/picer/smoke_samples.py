@@ -40,6 +40,22 @@ def make_stills(folder):
     return checked
 
 
+def make_video(path, codec="mpeg4"):
+    import av
+
+    with av.open(str(path), "w") as container:
+        stream = container.add_stream(codec, rate=24)
+        stream.width, stream.height, stream.pix_fmt = 160, 96, "yuv420p"
+        for color in ("#4d8ab2", "#a05b48", "#6c7e44"):
+            for packet in stream.encode(
+                av.VideoFrame.from_image(Image.new("RGB", (160, 96), color))
+            ):
+                container.mux(packet)
+        for packet in stream.encode():
+            container.mux(packet)
+    return path
+
+
 def make_animation(path):
     frames = [Image.new("RGBA", (96, 64), color) for color in ("red", "green", "blue")]
     frames[0].save(
@@ -52,7 +68,7 @@ def make_animation(path):
     )
 
 
-def make_dng(path):
+def make_dng(path, *, embedded=False):
     """An original synthetic Bayer DNG, with no third-party camera sample."""
     tags = []
 
@@ -119,6 +135,35 @@ def make_dng(path):
         + extra
         + pixels
     )
+    if embedded:
+        from io import BytesIO
+
+        jpeg = BytesIO()
+        Image.new("RGB", (160, 100), "red").save(jpeg, format="JPEG")
+        payload = jpeg.getvalue()
+        data = bytearray(path.read_bytes())
+        offset = len(data)
+        struct.pack_into("<I", data, 10 + 12 * len(tags), offset)
+        thumbnail = [
+            (254, 4, 1),
+            (256, 4, 160),
+            (257, 4, 100),
+            (258, 3, 8),
+            (259, 3, 7),
+            (262, 3, 6),
+            (273, 4, 0),
+            (277, 3, 3),
+            (278, 4, 100),
+            (279, 4, len(payload)),
+            (513, 4, 0),
+            (514, 4, len(payload)),
+        ]
+        start = offset + 2 + 12 * len(thumbnail) + 4
+        data += struct.pack("<H", len(thumbnail))
+        for number, kind, value in thumbnail:
+            data += struct.pack("<HHII", number, kind, 1, start if number in (273, 513) else value)
+        data += struct.pack("<I", 0) + payload
+        path.write_bytes(data)
 
 
 def _metadata_tiff(entries):

@@ -84,6 +84,8 @@ class FocusPoints:
             if not host.app_preferences["auto_orient"]:
                 orientation = 1
             for x, y, w, h in boxes:
+                # Smaller markers retain the recorded area's center.
+                x, y, w, h = x + w / 3, y + h / 3, w / 3, h / 3
                 points = [
                     oriented_point(a, b, orientation)
                     for a, b in (
