@@ -152,6 +152,8 @@ def main() -> None:
             "PySide6.QtNetwork",
             "--collect-submodules",
             "picer.editing",
+            "--hidden-import",
+            "ctypes.wintypes",
             "--copy-metadata",
             "rawpy",
             "--copy-metadata",
