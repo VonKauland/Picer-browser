@@ -102,12 +102,16 @@ def test_windows_real_hwnd_caption_edges_and_native_maximize(window, qtbot):
     assert frame.user32.GetWindowRect(hwnd, ctypes.byref(rect))
     msg = Message()
     msg.hwnd, msg.message = hwnd, 0x0084
+    send = frame.user32.SendMessageW
+    send.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_size_t, ctypes.c_ssize_t]
+    send.restype = ctypes.c_ssize_t
     for x, y, expected in (
         (rect.left + 1, rect.top + 1, 13),
         (rect.right - 1, rect.bottom - 1, 17),
     ):
         msg.lparam = (y & 0xFFFF) << 16 | (x & 0xFFFF)
         assert frame.native_event(ctypes.addressof(msg)) == expected
+        assert send(hwnd, msg.message, 0, msg.lparam) == expected
     caption = window.title_bar.mapTo(window, QPoint(window.title_bar.width() // 2, 24))
     physical = Point(
         round(caption.x() * window.devicePixelRatioF()),
@@ -119,13 +123,11 @@ def test_windows_real_hwnd_caption_edges_and_native_maximize(window, qtbot):
     assert client_to_screen(hwnd, ctypes.byref(physical))
     msg.lparam = (physical.y & 0xFFFF) << 16 | (physical.x & 0xFFFF)
     assert frame.native_event(ctypes.addressof(msg)) == 2
+    assert send(hwnd, msg.message, 0, msg.lparam) == 2
     limits = MinMaxInfo()
     msg.message, msg.lparam = 0x0024, ctypes.addressof(limits)
     assert frame.native_event(ctypes.addressof(msg)) == 0
     assert limits.max_size.x > 0 and limits.max_size.y > 0
-    send = frame.user32.SendMessageW
-    send.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_size_t, ctypes.c_ssize_t]
-    send.restype = ctypes.c_ssize_t
     send(hwnd, 0x0112, 0xF030, 0)  # WM_SYSCOMMAND / SC_MAXIMIZE
     qtbot.waitUntil(window.isMaximized)
     assert window.title_bar.control_buttons["maximize"].toolTip() == "还原"
