@@ -34,6 +34,11 @@ ICON_PATHS = {
     ),
     "star": '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/>',
     "history": ('<path d="M3 11a9 9 0 1 1 2.5 7M3 4v7h7M12 7v5l3 2"/>'),
+    "network": (
+        '<rect x="2" y="3" width="12" height="9" rx="1.5"/>'
+        '<rect x="11" y="11" width="11" height="9" rx="1.5"/>'
+        '<path d="M8 12v4M5 16h5m6.5 4v2M14 22h5"/>'
+    ),
     "home": '<path d="m3 11 9-8 9 8M5 10v10h5v-6h4v6h5V10"/>',
     "up": '<path d="M12 21V3m-7 7 7-7 7 7"/>',
     "edit": '<path d="m15 3 6 6-12 12H3v-6zM12 6l6 6"/>',

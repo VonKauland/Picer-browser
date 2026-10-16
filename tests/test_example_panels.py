@@ -999,13 +999,212 @@ def test_browser_selection_outline_encloses_whole_item(window, tmp_path, qtbot, 
     assert min(point.y() for point in accent) <= row.top() + 4
 
 
+def test_network_locations_add_search_remove_and_restart(window, tmp_path, qtbot, monkeypatch):
+    plugin = enable(window, tmp_path, "file_browser")
+    module = import_module(plugin.__class__.__module__.rsplit(".", 1)[0] + ".network")
+    plugin.search.setText("之前的目录搜索")
+    plugin.tabs.setCurrentIndex(3)
+    assert plugin.model.search_text == ""
+    assert plugin.pages.currentWidget() is plugin.network
+    qtbot.waitUntil(lambda: plugin.network.add_button.height() == 32)
+    assert plugin.location.virtual_label == "网络位置"
+    assert plugin.search.placeholderText() == "搜索网络位置"
+    assert not plugin.random_button.isEnabled()
+    assert plugin.network.empty.isVisible()
+    for invalid in (
+        "",
+        "C:\\Photos",
+        "https://NAS/photos",
+        r"\\NAS",
+        r"\\?\C:\Photos",
+        "\\\\NAS\\Photos\nX",
+    ):
+        with pytest.raises(ValueError):
+            module.normalize_path(invalid)
+    assert module.normalize_path("//NAS/Photos/旅行") == r"\\NAS\Photos\旅行"
+    for invalid in (None, {}, [{"name": "无效", "path": "C:/local"}], [None]):
+        plugin.context.set_setting("network_locations", invalid)
+        assert module.saved_locations(plugin.context) == []
+    plugin.context.set_setting("network_locations", [])
+
+    def submit(dialog):
+        dialog.path.setText(r"\\NAS\Photos")
+        dialog.name.setText("家庭 NAS")
+        assert dialog.confirm.isEnabled()
+        dialog.confirm.click()
+        return dialog.result()
+
+    monkeypatch.setattr(module.LocationDialog, "exec", submit)
+    plugin.network.add_button.click()
+    entries = module.saved_locations(plugin.context)
+    assert len(entries) == 1 and entries[0]["name"] == "家庭 NAS"
+    item = plugin.network.list.item(0)
+    assert item.icon().cacheKey() == plugin.network.folder_icon.cacheKey()
+    assert item.icon().cacheKey() != plugin.model.files.folders.icons[0].cacheKey()
+    globe = item.icon().pixmap(128, 128).toImage()
+    assert any(globe.pixelColor(x, y).alpha() > 100 for x in range(38, 117) for y in range(5, 14))
+    assert all(globe.pixelColor(x, 0).alpha() == 0 for x in range(128))
+    assert all(globe.pixelColor(127, y).alpha() == 0 for y in range(128))
+    dialog = module.LocationDialog(entries, plugin.panel)
+    qtbot.addWidget(dialog)
+    dialog.path.setText("//nas/photos/")
+    assert not dialog.confirm.isEnabled() and "已添加" in dialog.error.text()
+    large = [{"name": "位置", "path": "\\\\nas\\share\\" + "a" * 1800 + str(i)} for i in range(40)]
+    full = module.LocationDialog(large, plugin.panel)
+    qtbot.addWidget(full)
+    full.path.setText(r"\\other\photos")
+    assert not full.confirm.isEnabled() and "列表已满" in full.error.text()
+    monkeypatch.setattr(module.LocationDialog, "exec", lambda dialog: 0)
+    plugin.network.add_button.click()
+    assert module.saved_locations(plugin.context) == entries
+    plugin.search.setText("没有匹配")
+    assert plugin.network.list.item(0).isHidden()
+    plugin.search.setText("nas")
+    assert not plugin.network.list.item(0).isHidden()
+    # Rendering saved locations never probes the server, including when offline.
+    with monkeypatch.context() as patch:
+        patch.setattr(module, "Path", lambda path: pytest.fail("Unexpected network IO"))
+        plugin.network.reload()
+        plugin.network.list.viewport().grab()
+    root = window.plugins.root
+    window.plugins.shutdown()
+    restarted = MainWindow(load_examples=False, plugin_root=root)
+    qtbot.addWidget(restarted)
+    browser = restarted.plugins.records["example.files"].instance
+    assert module.saved_locations(browser.context) == entries
+    browser.tabs.setCurrentIndex(3)
+    browser.network.remove(entries[0]["path"])
+    assert browser.network.list.count() == 0
+    assert module.saved_locations(browser.context) == []
+    restarted.plugins.shutdown()
+
+
+def test_network_connect_is_background_bounded_and_ignores_stale_results(
+    window,
+    tmp_path,
+    qtbot,
+    monkeypatch,
+    pictures,
+):
+    from threading import Event, get_ident
+
+    plugin = enable(window, tmp_path, "file_browser")
+    module = import_module(plugin.__class__.__module__.rsplit(".", 1)[0] + ".network")
+    started, release = Event(), Event()
+    threads = []
+
+    class OfflinePath:
+        def __init__(self, path):
+            pass
+
+        def is_dir(self):
+            threads.append(get_ident())
+            started.set()
+            assert release.wait(5)
+            return False
+
+    monkeypatch.setattr(module, "Path", OfflinePath)
+    plugin.tabs.setCurrentIndex(3)
+    plugin.open_folder(r"\\NAS\Photos")
+    try:
+        qtbot.waitUntil(started.is_set)
+        assert plugin.network.busy
+        assert threads == [threads[0]] and threads[0] != get_ident()
+        plugin.network.timeout.timeout.emit()
+        assert "超时" in plugin.note.text()
+        plugin.open_folder(r"\\NAS\Other")
+        assert len(threads) == 1  # no unbounded jobs behind a stalled server
+        plugin.open_folder(pictures)
+        assert plugin.location.text() == str(pictures.resolve())
+        release.set()
+        qtbot.waitUntil(lambda: not plugin.network.busy)
+        assert plugin.location.text() == str(pictures.resolve())
+        assert plugin.note.text() == ""  # stale failure cannot replace local feedback
+    finally:
+        release.set()
+
+
+@pytest.mark.parametrize("readable", [True, False])
+def test_network_open_result_routes_validated_path_only(
+    window,
+    tmp_path,
+    qtbot,
+    monkeypatch,
+    readable,
+):
+    from types import SimpleNamespace
+
+    plugin = enable(window, tmp_path, "file_browser")
+    module = import_module(plugin.__class__.__module__.rsplit(".", 1)[0] + ".network")
+    monkeypatch.setattr(module, "Path", lambda path: SimpleNamespace(is_dir=lambda: readable))
+    calls = []
+    original = plugin.open_folder
+
+    def capture(path, **kwargs):
+        if kwargs.get("_network_ready"):
+            calls.append((path, kwargs))
+            return True
+        return original(path, **kwargs)
+
+    monkeypatch.setattr(plugin, "open_folder", capture)
+    plugin.tabs.setCurrentIndex(3)
+    plugin.open_folder(r"\\NAS\Photos")
+    qtbot.waitUntil(lambda: not plugin.network.busy)
+    assert not plugin.network.timeout.isActive()
+    if readable:
+        assert len(calls) == 1 and calls[0][1]["_network_ready"]
+        assert calls[0][0] == module.normalize_path(r"\\NAS\Photos")
+    else:
+        assert not calls and "无法访问" in plugin.note.text()
+
+
+def test_network_task_capacity_failure_keeps_browser_available(window, tmp_path, monkeypatch):
+    from picer.plugins import PluginError
+
+    plugin = enable(window, tmp_path, "file_browser")
+
+    def full(*args, **kwargs):
+        raise PluginError("full")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(plugin.context, "run_task", full)
+        plugin.open_folder(r"\\NAS\Photos")
+    assert not plugin.network.busy and not plugin.network.timeout.isActive()
+    assert "繁忙" in plugin.note.text()
+
+
+def test_network_double_click_enter_failure_and_disable(window, tmp_path, qtbot, monkeypatch):
+    plugin = enable(window, tmp_path, "file_browser")
+    module = import_module(plugin.__class__.__module__.rsplit(".", 1)[0] + ".network")
+    path = module.normalize_path(r"\\NAS\Photos")
+    plugin.context.set_setting("network_locations", [{"name": "照片", "path": path}])
+    plugin.tabs.setCurrentIndex(3)
+    calls = []
+    monkeypatch.setattr(plugin.network, "open_path", lambda *args: calls.append(args))
+    rect = plugin.network.list.visualItemRect(plugin.network.list.item(0))
+    qtbot.mouseClick(plugin.network.list.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
+    assert not calls
+    qtbot.mouseDClick(plugin.network.list.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
+    assert calls[0][0] == path
+    plugin.open_selected()
+    assert len(calls) == 2
+    plugin.network.timeout.start()
+    window.plugins.disable("example.files")
+    assert not plugin.network.timeout.isActive()
+
+
 def test_browser_quick_menu_places_and_restart(window, tmp_path, qtbot, pictures):
     plugin = enable(window, tmp_path, "file_browser")
     plugin.context.set_setting("home", str(pictures))
     plugin.open_folder(pictures)
-    assert [plugin.tabs.tabText(i) for i in range(3)] == ["", "", ""]
-    assert [plugin.tabs.tabToolTip(i) for i in range(3)] == ["文件", "快速访问", "历史记录"]
-    assert all(not plugin.tabs.tabIcon(i).isNull() for i in range(3))
+    assert [plugin.tabs.tabText(i) for i in range(4)] == ["", "", "", ""]
+    assert [plugin.tabs.tabToolTip(i) for i in range(4)] == [
+        "文件",
+        "快速访问",
+        "历史记录",
+        "网络位置",
+    ]
+    assert all(not plugin.tabs.tabIcon(i).isNull() for i in range(4))
     assert plugin.tabs.tabSizeHint(0).width() == 36
     qtbot.mouseClick(plugin.view_button, Qt.MouseButton.LeftButton)
     qtbot.waitUntil(plugin.quick_menu.isVisible)

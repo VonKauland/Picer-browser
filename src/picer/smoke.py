@@ -978,6 +978,28 @@ def run(window, args, folder, done):
                 verify_new_panels(window)
                 done(0)
                 return
+            browser = window.plugins.records["example.files"].instance
+            saved = browser.context.get_setting("network_locations", [])
+            browser.context.set_setting(
+                "network_locations", [{"name": "网络照片", "path": r"\\NAS\Photos"}]
+            )
+            browser.tabs.setCurrentIndex(3)
+            assert browser.tabs.tabToolTip(3) == "网络位置"
+            assert browser.network.list.count() == 1
+            assert browser.network.list.item(0).icon().cacheKey() == (
+                browser.network.folder_icon.cacheKey()
+            )
+            browser.search.setText("无匹配")
+            assert browser.network.list.item(0).isHidden()
+            browser.search.clear()
+            assert not browser.network.list.item(0).isHidden()
+            browser.context.set_setting("network_locations", saved)
+            browser.tabs.setCurrentIndex(0)
+            print(
+                "Packaged network locations, local search and frosted globe folders passed; "
+                "live NAS not tested",
+                flush=True,
+            )
             controller = window.panel_hovers.controllers["example.files"]
             controller.dock.close()
             assert controller.strip.isVisible()
