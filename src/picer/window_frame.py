@@ -214,6 +214,10 @@ class WindowFrame(QObject):
                 handle.raise_()
             else:
                 handle.drag = None
+        # Existing narrow reveal strips intentionally overlap the outer sizing band.
+        # Keep them above the fallback handles, without moving or widening either UI.
+        for control in self.edge_controls():
+            control.raise_()
         if self.user32 and host.isVisible() and not host.isFullScreen():
             hwnd = int(host.winId())
             old = self.user32.GetWindowLongW(hwnd, -16)
@@ -223,6 +227,19 @@ class WindowFrame(QObject):
             if style != old:
                 self.user32.SetWindowLongW(hwnd, -16, style)
                 self.user32.SetWindowPos(hwnd, None, 0, 0, 0, 0, 0x0027)
+
+    def edge_controls(self):
+        collection = getattr(self.host, "panel_hovers", None)
+        for controller in collection.controllers.values() if collection else ():
+            for control in (controller.strip, controller.indicator):
+                if control is not None and control.isVisible():
+                    yield control
+
+    def edge_control_at(self, point):
+        return any(
+            control.rect().contains(control.mapFrom(self.host, point))
+            for control in self.edge_controls()
+        )
 
     def caption_at(self, point):
         bar = self.host.title_bar
@@ -265,6 +282,13 @@ class WindowFrame(QObject):
         if message.message == 0x0084:  # WM_NCHITTEST uses signed physical desktop coordinates.
             x = ctypes.c_int16(message.lparam & 0xFFFF).value
             y = ctypes.c_int16((message.lparam >> 16) & 0xFFFF).value
+            point = Point(x, y)
+            client = None
+            if self.user32.ScreenToClient(message.hwnd, ctypes.byref(point)):
+                scale = self.host.devicePixelRatioF()
+                client = QPoint(round(point.x / scale), round(point.y / scale))
+                if self.edge_control_at(client):
+                    return 1  # HTCLIENT: side reveal strips keep their original hover/pin input.
             rect = Rect()
             if not self.host.isMaximized() and self.user32.GetWindowRect(
                 message.hwnd, ctypes.byref(rect)
@@ -280,11 +304,8 @@ class WindowFrame(QObject):
                 )
                 if edges:
                     return HITS[edges]
-            point = Point(x, y)
-            if self.user32.ScreenToClient(message.hwnd, ctypes.byref(point)):
-                scale = self.host.devicePixelRatioF()
-                if self.caption_at(QPoint(round(point.x / scale), round(point.y / scale))):
-                    return 2  # HTCAPTION: Windows owns drag, double-click and top-edge snap.
+            if client is not None and self.caption_at(client):
+                return 2  # HTCAPTION: Windows owns drag, double-click and top-edge snap.
         return None
 
     def dispose(self):

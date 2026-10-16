@@ -131,3 +131,19 @@ def test_windows_real_hwnd_caption_edges_and_native_maximize(window, qtbot):
     assert window.title_bar.control_buttons["maximize"].toolTip() == "还原"
     send(hwnd, 0x0112, 0xF120, 0)  # SC_RESTORE
     qtbot.waitUntil(lambda: not window.isMaximized())
+
+
+def test_reveal_strip_takes_priority_over_resize_band(qtbot, tmp_path):
+    host = MainWindow(plugin_root=tmp_path / "state")
+    qtbot.addWidget(host)
+    host.show()
+    controller = host.panel_hovers.controllers["example.files"]
+    controller.dock.close()
+    qtbot.wait(30)
+    host.window_frame.sync()
+    point = controller.strip.mapTo(host, QPoint(1, 40))
+    assert host.window_frame.edge_control_at(point)
+    assert host.childAt(point) is controller.strip
+    qtbot.mouseMove(controller.strip, QPoint(2, 40))
+    qtbot.waitUntil(lambda: controller.popup is not None, timeout=1500)
+    host.close()
