@@ -318,6 +318,10 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
+        frame = getattr(self, "window_frame", None)
+        if frame and frame.user32:
+            # Establish native client coordinates before the first pointer input.
+            frame.sync()
         self.panel_hovers.layout_strips()
 
     def add_action(self, menu, text, shortcut, callback) -> QAction:

@@ -275,7 +275,31 @@ def test_actual_hover_enter_leave_and_dialog_hold(window, tmp_path, qtbot):
     plugin.dock.close()
     controller = window.panel_hovers.controllers["example.files"]
     qtbot.mouseMove(controller.strip, QPoint(2, 40))
-    qtbot.waitUntil(lambda: controller.popup is not None, timeout=1000)
+    try:
+        qtbot.waitUntil(lambda: controller.popup is not None, timeout=1000)
+    except Exception:
+        from PySide6.QtGui import QCursor
+
+        cursor = QCursor.pos()
+        print(
+            "Hover diagnostics:",
+            "window",
+            window.geometry(),
+            window.frameGeometry(),
+            "strip",
+            controller.strip.geometry(),
+            "strip global",
+            controller.strip.mapToGlobal(QPoint(2, 40)),
+            "cursor",
+            cursor,
+            "target",
+            QApplication.widgetAt(cursor),
+            "client target",
+            window.childAt(window.mapFromGlobal(cursor)),
+            "DPR",
+            window.devicePixelRatioF(),
+        )
+        raise
     qtbot.wait(450)
     dialog = SettingsDialog(window.plugins, "example.files", window)
     qtbot.addWidget(dialog)
