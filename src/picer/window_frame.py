@@ -1,10 +1,11 @@
 """Native Windows caption/sizing semantics beneath application-owned chrome."""
 
 import ctypes
+import logging
 import sys
 
-from PySide6.QtCore import QAbstractNativeEventFilter, QEvent, QObject, QPoint, Qt, QTimer
-from PySide6.QtWidgets import QAbstractButton, QApplication, QMenuBar, QWidget
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
+from PySide6.QtWidgets import QAbstractButton, QMenuBar, QWidget
 
 
 class Point(ctypes.Structure):
@@ -142,29 +143,13 @@ class ResizeHandle(QWidget):
         event.accept()
 
 
-class NativeEvents(QAbstractNativeEventFilter):
-    def __init__(self, frame):
-        super().__init__()
-        self.frame = frame
-
-    def nativeEventFilter(self, event_type, address):
-        frame = self.frame
-        if frame.closed or not address:
-            return False, 0
-        message = Message.from_address(int(address))
-        if not frame.hwnd or message.hwnd != frame.hwnd:
-            return False, 0
-        result = frame.native_event(address)
-        return (False, 0) if result is None else (True, result)
-
-
 class WindowFrame(QObject):
     def __init__(self, host):
         super().__init__(host)
         self.host = host
         self.closed = False
-        self.hwnd = 0
-        self.native_filter = None
+        self.hooked = set()
+        self.native_callback = None
         self.handles = {edges: ResizeHandle(host, edges) for edges in CURSORS}
         self.user32 = None
         if sys.platform == "win32":
@@ -196,16 +181,42 @@ class WindowFrame(QObject):
             ):
                 function = getattr(self.user32, name)
                 function.restype, function.argtypes = result, args
-            self.native_filter = NativeEvents(self)
-            QApplication.instance().installNativeEventFilter(self.native_filter)
+            self.comctl32 = ctypes.WinDLL("comctl32", use_last_error=True)
+            callback_type = ctypes.WINFUNCTYPE(
+                ctypes.c_ssize_t,
+                ctypes.c_void_p,
+                ctypes.c_uint32,
+                ctypes.c_size_t,
+                ctypes.c_ssize_t,
+                ctypes.c_size_t,
+                ctypes.c_size_t,
+            )
+            self.native_callback = callback_type(self.dispatch)
+            for name, result, args in (
+                (
+                    "SetWindowSubclass",
+                    ctypes.c_int,
+                    [ctypes.c_void_p, callback_type, ctypes.c_size_t, ctypes.c_size_t],
+                ),
+                (
+                    "RemoveWindowSubclass",
+                    ctypes.c_int,
+                    [ctypes.c_void_p, callback_type, ctypes.c_size_t],
+                ),
+                (
+                    "DefSubclassProc",
+                    ctypes.c_ssize_t,
+                    [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_size_t, ctypes.c_ssize_t],
+                ),
+            ):
+                function = getattr(self.comctl32, name)
+                function.restype, function.argtypes = result, args
         self.refresh = QTimer(self)
         self.refresh.setSingleShot(True)
         self.refresh.timeout.connect(self.sync)
         host.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.WinIdChange:
-            self.hwnd = int(self.host.effectiveWinId() or 0)
         if event.type() in {
             QEvent.Type.Show,
             QEvent.Type.Resize,
@@ -214,6 +225,24 @@ class WindowFrame(QObject):
         }:
             self.refresh.start(0)
         return False
+
+    def dispatch(self, hwnd, kind, wparam, lparam, subclass_id, data):
+        # Subclass the HWND directly so both sent and queued Windows messages
+        # use the same client geometry, independently of Qt's native-event bridge.
+        if kind == 0x0082:  # WM_NCDESTROY: never retain a callback on a dead HWND.
+            self.comctl32.RemoveWindowSubclass(hwnd, self.native_callback, subclass_id)
+            self.hooked.discard(hwnd)
+        else:
+            try:
+                message = Message()
+                message.hwnd, message.message = hwnd, kind
+                message.wparam, message.lparam = wparam, lparam
+                result = self.native_event(ctypes.addressof(message))
+                if result is not None:
+                    return result
+            except Exception:
+                logging.getLogger(__name__).exception("Native window frame message failed")
+        return self.comctl32.DefSubclassProc(hwnd, kind, wparam, lparam)
 
     def sync(self):
         host = self.host
@@ -242,7 +271,11 @@ class WindowFrame(QObject):
             control.raise_()
         if self.user32 and host.isVisible() and not host.isFullScreen():
             hwnd = int(host.winId())
-            self.hwnd = hwnd
+            if hwnd not in self.hooked:
+                if not self.comctl32.SetWindowSubclass(hwnd, self.native_callback, 1, 0):
+                    logging.getLogger(__name__).error("Could not install native window frame")
+                    return
+                self.hooked.add(hwnd)
             old = self.user32.GetWindowLongW(hwnd, -16)
             # WS_OVERLAPPEDWINDOW enables OS sizing, caption dragging/Aero Snap and
             # native maximize/restore. NCCALCSIZE below keeps our own title bar.
@@ -335,5 +368,6 @@ class WindowFrame(QObject):
         self.closed = True
         self.refresh.stop()
         self.host.removeEventFilter(self)
-        if self.native_filter:
-            QApplication.instance().removeNativeEventFilter(self.native_filter)
+        for hwnd in tuple(self.hooked):
+            self.comctl32.RemoveWindowSubclass(hwnd, self.native_callback, 1)
+        self.hooked.clear()

@@ -136,6 +136,8 @@ def test_windows_real_hwnd_caption_edges_and_native_maximize(window, qtbot):
     assert window.title_bar.control_buttons["maximize"].toolTip() == "还原"
     send(hwnd, 0x0112, 0xF120, 0)  # SC_RESTORE
     qtbot.waitUntil(lambda: not window.isMaximized())
+    window.close()
+    assert not frame.hooked
 
 
 def test_reveal_strip_takes_priority_over_resize_band(qtbot, tmp_path):
