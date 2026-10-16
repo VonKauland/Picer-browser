@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.host_style import mark_host
+from picer.messages import MessageBox as QMessageBox
 from picer.ui import Card, StyledDialog, Toggle, form_row, ui_icon
 
 
@@ -118,6 +118,11 @@ class SettingsForm(QWidget):
             note.setObjectName("muted")
             note.setWordWrap(True)
             layout.addWidget(note)
+        self.custom = None
+        factory = manager.settings_widgets.get(plugin_id)
+        if factory:
+            self.custom = factory(self)
+            layout.addWidget(self.custom)
         self.dock_combo = None
         controller = manager.host.panel_hovers.controllers.get(plugin_id)
         if controller:
@@ -140,6 +145,8 @@ class SettingsForm(QWidget):
             editor.setText(path)
 
     def reset(self):
+        if self.custom:
+            self.custom.reset()
         for field in self.fields:
             editor = self.editors[field.key]
             if field.kind == "bool":
@@ -175,6 +182,8 @@ class SettingsForm(QWidget):
                 return False
             values[field.key] = field.validate(value)
         try:
+            if self.custom and not self.custom.save():
+                return False
             self.manager.set_settings(self.plugin_id, values)
             self.manager._invoke(self.plugin_id, self.callback)
             record = self.manager.records.get(self.plugin_id)

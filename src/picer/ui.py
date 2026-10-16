@@ -22,6 +22,8 @@ from picer.theme import COLORS
 
 ACCENT = "#E8FF59"
 ICON_PATHS = {
+    "filter": '<path d="M3 4h18l-7 8v7l-4 2v-9z"/>',
+    "sort": '<path d="M6 3v18m-3-3 3 3 3-3M13 5h8M13 10h6M13 15h4"/>',
     "photo": (
         '<rect x="3" y="3" width="18" height="18" rx="4"/>'
         '<circle cx="16" cy="8" r="2"/><path d="m4 17 5-5 4 4 3-3 4 4"/>'

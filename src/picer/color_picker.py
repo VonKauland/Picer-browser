@@ -168,8 +168,10 @@ class HueSlider(QSlider):
 
 
 class ColorPicker(StyledDialog):
-    def __init__(self, initial, parent=None):
-        super().__init__("选择强调色", "自定义色彩，让界面更合心意", parent)
+    def __init__(
+        self, initial, parent=None, *, title="选择强调色", subtitle="自定义色彩，让界面更合心意"
+    ):
+        super().__init__(title, subtitle, parent)
         self.setMinimumSize(440, 400)
         self.resize(500, 590)
         self.color = QColor(initial)

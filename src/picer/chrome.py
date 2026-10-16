@@ -49,7 +49,13 @@ class WindowButton(QPushButton):
         elif self.objectName() == "minimize":
             painter.drawLine(QPointF(x - 4, y), QPointF(x + 4, y))
         elif self.objectName() == "maximize":
-            painter.drawRect(QRectF(x - 4, y - 3, 8, 6))
+            if self.window.isMaximized():
+                painter.drawLine(QPointF(x - 1.5, y - 2.5), QPointF(x - 1.5, y - 4.5))
+                painter.drawLine(QPointF(x - 1.5, y - 4.5), QPointF(x + 4.5, y - 4.5))
+                painter.drawLine(QPointF(x + 4.5, y - 4.5), QPointF(x + 4.5, y + 1.5))
+                painter.drawRect(QRectF(x - 4.5, y - 1.5, 8, 6))
+            else:
+                painter.drawRect(QRectF(x - 4, y - 3, 8, 6))
         else:
             painter.drawLine(QPointF(x - 4, y - 4), QPointF(x + 4, y + 4))
             painter.drawLine(QPointF(x + 4, y - 4), QPointF(x - 4, y + 4))
@@ -117,6 +123,7 @@ class TitleBar(QWidget):
             self.control_buttons[name] = button
         buttons.addWidget(self.controls, 0, Qt.AlignmentFlag.AlignVCenter)
         self.drag_origin: QPoint | None = None
+        self.sync_window_state()
 
     def set_chrome(self, style):
         mac = style == "macos"
@@ -156,6 +163,13 @@ class TitleBar(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self.arrange()
+
+    def sync_window_state(self):
+        button = self.control_buttons["maximize"]
+        name = "还原" if self.window.isMaximized() else "最大化"
+        button.setAccessibleName(name)
+        button.setToolTip(name)
+        button.update()
 
     def toggle_maximized(self) -> None:
         if self.window.isMaximized():

@@ -21,6 +21,7 @@ from PySide6.QtCore import QObject, Qt, QThreadPool, Signal
 from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import QDockWidget, QWidget
 
+from picer.annotations import AnnotationStore
 from picer.host_style import PLUGIN_STYLE
 from picer.panels import DOCK_AREAS, DockTitleSpacer, ProgressDock, dock_surface, saved_layout
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
@@ -63,6 +64,8 @@ class PluginManager(QObject):
         self.panels: dict[str, QDockWidget] = {}
         self.panel_operations = {}
         self.settings_forms = {}
+        self.settings_widgets = {}
+        self.editing_sessions = {}
         self._panel_transition = False
         self._fullscreen = host.isFullScreen()
         self.subscribers: dict[str, list[tuple[str, Callable]]] = {}
@@ -87,6 +90,12 @@ class PluginManager(QObject):
                 self.preferences = {key: data.get(key, {}) for key in ("enabled", "settings", "ui")}
         except (OSError, ValueError, UnicodeError) as error:
             self.diagnostics.append(f"配置读取失败：{error}")
+        self.annotations = AnnotationStore(
+            self.paths.config / "annotations.sqlite3",
+            self.preferences["settings"].get("example.info", {}),
+        )
+        if self.annotations.error:
+            self.diagnostics.append("图片标注库：" + self.annotations.error)
         # Restore core bindings before loading plugins that may use a freed shortcut.
         self.host.restore_shortcuts(
             self.preferences["ui"].get("shortcuts", {}),
@@ -338,6 +347,10 @@ class PluginManager(QObject):
         was_enabled = record.state == "enabled"
         record.state = "disabled"
         self.settings_forms.pop(plugin_id, None)
+        self.settings_widgets.pop(plugin_id, None)
+        session = self.editing_sessions.pop(plugin_id, None)
+        if session:
+            session.close()
         self.panel_operations = {
             name: entry for name, entry in self.panel_operations.items() if entry[0] != plugin_id
         }
@@ -602,6 +615,8 @@ class PluginManager(QObject):
                 dock.setVisible(not fullscreen and visible is not False)
         finally:
             self._panel_transition = False
+            if not fullscreen:
+                self.host.panel_hovers.normalize_sides()
             self.host.panel_hovers.layout_strips()
 
     def update_commands(self) -> None:

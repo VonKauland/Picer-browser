@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -32,6 +31,7 @@ from picer.input_bindings import (
     normalize,
     read_bindings,
 )
+from picer.messages import MessageBox as QMessageBox
 from picer.ui import Card
 
 DEVICES = ("keyboard", "mouse", "touch", "gamepad")

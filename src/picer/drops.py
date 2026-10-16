@@ -3,7 +3,8 @@
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QMessageBox
+
+from picer.messages import MessageBox as QMessageBox
 
 
 class ImageDropTarget(QObject):

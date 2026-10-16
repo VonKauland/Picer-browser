@@ -1,7 +1,7 @@
 {
   "id": "example.files",
   "name": "文件浏览器",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",

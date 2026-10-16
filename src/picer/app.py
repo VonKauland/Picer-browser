@@ -7,8 +7,9 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from PySide6.QtCore import QThreadPool, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication
 
+from picer.messages import MessageBox as QMessageBox
 from picer.window import MainWindow
 
 

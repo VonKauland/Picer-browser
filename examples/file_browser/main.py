@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QMenu,
-    QMessageBox,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from picer.host_style import PLUGIN_STYLE
 from picer.imaging import supported_suffixes
+from picer.messages import MessageBox as QMessageBox
 from picer.plugins import SettingField, ui_icon
 
 from .address import AddressBar

@@ -122,8 +122,8 @@ def test_image_metadata_exif_histogram_and_visibility(window, tmp_path, qtbot, p
     assert plugin.groups["dimensions"].isHidden()
     assert plugin.groups["histogram"].isHidden()
     assert not plugin.exif_box.isHidden()
-    plugin.rating.setCurrentIndex(4)
-    assert context.get_setting("ratings")[str((pictures / "1.jpg").resolve())] == 4
+    qtbot.mouseClick(plugin.rating, Qt.MouseButton.LeftButton, pos=QPoint(92, 11))
+    assert context.image_annotation((pictures / "1.jpg").resolve())["rating"] == 4
     assert Image.open(pictures / "1.jpg").getexif().get(18246) is None
     window.open_image(pictures / "3.png")
     qtbot.waitUntil(lambda: plugin.metadata is not None)
@@ -275,7 +275,65 @@ def test_actual_hover_enter_leave_and_dialog_hold(window, tmp_path, qtbot):
     plugin.dock.close()
     controller = window.panel_hovers.controllers["example.files"]
     qtbot.mouseMove(controller.strip, QPoint(2, 40))
-    qtbot.waitUntil(lambda: controller.popup is not None, timeout=1000)
+    try:
+        qtbot.waitUntil(lambda: controller.popup is not None, timeout=1000)
+    except Exception:
+        from PySide6.QtGui import QCursor
+
+        cursor = QCursor.pos()
+        frame = window.window_frame
+        if frame.user32:
+            import ctypes
+
+            from picer.window_frame import Message, Point, Rect
+
+            native_cursor, native_rect = Point(), Rect()
+            get_cursor = frame.user32.GetCursorPos
+            get_cursor.argtypes = [ctypes.POINTER(Point)]
+            get_cursor.restype = ctypes.c_int
+            get_cursor(ctypes.byref(native_cursor))
+            frame.user32.GetWindowRect(int(window.winId()), ctypes.byref(native_rect))
+            message = Message()
+            message.hwnd, message.message = int(window.winId()), 0x0084
+            message.lparam = (native_cursor.y & 0xFFFF) << 16 | (native_cursor.x & 0xFFFF)
+            hit = frame.native_event(ctypes.addressof(message))
+            send = frame.user32.SendMessageW
+            send.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_size_t, ctypes.c_ssize_t]
+            send.restype = ctypes.c_ssize_t
+            native_hit = send(message.hwnd, message.message, 0, message.lparam)
+            frame.user32.ScreenToClient(int(window.winId()), ctypes.byref(native_cursor))
+            print(
+                "Native hover diagnostics:",
+                "rect",
+                (native_rect.left, native_rect.top, native_rect.right, native_rect.bottom),
+                "client cursor",
+                (native_cursor.x, native_cursor.y),
+                "hit",
+                hit,
+                "native hit",
+                native_hit,
+                "style",
+                hex(frame.user32.GetWindowLongW(int(window.winId()), -16) & 0xFFFFFFFF),
+            )
+        print(
+            "Hover diagnostics:",
+            "window",
+            window.geometry(),
+            window.frameGeometry(),
+            "strip",
+            controller.strip.geometry(),
+            "strip global",
+            controller.strip.mapToGlobal(QPoint(2, 40)),
+            "cursor",
+            cursor,
+            "target",
+            QApplication.widgetAt(cursor),
+            "client target",
+            window.childAt(window.mapFromGlobal(cursor)),
+            "DPR",
+            window.devicePixelRatioF(),
+        )
+        raise
     qtbot.wait(450)
     dialog = SettingsDialog(window.plugins, "example.files", window)
     qtbot.addWidget(dialog)

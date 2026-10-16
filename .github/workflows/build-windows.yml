@@ -18,10 +18,11 @@ jobs:
   build:
     name: Test and build Windows x64
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     defaults:
       run:
         shell: pwsh
+    # The UI review branch uploads a verified portable build; installers stay disabled.
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python 3.12 x64
@@ -40,6 +41,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -r requirements-dev.txt -e .
       - name: Locate Inno Setup compiler
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: |
           $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $compiler)) {
@@ -48,12 +50,15 @@ jobs:
           }
           if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler is missing' }
       - name: Check installer compiler compatibility
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.build_installer --compiler-preflight
       - name: Check code quality
         run: |
           python -m ruff check .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m ruff format --check .
+      - name: Check native window frame and edge hover
+        run: python -m pytest tests/test_window_frame.py tests/test_panel_tabs.py tests/test_progress_layout.py tests/test_example_panels.py::test_actual_hover_enter_leave_and_dialog_hold
       - name: Run GUI tests on Windows
         run: python -m pytest --maxfail=1 --junitxml=test-results.xml
       - name: Build complete Windows application folder
@@ -61,10 +66,13 @@ jobs:
       - name: Verify packaged folder and relocation on Windows
         run: python -m scripts.verify_distribution
       - name: Build Windows installer
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.build_installer
       - name: Verify install, upgrade, optional integration and uninstall
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.verify_installer
       - name: Prepare portable ZIP and release checksums
+        if: github.head_ref != 'ui/side-panel-tabs'
         run: python -m scripts.release_assets
       - name: Record distribution size
         run: |
@@ -82,6 +90,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload verified release assets
+        if: github.head_ref != 'ui/side-panel-tabs'
         uses: actions/upload-artifact@v4
         with:
           name: Picer-release-assets

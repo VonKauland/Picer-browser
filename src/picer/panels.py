@@ -17,12 +17,23 @@ from PySide6.QtCore import (
     QTimer,
     QVariantAnimation,
 )
-from PySide6.QtGui import QColor, QCursor, QImage, QPainter, QPainterPath, QRegion
+from PySide6.QtGui import (
+    QColor,
+    QCursor,
+    QImage,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QRegion,
+)
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QApplication,
     QDockWidget,
     QGraphicsBlurEffect,
     QMenu,
+    QTabBar,
     QToolTip,
     QVBoxLayout,
     QWidget,
@@ -263,6 +274,120 @@ class PanelGrip(QWidget):
                 self.controller.dock.close()
 
 
+class PanelTab(QAbstractButton):
+    """Paint-only scaling leaves the narrow rail and content geometry stable."""
+
+    def __init__(self, surface, target):
+        super().__init__(surface.rail)
+        self.surface = surface
+        self.target = target
+        self.scale = 0.0
+        self.press_origin = None
+        self.dragging = False
+        self.setText(target.dock.windowTitle())
+        self.setToolTip(self.text() + " · 拖动排序或更换停靠侧")
+        self.setAccessibleName(self.text())
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(180)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.valueChanged.connect(self.animate)
+        self.clicked.connect(lambda: target.collection.activate_tab(target))
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.press_origin = event.globalPosition().toPoint()
+            self.dragging = False
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.press_origin is not None:
+            point = event.globalPosition().toPoint()
+            if (point - self.press_origin).manhattanLength() >= QApplication.startDragDistance():
+                self.dragging = True
+                self.setDown(False)
+                self.target.collection.show_drop_hint(self.target.collection.tab_drop_area(point))
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        dragged = self.dragging and event.button() == Qt.MouseButton.LeftButton
+        self.press_origin = None
+        self.dragging = False
+        self.target.collection.show_drop_hint(None)
+        if dragged:
+            self.setDown(False)
+            self.target.collection.drop_tab(self.target, event.globalPosition().toPoint())
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def animate(self, value):
+        self.scale = float(value)
+        self.update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.animation.stop()
+        self.scale = 0.0
+        self.animation.setStartValue(0.0)
+        self.animation.setEndValue(1.0)
+        self.animation.start()
+
+    def hideEvent(self, event):
+        self.animation.stop()
+        super().hideEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        center = QRectF(self.rect()).center()
+        painter.translate(center)
+        painter.scale(self.scale, self.scale)
+        painter.translate(-center)
+        selected = self.isChecked()
+        ratio = self.devicePixelRatioF()
+        background = QImage(self.size() * ratio, QImage.Format.Format_ARGB32_Premultiplied)
+        background.setDevicePixelRatio(ratio)
+        background.fill(Qt.GlobalColor.transparent)
+        layer = QPainter(background)
+        layer.setRenderHint(QPainter.RenderHint.Antialiasing)
+        layer.setBrush(
+            QColor("#858585" if selected else "#303033" if self.underMouse() else "#252628")
+        )
+        layer.setPen(QPen(QColor(colors_for(self)["accent"]), 1) if selected else Qt.PenStyle.NoPen)
+        layer.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 6, 6)
+        inward_left = self.surface.area == DOCK_AREAS["left"]
+        fade = QLinearGradient(0, 0, self.width(), 0)
+        fade.setColorAt(0, QColor(0, 0, 0, 0 if inward_left else 255))
+        fade.setColorAt(0.45 if inward_left else 0.55, QColor(0, 0, 0, 255))
+        fade.setColorAt(1, QColor(0, 0, 0, 255 if inward_left else 0))
+        layer.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        layer.fillRect(self.rect(), fade)
+        layer.end()
+        painter.drawImage(0, 0, background)
+        painter.setPen(QColor("#FFFFFF" if selected else "#ADADB2"))
+        font = painter.font()
+        font.setPixelSize(13)
+        painter.setFont(font)
+        # Each glyph owns a padded cell: no multiline layout can cross the outline.
+        for index, character in enumerate(self.text()):
+            cell = QRect(8, 10 + index * 18, self.width() - 16, 18)
+            painter.save()
+            painter.setClipRect(cell)
+            painter.drawText(cell, Qt.AlignmentFlag.AlignCenter, character)
+            painter.restore()
+
+
+class PanelRail(QWidget):
+    """Masked host overlay: only tabs/grip intercept the canvas, never the gaps."""
+
+    def __init__(self, host):
+        super().__init__(host)
+        self.setStyleSheet("background: transparent; border: none;")
+        self.hide()
+
+
 class DockSurface(GlassSurface):
     def __init__(self, host, content):
         super().__init__(host.glass)
@@ -272,11 +397,19 @@ class DockSurface(GlassSurface):
         layout = QVBoxLayout(self)
         layout.addWidget(content)
         self.grip = PanelGrip(self)
+        self.rail = PanelRail(host)
+        self.destroyed.connect(self.rail.deleteLater)
+        self.tabs = {}
 
     def arrange(self, area=None):
         if area is not None:
             self.area = area
         self.horizontal = self.area == DOCK_AREAS["bottom"]
+        stacked = bool(self.tabs) and not self.horizontal
+        parent = self.rail if stacked else self
+        if self.grip.parentWidget() is not parent:
+            self.grip.setParent(parent)
+            self.grip.show()
         if self.horizontal:
             height = 12
             self.layout().setContentsMargins(0, height, 0, 0)
@@ -290,8 +423,55 @@ class DockSurface(GlassSurface):
                 self.width() - 16 if left else 0, (self.height() - 44) // 2, 16, 44
             )
             self.grip.setCursor(Qt.CursorShape.SizeHorCursor)
+        top = 3
+        mask = QRegion()
+        for tab in self.tabs.values():
+            height = len(tab.text()) * 18 + 20
+            tab.setGeometry(0, top, 36, height)
+            mask |= QRegion(tab.geometry())
+            top += height + 6
+            tab.raise_()
+        if stacked:
+            self.grip.setGeometry(
+                10, min(max((self.height() - 44) // 2, top + 8), self.height() - 44), 16, 44
+            )
+            mask |= QRegion(self.grip.geometry())
+            host = self.backdrop.host
+            attached = self.window() is host
+            if attached:
+                left = self.area == DOCK_AREAS["left"]
+                origin = self.mapTo(host, QPoint(self.width() - 16 if left else -20, 0))
+                self.rail.setGeometry(origin.x(), origin.y(), 36, self.height())
+                self.rail.setMask(mask)
+            self.rail.setVisible(attached and self.isVisible())
+            self.rail.raise_()
+        else:
+            self.rail.hide()
         self.grip.raise_()
         self.grip.update()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.arrange()
+
+    def hideEvent(self, event):
+        self.rail.hide()
+        super().hideEvent(event)
+
+    def set_tabs(self, controllers, selected):
+        targets = {item.plugin_id: item for item in controllers}
+        for key in list(self.tabs):
+            if key not in targets:
+                tab = self.tabs.pop(key)
+                tab.hide()
+                tab.deleteLater()
+        for key, target in targets.items():
+            if key not in self.tabs:
+                self.tabs[key] = PanelTab(self, target)
+                self.tabs[key].show()
+            self.tabs[key].setChecked(target is selected)
+        self.tabs = {key: self.tabs[key] for key in targets}
+        self.arrange()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -478,6 +658,10 @@ class HiddenPanel(QObject):
             if type(value) is int and 80 <= value <= 4096:
                 self.extents[key] = value
         self.last_size = QSize(self.extents["width"], self.extents["height"])
+        order = layout.get("order", len(collection.controllers))
+        self.order = (
+            order if type(order) is int and 0 <= order <= 10000 else len(collection.controllers)
+        )
         self.area = (
             DOCK_AREAS["bottom"]
             if dock.property("progressPanel")
@@ -501,6 +685,15 @@ class HiddenPanel(QObject):
         self.size_timer.start(0)
 
     def eventFilter(self, obj, event):
+        if event.type() in (
+            QEvent.Type.Move,
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+            QEvent.Type.Hide,
+        ):
+            surface = self.surface or self.dock.widget()
+            if surface:
+                surface.arrange(self.area)
         if (
             event.type() == QEvent.Type.Resize
             and not self.dock.isHidden()
@@ -520,6 +713,8 @@ class HiddenPanel(QObject):
             self.collection.layout_strips()
 
     def visibility(self, visible):
+        if self.plugin_id in self.collection.controllers and not self.manager._panel_transition:
+            self.collection.set_side_fixed(self, not self.dock.isHidden())
         if visible:
             self.collapse(immediate=True)
         self.collection.layout_strips()
@@ -572,12 +767,15 @@ class HiddenPanel(QObject):
         ui["panel_layouts"][self.plugin_id] = {
             "area": next(name for name, area in DOCK_AREAS.items() if area == self.area),
             **self.extents,
+            "order": self.order,
         }
         self.manager._save()
 
     def pin(self):
+        self.collection.set_side_fixed(self, True)
         self.collapse(immediate=True)
         self.dock.show()
+        self.dock.raise_()
         self.restore_size()
         self.remember_layout()
         self.collection.layout_strips()
@@ -592,6 +790,12 @@ class HiddenPanel(QObject):
         transition = self.manager._panel_transition
         self.manager._panel_transition = True
         self.relocating = True
+        peers = [
+            c for c in self.collection.controllers.values() if c is not self and c.area == area
+        ]
+        if peers and area != self.area:
+            hidden = peers[0].dock.isHidden()
+            self.order = max(c.order for c in peers) + 1
         try:
             self.host.addDockWidget(area, self.dock)
             self.dock.setVisible(not hidden)
@@ -599,6 +803,7 @@ class HiddenPanel(QObject):
             self.manager._panel_transition = transition
             self.relocating = False
         self.restore_size()
+        self.collection.set_side_fixed(self, not hidden)
         self.remember_layout()
         self.collection.layout_strips()
 
@@ -801,6 +1006,9 @@ class HiddenPanel(QObject):
 
     def dispose(self):
         self.collapse(immediate=True)
+        surface = self.dock.widget()
+        if surface:
+            surface.set_tabs([], self)
         self.animation.stop()
         self.leave_timer.stop()
         self.size_timer.stop()
@@ -836,6 +1044,7 @@ class PanelHovers(QObject):
         super().__init__(host)
         self.host = host
         self.controllers = {}
+        self.binding_side = False
         self.drop_hint = DockDropHint(host)
         host.installEventFilter(self)
 
@@ -855,12 +1064,95 @@ class PanelHovers(QObject):
             controller.animate(controller.progress)
 
     def register(self, dock, plugin_id, manager):
-        self.controllers[plugin_id] = HiddenPanel(self, dock, plugin_id, manager)
+        controller = HiddenPanel(self, dock, plugin_id, manager)
+        peers = [c for c in self.controllers.values() if c.area == controller.area]
+        self.controllers[plugin_id] = controller
+        if peers and not dock.property("progressPanel"):
+            self.set_side_fixed(controller, not peers[0].dock.isHidden())
+        self.layout_strips()
+
+    def set_side_fixed(self, source, fixed):
+        if self.binding_side or source.manager._panel_transition:
+            return
+        self.binding_side = True
+        try:
+            for controller in tuple(self.controllers.values()):
+                if controller.area != source.area:
+                    continue
+                if controller.dock.isHidden() == fixed:
+                    controller.collapse(immediate=True)
+                    controller.dock.setVisible(fixed)
+                    if fixed:
+                        controller.restore_size()
+                controller.manager._remember_panel(controller.plugin_id)
+        finally:
+            self.binding_side = False
+
+    def tab_drop_area(self, global_position):
+        point = self.host.mapFromGlobal(global_position)
+        for controller in self.controllers.values():
+            surface = controller.dock.widget()
+            if surface and surface.rail.isVisible() and surface.rail.geometry().contains(point):
+                return controller.area
+        area = self.edge_at(point)
+        return area if area in (DOCK_AREAS["left"], DOCK_AREAS["right"]) else None
+
+    def normalize_sides(self):
+        """Migrate legacy/imported mixed modes without revealing fullscreen panels."""
+        for area in (DOCK_AREAS["left"], DOCK_AREAS["right"]):
+            group = sorted(
+                (c for c in self.controllers.values() if c.area == area), key=lambda c: c.order
+            )
+            if not group:
+                continue
+            source = group[0]
+            modes = source.manager.preferences["ui"].setdefault("panels", {})
+            fixed = modes.get(source.plugin_id, not source.dock.isHidden())
+            for controller in group:
+                modes[controller.plugin_id] = fixed
+            if not source.manager._fullscreen:
+                self.set_side_fixed(source, fixed)
+
+    def drop_tab(self, controller, global_position):
+        area = self.tab_drop_area(global_position)
+        if area is None or not (controller.dock.allowedAreas() & area):
+            return
+        # Capture the destination slot before moving/tabifying changes its geometry.
+        before = None
+        for peer in self.controllers.values():
+            surface = peer.dock.widget()
+            if peer.area == area and surface and surface.rail.isVisible():
+                if surface.rail.geometry().contains(self.host.mapFromGlobal(global_position)):
+                    local = surface.rail.mapFromGlobal(global_position)
+                    before = next(
+                        (
+                            tab.target
+                            for tab in surface.tabs.values()
+                            if tab is not None and local.y() < tab.geometry().center().y()
+                        ),
+                        None,
+                    )
+                    break
+        if controller.area != area:
+            controller.move_to(area)
+        group = sorted(
+            (c for c in self.controllers.values() if c.area == area), key=lambda c: c.order
+        )
+        if before is not controller:
+            group.remove(controller)
+            group.insert(group.index(before) if before in group else len(group), controller)
+        for index, item in enumerate(group):
+            item.order = index
+            item.remember_layout()
+        self.layout_strips()
+        if not controller.dock.isHidden():
+            self.activate_tab(controller)
 
     def unregister(self, plugin_id):
         controller = self.controllers.pop(plugin_id, None)
         if controller:
             controller.dispose()
+            self.layout_strips()
 
     def close_all(self):
         self.show_drop_hint(None)
@@ -926,7 +1218,46 @@ class PanelHovers(QObject):
         finally:
             self.laying_out = False
 
+    def activate_tab(self, controller):
+        for other in self.controllers.values():
+            if other.area == controller.area and other is not controller:
+                other.collapse(immediate=True)
+        if controller.dock.isHidden():
+            controller.reveal()
+        else:
+            controller.dock.raise_()
+        self.layout_strips()
+
+    def layout_tabs(self):
+        groups = {}
+        for controller in self.controllers.values():
+            if controller.area == DOCK_AREAS["bottom"]:
+                continue
+            record = controller.manager.records.get(controller.plugin_id)
+            if record is not None and record.state == "enabled":
+                groups.setdefault(controller.area, []).append(controller)
+        for controllers in groups.values():
+            controllers.sort(key=lambda c: c.order)
+            fixed = [c for c in controllers if not c.dock.isHidden()]
+            if len(fixed) > 1:
+                first = fixed[0].dock
+                for controller in fixed[1:]:
+                    if controller.dock not in self.host.tabifiedDockWidgets(first):
+                        self.host.tabifyDockWidget(first, controller.dock)
+            for controller in controllers:
+                surface = controller.surface or controller.dock.widget()
+                surface.set_tabs(
+                    fixed if len(fixed) > 1 and not controller.dock.isHidden() else [], controller
+                )
+        # Qt still owns tab selection/stack geometry; its native bottom tabs take no space.
+        for bar in self.host.findChildren(
+            QTabBar, options=Qt.FindChildOption.FindDirectChildrenOnly
+        ):
+            bar.setFixedHeight(0)
+            bar.hide()
+
     def _layout_strips(self):
+        self.layout_tabs()
         areas = {}
         for controller in self.controllers.values():
             if controller.dock.property("progressPanel"):
@@ -943,6 +1274,7 @@ class PanelHovers(QObject):
             if hidden:
                 areas.setdefault(controller.area, []).append(controller)
         for area, controllers in areas.items():
+            controllers.sort(key=lambda c: c.order)
             for index, controller in enumerate(controllers):
                 offset = (index - (len(controllers) - 1) / 2) * 96
                 if controller.dock.property("progressPanel"):
