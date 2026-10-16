@@ -615,6 +615,8 @@ class PluginManager(QObject):
                 dock.setVisible(not fullscreen and visible is not False)
         finally:
             self._panel_transition = False
+            if not fullscreen:
+                self.host.panel_hovers.normalize_sides()
             self.host.panel_hovers.layout_strips()
 
     def update_commands(self) -> None:

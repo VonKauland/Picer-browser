@@ -442,16 +442,20 @@ class ApplicationSettings(StyledDialog):
                     ui.setdefault("panel_layouts", {})[key] = {
                         name: layout[name] for name in ("area", "width", "height")
                     }
+                    if "order" in layout:
+                        ui["panel_layouts"][key]["order"] = layout["order"]
                     ui["panels"][key] = layout["fixed"]
                     controller = self.host.panel_hovers.controllers.get(key)
                     if controller:
                         controller.move_to(DOCK_AREAS[layout["area"]])
+                        controller.order = layout.get("order", controller.order)
                         controller.extents = {name: layout[name] for name in ("width", "height")}
                         controller.dock.setVisible(not self.manager._fullscreen and layout["fixed"])
                         controller.restore_size()
                         controller.remember_layout()
             finally:
                 self.manager._panel_transition = transition
+            self.host.panel_hovers.normalize_sides()
             self.host.panel_hovers.layout_strips()
             self.host.components.refresh_slots()
         self.manager._save()

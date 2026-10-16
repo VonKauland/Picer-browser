@@ -94,8 +94,17 @@ def validate_backup(data, host):
     for key, layout in panels.items():
         if not isinstance(key, str) or not IDENTIFIER.fullmatch(key):
             raise ValueError("面板名称无效。")
-        if not isinstance(layout, dict) or set(layout) != {"area", "width", "height", "fixed"}:
+        required = {"area", "width", "height", "fixed"}
+        if (
+            not isinstance(layout, dict)
+            or not required <= set(layout)
+            or set(layout) - required - {"order"}
+        ):
             raise ValueError("面板布局内容无效。")
+        if "order" in layout and (
+            type(layout["order"]) is not int or not 0 <= layout["order"] <= 10000
+        ):
+            raise ValueError("面板顺序无效。")
         if not isinstance(layout["area"], str) or layout["area"] not in DOCK_AREAS:
             raise ValueError("面板停靠位置无效。")
         minimum_height = 16 if layout["area"] == "bottom" else 80
@@ -143,6 +152,7 @@ def snapshot(host):
         panels[key] = {
             "area": next(name for name, area in DOCK_AREAS.items() if area == controller.area),
             **controller.extents,
+            "order": controller.order,
             "fixed": fixed.get(key, True) if isinstance(fixed, dict) else True,
         }
     data = {
