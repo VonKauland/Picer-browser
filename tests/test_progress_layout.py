@@ -111,7 +111,8 @@ def test_progress_is_compact_overlay_and_side_docks_reach_bottom(window, qtbot):
         assert not (dock.allowedAreas() & DOCK_AREAS["bottom"])
     window.resize(1500, 900)
     qtbot.wait(30)
-    assert progress.width() == 500
+    # Native Windows sizing may constrain 1500px to the CI monitor's track limit.
+    assert progress.width() == window.width() // 3
     assert abs(progress.geometry().center().x() - window.rect().center().x()) <= 1
 
 
