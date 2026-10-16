@@ -309,13 +309,6 @@ class MainWindow(QMainWindow):
         self.title_bar.arrange()
         self.window_frame = WindowFrame(self)
 
-    def nativeEvent(self, event_type, message):
-        frame = getattr(self, "window_frame", None)
-        result = frame.native_event(message) if frame else None
-        if result is not None:
-            return True, result
-        return super().nativeEvent(event_type, message)
-
     def showEvent(self, event):
         super().showEvent(event)
         frame = getattr(self, "window_frame", None)

@@ -100,6 +100,12 @@ def test_windows_real_hwnd_caption_edges_and_native_maximize(window, qtbot):
 
     rect = Rect()
     assert frame.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+    client_to_screen = frame.user32.ClientToScreen
+    client_to_screen.argtypes = [ctypes.c_void_p, ctypes.POINTER(Point)]
+    client_to_screen.restype = ctypes.c_int
+    origin = Point()
+    assert client_to_screen(hwnd, ctypes.byref(origin))
+    assert (origin.x, origin.y) == (rect.left, rect.top)
     msg = Message()
     msg.hwnd, msg.message = hwnd, 0x0084
     send = frame.user32.SendMessageW
@@ -117,9 +123,6 @@ def test_windows_real_hwnd_caption_edges_and_native_maximize(window, qtbot):
         round(caption.x() * window.devicePixelRatioF()),
         round(caption.y() * window.devicePixelRatioF()),
     )
-    client_to_screen = frame.user32.ClientToScreen
-    client_to_screen.argtypes = [ctypes.c_void_p, ctypes.POINTER(Point)]
-    client_to_screen.restype = ctypes.c_int
     assert client_to_screen(hwnd, ctypes.byref(physical))
     msg.lparam = (physical.y & 0xFFFF) << 16 | (physical.x & 0xFFFF)
     assert frame.native_event(ctypes.addressof(msg)) == 2

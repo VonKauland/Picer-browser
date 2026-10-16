@@ -3,8 +3,8 @@
 import ctypes
 import sys
 
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
-from PySide6.QtWidgets import QAbstractButton, QMenuBar, QWidget
+from PySide6.QtCore import QAbstractNativeEventFilter, QEvent, QObject, QPoint, Qt, QTimer
+from PySide6.QtWidgets import QAbstractButton, QApplication, QMenuBar, QWidget
 
 
 class Point(ctypes.Structure):
@@ -142,11 +142,29 @@ class ResizeHandle(QWidget):
         event.accept()
 
 
+class NativeEvents(QAbstractNativeEventFilter):
+    def __init__(self, frame):
+        super().__init__()
+        self.frame = frame
+
+    def nativeEventFilter(self, event_type, address):
+        frame = self.frame
+        if frame.closed or not address:
+            return False, 0
+        message = Message.from_address(int(address))
+        if not frame.hwnd or message.hwnd != frame.hwnd:
+            return False, 0
+        result = frame.native_event(address)
+        return (False, 0) if result is None else (True, result)
+
+
 class WindowFrame(QObject):
     def __init__(self, host):
         super().__init__(host)
         self.host = host
         self.closed = False
+        self.hwnd = 0
+        self.native_filter = None
         self.handles = {edges: ResizeHandle(host, edges) for edges in CURSORS}
         self.user32 = None
         if sys.platform == "win32":
@@ -178,12 +196,16 @@ class WindowFrame(QObject):
             ):
                 function = getattr(self.user32, name)
                 function.restype, function.argtypes = result, args
+            self.native_filter = NativeEvents(self)
+            QApplication.instance().installNativeEventFilter(self.native_filter)
         self.refresh = QTimer(self)
         self.refresh.setSingleShot(True)
         self.refresh.timeout.connect(self.sync)
         host.installEventFilter(self)
 
     def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.WinIdChange:
+            self.hwnd = int(self.host.effectiveWinId() or 0)
         if event.type() in {
             QEvent.Type.Show,
             QEvent.Type.Resize,
@@ -220,6 +242,7 @@ class WindowFrame(QObject):
             control.raise_()
         if self.user32 and host.isVisible() and not host.isFullScreen():
             hwnd = int(host.winId())
+            self.hwnd = hwnd
             old = self.user32.GetWindowLongW(hwnd, -16)
             # WS_OVERLAPPEDWINDOW enables OS sizing, caption dragging/Aero Snap and
             # native maximize/restore. NCCALCSIZE below keeps our own title bar.
@@ -312,3 +335,5 @@ class WindowFrame(QObject):
         self.closed = True
         self.refresh.stop()
         self.host.removeEventFilter(self)
+        if self.native_filter:
+            QApplication.instance().removeNativeEventFilter(self.native_filter)
