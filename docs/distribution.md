@@ -85,7 +85,7 @@ python -m scripts.release_assets
 
 构建使用 PyInstaller `--onedir --windowed --contents-directory _internal`，输出 `dist/Picer/`，再复制图标、示例插件、文档和数据目录。
 
-0.20.2 的体积优化仅移除 PyInstaller 自动带入的 `PySide6/opengl32sw.dll`。宿主使用 QWidget/QGraphicsView 光栅视口，不使用 OpenGL 控件；Python、Qt 主库、全部图片插件及 RAW/NumPy 库保留。`build/distribution-size.json` 记录清理前后每个文件的体积和明确移除项，作为 Windows 测试报告附件。实际 EXE 校验构建时记录的格式集合，逐项解码可用的静态图片，并执行 RAW、动画与界面测试；不把删除运行库本身视为验证通过。
+体积优化移除 PyInstaller 自动带入的 `PySide6/opengl32sw.dll`、未使用的 `qdirect2d.dll` 和 Qt 自带的非中英文翻译目录文件。宿主使用默认 Windows 平台的 QWidget/QGraphicsView 光栅视口，不使用 OpenGL 或 Direct2D 平台插件；保留 `qwindows`、离屏后端、中英文翻译、Python、Qt 主库、全部图片插件及 RAW/NumPy/FFmpeg 库。未知翻译模块和第三方插件资源不会被清理。ZIP 使用 Deflate 最高压缩级别，解压后的文件不变。`build/distribution-size.json` 记录清理前后每个文件的体积和明确移除项，构建日志同时输出文件清单。实际 EXE 校验构建时记录的格式集合，逐项解码可用的静态图片，并执行 RAW、动画与界面测试；不把删除文件本身视为验证通过。
 
 Windows CI 在临时目录复制完整软件，从无关工作目录启动 EXE，执行图片、三类组件、快捷位与全屏面板冒烟测试，检查实际配置、日志和缓存写入位置，然后迁移整个文件夹并再次启动，确认插件设置保留。最终上传原始干净的 `dist/`，测试写入的数据不会包含在分发包内。
 

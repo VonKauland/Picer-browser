@@ -715,6 +715,13 @@ def run(window, args, folder, done):
             assert set(expected) == supported_suffixes(), "A bundled image codec was lost"
             assert window.view.viewport().metaObject().className() == "QWidget"
             assert not (Path(sys._MEIPASS) / "PySide6" / "opengl32sw.dll").exists()
+            qt = Path(sys._MEIPASS) / "PySide6"
+            assert (qt / "plugins" / "platforms" / "qwindows.dll").is_file()
+            assert (qt / "plugins" / "platforms" / "qoffscreen.dll").is_file()
+            assert not (qt / "plugins" / "platforms" / "qdirect2d.dll").exists()
+            for locale in ("zh_CN", "zh_TW", "en"):
+                assert (qt / "translations" / f"qtbase_{locale}.qm").is_file()
+            assert not (qt / "translations" / "qtbase_de.qm").exists()
             print("Packaged raster viewport and complete pre-compaction format set passed")
         # Windows TEMP can contain 8.3 aliases (RUNNER~1); the Qt model and
         # viewer use resolved paths, so compare the same canonical directory.
