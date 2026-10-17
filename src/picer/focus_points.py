@@ -42,6 +42,9 @@ class FocusPoints:
         else:
             boxes = data.get("boxes", [])
             faces = data.get("faces", [])
+            eyes = data.get("eyes", [])
+            if not isinstance(eyes, (tuple, list)) or len(eyes) > 64:
+                raise ValueError("Invalid eye-region data")
             face_points = data.get("face_points", [])
             if not isinstance(faces, (tuple, list)) or len(faces) > 64:
                 raise ValueError("Invalid face-region data")
@@ -66,7 +69,7 @@ class FocusPoints:
             if not isinstance(boxes, (tuple, list)) or len(boxes) > 512:
                 raise ValueError("Invalid focus-point data")
             valid = []
-            for box in list(boxes) + list(faces) + markers:
+            for box in list(boxes) + list(faces) + list(eyes) + markers:
                 if (
                     not isinstance(box, (tuple, list))
                     or len(box) != 4

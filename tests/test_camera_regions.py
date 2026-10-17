@@ -15,6 +15,7 @@ from picer.camera_regions import (
     panasonic_regions,
     pentax_regions,
     raw_regions,
+    sigma_regions,
     sony_regions,
     tiff_regions,
 )
@@ -400,7 +401,7 @@ def test_standard_xmp_in_sigma_native_dng_does_not_claim_native_af():
     result = tiff_regions(bytes(root.data))
     assert result["boxes"] == []
     assert result["faces"][0] == pytest.approx((0.15, 0.3, 0.2, 0.4))
-    assert "样片" in result["message"]
+    assert not result.get("eyes")
 
 
 def test_canon_cr3_standard_xmp_uuid_faces(tmp_path):
@@ -433,3 +434,100 @@ def test_manual_and_gr_snap_modes_do_not_reuse_stale_af_locations():
         [(0x1006, 3, 4), (0x1200, 3, 1), (0x1203, 4, 1800), (0x1204, 4, 2400)],
     )
     assert not tiff_regions(data)["boxes"]
+
+
+@pytest.mark.parametrize(
+    "orientation,areas,eye",
+    [
+        (1, [4462, 2867, 577, 576], [0, 0, 0, 0]),
+        (6, [3570, 1530, 577, 577], [3123, 2945, 654, 654]),
+        (8, [4611, 3015, 280, 279], [5652, 3213, 684, 684]),
+        (
+            1,
+            [
+                4211,
+                2820,
+                1107,
+                679,
+                3105,
+                2820,
+                1107,
+                679,
+                3105,
+                3498,
+                1107,
+                678,
+                4211,
+                3498,
+                1107,
+                678,
+                5317,
+                2820,
+                1108,
+                679,
+                5317,
+                3498,
+                1108,
+                678,
+            ],
+            [0, 0, 0, 0],
+        ),
+    ],
+)
+def test_sigma_sample_absolute_offsets_and_oriented_overlay(
+    orientation, areas, eye, qtbot, tmp_path
+):
+    # Values transcribed from the four user-supplied ExifTool dumps. MakerNote
+    # payload pointers are absolute in the enclosing TIFF, as in those dumps.
+    root = Builder()
+    root.ifd([(271, 2, "SIGMA"), (272, 2, "SIGMA fp L"), (274, 3, orientation), (34665, 4, 0)])
+    exif = root.ifd([(40962, 4, 9520), (40963, 4, 6328), (37500, 7, b"x" * 80)])
+    struct.pack_into("<I", root.data, 8 + 2 + 3 * 12 + 8, exif)
+    start = len(root.data)
+    root.data.extend(b"SIGMA\0\0\0\x01\x04")
+    root.ifd([(6, 2, "AF"), (0x010F, 3, areas + [0] * (36 - len(areas))), (0x0066, 3, eye)])
+    struct.pack_into("<II", root.data, exif + 2 + 2 * 12 + 4, len(root.data) - start, start)
+    parsed = tiff_regions(bytes(root.data))
+    assert parsed["orientation"] == orientation
+    assert len(parsed["boxes"]) == len(areas) // 4
+    assert parsed["boxes"][0] == pytest.approx(
+        (areas[0] / 9520, areas[1] / 6328, areas[2] / 9520, areas[3] / 6328)
+    )
+    assert bool(parsed["eyes"]) == any(eye)
+    assert parsed["faces"] == []  # Eye records are not full face extents.
+    path = tmp_path / "sigma.dng"
+    path.write_bytes(root.data)
+    assert raw_regions(path) == parsed
+    host = MainWindow(load_examples=False, plugin_root=tmp_path / "state")
+    qtbot.addWidget(host)
+    host.current_path = path
+    host.view.image_item.setPixmap(QPixmap(6328, 9520) if orientation != 1 else QPixmap(9520, 6328))
+    try:
+        host.focus_points.set("test", parsed)
+        assert host.focus_points.item.isVisible()
+        assert host.focus_points.faces_item.isVisible() == any(eye)
+        if any(eye):
+            from picer.focus_points import oriented_point
+
+            x, y, w, h = parsed["eyes"][0]
+            expected = oriented_point(x + w / 2, y + h / 2, orientation)
+            rect = host.focus_points.faces_item.path().boundingRect()
+            assert rect.center().x() / 6328 == pytest.approx(expected[0])
+            assert rect.center().y() / 9520 == pytest.approx(expected[1])
+        host.focus_points.remove("test")
+        assert not host.focus_points.faces_item.isVisible()
+    finally:
+        host.close()
+
+
+def test_sigma_rejects_missing_malformed_outside_and_manual_focus():
+    valid = {6: "AF", 0x010F: [4462, 2867, 577, 576] + [0] * 32, 0x0066: [5652, 3213, 684, 684]}
+    assert all(sigma_regions(valid, 9520, 6328))
+    for notes in (
+        {},
+        {**valid, 6: "MF"},
+        {**valid, 0x010F: [1, 2, 3], 0x0066: [1]},
+        {**valid, 0x010F: [9500, 6300, 577, 576] + [0] * 32, 0x0066: [-1, 2, 3, 4]},
+    ):
+        assert sigma_regions(notes, 9520, 6328) == ([], [])
+    assert sigma_regions(valid, 0, 0) == ([], [])

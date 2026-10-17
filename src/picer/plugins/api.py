@@ -282,7 +282,7 @@ class PluginContext:
         return self._manager.host.animation.state
 
     def show_focus_points(self, data: dict | None) -> None:
-        """Display recorded AF boxes / face regions for this image; None removes them."""
+        """Display recorded AF boxes / face and eye regions for this image; None removes them."""
         self._check("image.read")
         self._check("ui.panels")
         if data is not None and not isinstance(data, dict):

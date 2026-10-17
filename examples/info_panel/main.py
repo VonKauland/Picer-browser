@@ -308,7 +308,9 @@ class Plugin:
 
     def update_focus(self):
         data = self.metadata.get("focus_points", {}) if self.metadata else {}
-        available = bool(data.get("boxes") or data.get("faces") or data.get("face_points"))
+        available = bool(
+            data.get("boxes") or data.get("faces") or data.get("face_points") or data.get("eyes")
+        )
         self.focus_switch.blockSignals(True)
         self.focus_switch.setChecked(
             available and bool(self.context.get_setting("show_focus_points", False))
@@ -316,9 +318,9 @@ class Plugin:
         self.focus_switch.blockSignals(False)
         self.focus_switch.setEnabled(available)
         self.focus_switch.setToolTip(
-            "实线显示记录的对焦区域，虚线显示人脸框；仅有中心记录时显示定位标记。"
+            "实线显示记录的对焦区域，虚线显示人脸／眼部识别框；仅有中心记录时显示定位标记。"
             if available
-            else data.get("message", "此照片未记录可识别的对焦点或人脸区域")
+            else data.get("message", "此照片未记录可识别的对焦点、人脸或眼部区域")
         )
         try:
             self.context.show_focus_points(

@@ -116,6 +116,14 @@ def maker_reader(tiff, root, exif, positions):
                 first = struct.unpack_from("<I", raw, 8)[0]
             reader = view(b"\0" * 8 + raw, endian, first + 8)
             return brand, reader, first + 8, 8
+    # fp/fp L samples use absolute enclosing-TIFF offsets, not MakerNote offsets.
+    model = str(root.get(272, "")).lower().replace(" ", "")
+    if (
+        "SIGMA" in make
+        and model in ("fp", "fpl", "sigmafp", "sigmafpl")
+        and raw.startswith(b"SIGMA\0\0\0\x01\x04")
+    ):
+        return "sigma", tiff, offset + 10, 0
     # Older makers use the enclosing TIFF offset base.
     if raw.startswith(b"Panasonic\0"):
         return "panasonic", tiff, offset + 12, 0
@@ -319,6 +327,22 @@ def ricoh_regions(notes, endian, width, height):
     return boxes, faces
 
 
+def sigma_regions(notes, width, height):
+    """fp/fp L sample mapping confirmed by the user; coordinates precede EXIF rotation."""
+    boxes, eyes = [], []
+    # Do not display a previous AF selection from a manual-focus exposure.
+    if str(notes.get(0x06, "")).strip().upper() != "AF":
+        return boxes, eyes
+    areas = sequence(notes.get(0x010F))
+    if len(areas) == 36:
+        for i in range(0, 36, 4):
+            boxes += rectangle(*areas[i : i + 4], width, height)
+    eye = sequence(notes.get(0x0066))
+    if len(eye) == 4:
+        eyes = rectangle(*eye, width, height)
+    return boxes, eyes
+
+
 def canon_regions(notes, model="", endian="<"):
     points = []
     data = words(notes.get(0x24), endian)
@@ -369,23 +393,17 @@ def regions_from_tiff(reader):
     if isinstance(packet, list) and all(isinstance(v, int) and 0 <= v <= 255 for v in packet):
         packet = bytes(packet)
     result["faces"] = xmp_faces(packet)
-    make = str(root.get(271, "")).upper()
-    if "SIGMA" in make and str(root.get(272, "")).lower().replace(" ", "") in (
-        "fp",
-        "fpl",
-        "sigmafp",
-        "sigmafpl",
-    ):
-        result["message"] = (
-            "适马 fp／fp L 的原生对焦点记录尚待样片确认；可显示文件内已有的标准人脸区域。"
-        )
     try:
         fields = maker_reader(reader, root, exif, {**root_positions, **positions})
         if not fields:
             return result
         brand, maker, first, base = fields
         notes, _ = maker.ifd(first, base=base)
-        if brand == "canon":
+        eyes = []
+        if brand == "sigma":
+            boxes, eyes = sigma_regions(notes, width, height)
+            faces = []
+        elif brand == "canon":
             canon = canon_regions(notes, str(root.get(272, "")), maker.endian)
             boxes, faces = canon["boxes"], canon["faces"]
         elif brand == "nikon":
@@ -409,6 +427,7 @@ def regions_from_tiff(reader):
                 points = [(data[2] / 100, data[3] / 100)]
         result.update(
             boxes=boxes[:512],
+            eyes=eyes[:64],
             faces=(faces + result["faces"])[:64],
             face_points=[(x, y) for x, y in points if 0 <= x <= 1 and 0 <= y <= 1],
         )

@@ -227,7 +227,7 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 
 `request_metadata` 保留原 `exif` 字典，并增加 `exif_sections`：`基础信息` 为标签 / 值映射，`详细信息` 为分组 / 标签 / 值映射。无相机标签的图片不显示 EXIF 区域，缺少个别字段显示 `未记录`。RAW 标签解析独立于像素解码，无法生成直方图时仍可返回相机信息与警告。
 
-`focus_points` 保留 `boxes`（最多 512 个归一化 `x, y, width, height`）和 EXIF `orientation`，新增 `faces`（最多 64 个同格式人脸框）与 `face_points`（最多 64 个归一化 `x, y` 人脸中心）。`show_focus_points` 向后兼容只有 `boxes` 的 API v1 数据。对焦区域显示实线，人脸区域显示虚线；只有中心的记录显示小型虚线定位标记。没有可识别记录时返回空数组，不推测中心。CR3 按容器边界读取 CMT1–CMT4，其他 RAW 定点读取元数据或内嵌 JPEG 头部，不扫描像素数据。切换图片、修改图像几何或停用组件时清理，不改写像素。[厂商与结构覆盖范围](camera-regions.md) 包含尚未支持的机型／记录说明，尤其适马 fp／fp L 原生焦点仍待样片确认。
+`focus_points` 保留 `boxes`（最多 512 个归一化 `x, y, width, height`）和 EXIF `orientation`，新增 `faces`（最多 64 个同格式人脸框）、`eyes`（最多 64 个同格式眼部识别框）与 `face_points`（最多 64 个归一化 `x, y` 人脸中心）。`show_focus_points` 向后兼容只有 `boxes` 的 API v1 数据。对焦区域显示实线，人脸及眼部区域显示虚线；只有中心的记录显示小型虚线定位标记。没有可识别记录时返回空数组，不推测中心。CR3 按容器边界读取 CMT1–CMT4，其他 RAW 定点读取元数据或内嵌 JPEG 头部，不扫描像素数据。切换图片、修改图像几何或停用组件时清理，不改写像素。[厂商与结构覆盖范围](camera-regions.md) 包含尚未支持的机型／记录说明，适马 fp／fp L 的样本映射及实际验证范围。
 
 
 `request_metadata` 还可返回 `raw_camera_preview_available` 和 `ai_generation`。
