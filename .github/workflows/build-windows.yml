@@ -25,6 +25,15 @@ jobs:
     # The UI review branch uploads a verified portable build; installers stay disabled.
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      # Only explicitly marked PR previews skip verification; main/release CI stays intact.
+      - name: Select explicitly requested preview build
+        id: mode
+        run: |
+          $message = git show -s --format=%B '${{ github.event.pull_request.head.sha || github.sha }}'
+          $preview = '${{ github.event_name }}' -eq 'pull_request' -and ($message -join "`n").Contains('[portable-preview]')
+          "preview_only=$($preview.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
       - name: Set up Python 3.12 x64
         uses: actions/setup-python@v5
         with:
@@ -41,7 +50,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -r requirements-dev.txt -e .
       - name: Locate Inno Setup compiler
-        if: github.head_ref != 'ui/side-panel-tabs'
+        if: github.head_ref != 'ui/side-panel-tabs' && steps.mode.outputs.preview_only != 'true'
         run: |
           $compiler = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (-not (Test-Path $compiler)) {
@@ -50,29 +59,33 @@ jobs:
           }
           if (-not (Test-Path $compiler)) { throw 'Inno Setup compiler is missing' }
       - name: Check installer compiler compatibility
-        if: github.head_ref != 'ui/side-panel-tabs'
+        if: github.head_ref != 'ui/side-panel-tabs' && steps.mode.outputs.preview_only != 'true'
         run: python -m scripts.build_installer --compiler-preflight
       - name: Check code quality
+        if: steps.mode.outputs.preview_only != 'true'
         run: |
           python -m ruff check .
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m ruff format --check .
       - name: Check native window frame and edge hover
-        run: python -m pytest tests/test_window_frame.py tests/test_panel_tabs.py tests/test_progress_layout.py tests/test_example_panels.py::test_actual_hover_enter_leave_and_dialog_hold
+        if: steps.mode.outputs.preview_only != 'true'
+        run: python -m pytest tests/test_window_frame.py tests/test_panel_tabs.py tests/test_progress_layout.py tests/test_image_manager.py tests/test_window.py::test_equal_colored_window_controls_and_maximize_restore tests/test_example_panels.py::test_actual_hover_enter_leave_and_dialog_hold
       - name: Run GUI tests on Windows
+        if: steps.mode.outputs.preview_only != 'true'
         run: python -m pytest --maxfail=1 --junitxml=test-results.xml
       - name: Build complete Windows application folder
         run: python -m scripts.build_windows
       - name: Verify packaged folder and relocation on Windows
+        if: steps.mode.outputs.preview_only != 'true'
         run: python -m scripts.verify_distribution
       - name: Build Windows installer
-        if: github.head_ref != 'ui/side-panel-tabs'
+        if: github.head_ref != 'ui/side-panel-tabs' && steps.mode.outputs.preview_only != 'true'
         run: python -m scripts.build_installer
       - name: Verify install, upgrade, optional integration and uninstall
-        if: github.head_ref != 'ui/side-panel-tabs'
+        if: github.head_ref != 'ui/side-panel-tabs' && steps.mode.outputs.preview_only != 'true'
         run: python -m scripts.verify_installer
       - name: Prepare portable ZIP and release checksums
-        if: github.head_ref != 'ui/side-panel-tabs'
+        if: github.head_ref != 'ui/side-panel-tabs' && steps.mode.outputs.preview_only != 'true'
         run: python -m scripts.release_assets
       - name: Record distribution size
         run: |
@@ -82,15 +95,27 @@ jobs:
           "Before: $($sizeReport.before.bytes) bytes; after: $($sizeReport.after.bytes) bytes; saved: $($sizeReport.saved_bytes) bytes"
           "Picer folder: $($files.Count) files, $([math]::Round($bytes / 1MB, 2)) MiB" >> $env:GITHUB_STEP_SUMMARY
       - name: Upload complete Windows application folder
+        if: steps.mode.outputs.preview_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Picer-windows-x64
+          compression-level: 9
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload requested preview without running tests
+        if: steps.mode.outputs.preview_only == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Picer-windows-x64-preview
+          compression-level: 9
           path: dist/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
       - name: Upload verified release assets
-        if: github.head_ref != 'ui/side-panel-tabs'
+        if: github.head_ref != 'ui/side-panel-tabs' && steps.mode.outputs.preview_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Picer-release-assets
@@ -98,7 +123,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Upload test report
-        if: always()
+        if: always() && steps.mode.outputs.preview_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: windows-test-results

@@ -79,7 +79,10 @@ class NavigationTabs(QTabBar):
         self.setUsesScrollButtons(False)
         self.setMouseTracking(True)
         self.setAccessibleName("文件浏览位置选项卡")
-        for symbol, label in (("folder", "文件"), ("star", "快速访问"), ("history", "历史记录")):
+        self.symbols = ("folder", "star", "history", "network")
+        for symbol, label in zip(
+            self.symbols, ("文件", "快速访问", "历史记录", "网络位置"), strict=False
+        ):
             index = self.addTab("")
             icons = (ui_icon(symbol, "#A2A2A6"), ui_icon(symbol, "#E8FF59"))
             self.icons.append(icons)
@@ -89,7 +92,7 @@ class NavigationTabs(QTabBar):
         self.setStyleSheet("QTabBar { background: transparent; border: none; }")
 
     def set_accent(self, color):
-        for index, symbol in enumerate(("folder", "star", "history")):
+        for index, symbol in enumerate(self.symbols):
             self.icons[index] = (self.icons[index][0], ui_icon(symbol, color))
         self.update()
 

@@ -14,7 +14,7 @@ from PySide6.QtGui import (
 )
 
 
-def folder_icon(pictures=False, preview=None):
+def folder_icon(pictures=False, preview=None, *, network=False):
     size = 128
     image = QImage(size, size, QImage.Format.Format_RGBA8888)
     image.fill(Qt.GlobalColor.transparent)
@@ -38,6 +38,27 @@ def folder_icon(pictures=False, preview=None):
     painter.setBrush(gradient)
     painter.setPen(QPen(QColor("#A0A0A4"), 1.5))
     painter.drawPath(back)
+    if network:
+        # The enlarged globe rises above the rear sleeve, with its lower
+        # hemisphere softened by the same glass pass as the existing cards.
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor("#E5E5E8"), 2.8))
+        globe = QRectF(38, 6, 78, 78)
+        painter.drawEllipse(globe)
+        painter.drawEllipse(QRectF(58, 6, 38, 78))
+        painter.drawLine(38, 45, 116, 45)
+        for y, bend in ((26, 5), (64, -5)):
+            latitude = QPainterPath()
+            latitude.moveTo(43, y)
+            latitude.quadTo(77, y + bend, 111, y)
+            painter.drawPath(latitude)
+    else:
+        paint_card(painter, pictures, preview)
+    painter.end()
+    return glass_sleeve(image, size)
+
+
+def paint_card(painter, pictures, preview):
     painter.setPen(Qt.PenStyle.NoPen)
     card = QRectF(52, 34, 54, 68)
     painter.setBrush(QColor("#DDDDDF"))
@@ -74,7 +95,9 @@ def folder_icon(pictures=False, preview=None):
     else:
         for y in (43, 54, 65, 76):
             painter.drawRoundedRect(QRectF(60, y, 36, 5), 2.5, 2.5)
-    painter.end()
+
+
+def glass_sleeve(image, size):
     blurred = Image.frombytes("RGBA", (size, size), bytes(image.bits())).filter(
         ImageFilter.GaussianBlur(3.5)
     )

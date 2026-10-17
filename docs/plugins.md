@@ -133,6 +133,8 @@ class Plugin:
 | image.read | `image_paths()` | 当前目录顺序的 Path 元组快照 |
 | image.read | `readable_suffixes()` | 用户当前启用格式的 frozenset，例如 `{'.png', '.jpg'}` |
 | image.read + tasks | `request_metadata(callback)` | 后台读取原图元数据，丢弃过期结果 |
+| image.read + ui.panels | `show_focus_points(data)` | 当前原图的归一化合焦框；传 `None` 移除，停用组件时自动清理 |
+| image.read + ui.panels | `set_raw_camera_preview(enabled)` | 切换 RAW 内嵌机内预览，停用组件时撤销；编辑未保存时拒绝切换 |
 | ui.panels | `frosted_surface(parent, popup=False)` | 创建共享玻璃界面；嵌在固定面板内时不透明，自动隐藏或弹出窗时使用毛玻璃 |
 | ui.panels | `add_panel(widget, area="right")` | 仅面板类，注册一个停靠面板；普通面板支持 left/right；panel_role: progress 仅 bottom，停用时删除 |
 | ui.commands | `add_command(id, label, callback, shortcut="", requires_image=True, menu="插件")` | 注册单功能动作，可传入 icon=QIcon；省略或传入空图标时由宿主提供默认图标；停用时删除，宿主皮肤保留外部图标 |
@@ -224,6 +226,18 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 ### 结构化 EXIF（0.13）
 
 `request_metadata` 保留原 `exif` 字典，并增加 `exif_sections`：`基础信息` 为标签 / 值映射，`详细信息` 为分组 / 标签 / 值映射。无相机标签的图片不显示 EXIF 区域，缺少个别字段显示 `未记录`。RAW 标签解析独立于像素解码，无法生成直方图时仍可返回相机信息与警告。
+
+`focus_points` 保留 `boxes`（最多 512 个归一化 `x, y, width, height`）和 EXIF `orientation`，新增 `faces`（最多 64 个同格式人脸框）、`eyes`（最多 64 个同格式眼部识别框）与 `face_points`（最多 64 个归一化 `x, y` 人脸中心）。`show_focus_points` 向后兼容只有 `boxes` 的 API v1 数据。对焦区域显示实线，人脸及眼部区域显示虚线；只有中心的记录显示小型虚线定位标记。没有可识别记录时返回空数组，不推测中心。CR3 按容器边界读取 CMT1–CMT4，其他 RAW 定点读取元数据或内嵌 JPEG 头部，不扫描像素数据。切换图片、修改图像几何或停用组件时清理，不改写像素。[厂商与结构覆盖范围](camera-regions.md) 包含尚未支持的机型／记录说明，适马 fp／fp L 的样本映射及实际验证范围。
+
+
+`request_metadata` 还可返回 `raw_camera_preview_available` 和 `ai_generation`。
+前者表示 RAW 有可读取的内嵌相机 JPEG / 位图；`set_raw_camera_preview(bool)` 切换该效果与 RAW 解码，
+两种模式缓存隔离，停用面板时撤销。内嵌预览的分辨率由相机决定，缺失时使用 RAW 解码。
+`ai_generation` 为 `source`、`message` 和 `fields` 标签 / 值列表，仅依据文件内嵌的生成记录识别
+Stable Diffusion / ComfyUI，不分析画面推测来源，不执行工作流或读取其引用的模型文件。
+对焦标记保留原记录中心，显示宽高为记录区域的三分之一。
+视频后缀包含在 `readable_suffixes()` 中，仅支持带毛玻璃胶片边框的静态封面；
+缩略图仍经过同一个服务和缓存，不创建播放器或音频输出。图片专用组件可排除 `picer.video.VIDEO_SUFFIXES`。
 
 ### 共享缩略图缓存（0.14 起，API v1 兼容扩展）
 

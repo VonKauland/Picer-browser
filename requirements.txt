@@ -3,3 +3,4 @@ Pillow==11.3.0
 rawpy==0.25.1
 numpy==2.2.6
 ExifRead==3.5.1
+av==16.1.0

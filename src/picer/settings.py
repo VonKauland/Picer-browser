@@ -274,6 +274,10 @@ class ApplicationSettings(StyledDialog):
         button.clicked.connect(self.clear_cache)
         card.body.addWidget(button)
         layout.addWidget(card)
+        from picer.plugin_storage import PluginStorage
+
+        self.plugin_storage = PluginStorage(self)
+        layout.addWidget(self.plugin_storage)
         card = Card("日志")
         button = QPushButton("打开日志目录")
         button.clicked.connect(

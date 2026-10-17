@@ -175,6 +175,11 @@ class WindowFrame(QObject):
                     ],
                 ),
                 ("GetWindowRect", ctypes.c_int, [ctypes.c_void_p, ctypes.POINTER(Rect)]),
+                (
+                    "SendMessageW",
+                    ctypes.c_ssize_t,
+                    [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_size_t, ctypes.c_ssize_t],
+                ),
                 ("ScreenToClient", ctypes.c_int, [ctypes.c_void_p, ctypes.POINTER(Point)]),
                 ("MonitorFromWindow", ctypes.c_void_p, [ctypes.c_void_p, ctypes.c_uint]),
                 ("GetMonitorInfoW", ctypes.c_int, [ctypes.c_void_p, ctypes.POINTER(MonitorInfo)]),
@@ -290,6 +295,21 @@ class WindowFrame(QObject):
             for control in (controller.strip, controller.indicator):
                 if control is not None and control.isVisible():
                     yield control
+
+    def toggle_maximized(self):
+        host = self.host
+        if self.user32 and host.isVisible() and not host.isFullScreen() and not self.closed:
+            self.sync()
+            # Use the same system command as a native caption double-click.
+            # Qt's frameless showMaximized path can bypass Windows' saved placement,
+            # which the native caption drag needs to restore the previous size.
+            self.user32.SendMessageW(
+                int(host.winId()), 0x0112, 0xF120 if host.isMaximized() else 0xF030, 0
+            )
+        elif host.isMaximized():
+            host.showNormal()
+        else:
+            host.showMaximized()
 
     def edge_control_at(self, point):
         return any(

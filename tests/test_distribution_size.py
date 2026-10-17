@@ -11,6 +11,18 @@ def test_compaction_preserves_all_other_files_and_is_idempotent(tmp_path):
     files = (
         "Picer.exe",
         "_internal/PySide6/Qt6Gui.dll",
+        "_internal/PySide6/plugins/platforms/qwindows.dll",
+        "_internal/PySide6/plugins/platforms/qoffscreen.dll",
+        "_internal/PySide6/plugins/platforms/qdirect2d.dll",
+        "_internal/PySide6/translations/qtbase_zh_CN.qm",
+        "_internal/PySide6/translations/qtbase_zh_TW.qm",
+        "_internal/PySide6/translations/qt_en.qm",
+        "_internal/PySide6/translations/qtbase_en_GB.qm",
+        "_internal/PySide6/translations/qtbase_de.qm",
+        "_internal/PySide6/translations/qt_help_ja.qm",
+        "_internal/PySide6/translations/qt_fr.qm",
+        "_internal/PySide6/translations/unknown_fr.qm",
+        "plugins/external/qtbase_de.qm",
         "_internal/PySide6/plugins/imageformats/qwebp.dll",
         "_internal/PySide6/plugins/imageformats/qtiff.dll",
         "_internal/rawpy/_rawpy.pyd",
@@ -32,15 +44,20 @@ def test_compaction_preserves_all_other_files_and_is_idempotent(tmp_path):
     }
     report = compact_distribution(tmp_path)
     assert report["before"] == before
-    assert len(report["removed"]) == 1
-    removed = report["removed"][0]
-    assert removed["path"] == "_internal/PySide6/opengl32sw.dll"
-    assert report["saved_bytes"] == removed["bytes"] > 0
+    removed = {file["path"] for file in report["removed"]}
+    assert removed == {
+        "_internal/PySide6/opengl32sw.dll",
+        "_internal/PySide6/plugins/platforms/qdirect2d.dll",
+        "_internal/PySide6/translations/qtbase_de.qm",
+        "_internal/PySide6/translations/qt_help_ja.qm",
+        "_internal/PySide6/translations/qt_fr.qm",
+    }
+    assert report["saved_bytes"] == sum(file["bytes"] for file in report["removed"]) > 0
     for file in report["after"]["files"]:
         assert (
             hashlib.sha256((tmp_path / file["path"]).read_bytes()).digest() == hashes[file["path"]]
         )
-    assert len(report["after"]["files"]) == len(files) - 1
+    assert len(report["after"]["files"]) == len(files) - len(removed)
     repeated = compact_distribution(tmp_path)
     assert repeated["removed"] == [] and repeated["saved_bytes"] == 0
     assert repeated["before"] == repeated["after"] == report["after"]

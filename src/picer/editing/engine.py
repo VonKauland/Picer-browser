@@ -319,7 +319,7 @@ def fingerprint(path):
     return stat.st_mtime_ns, stat.st_size, stat.st_ino
 
 
-def save_image(path, state, expected, *, overwrite=False, token=None):
+def save_image(path, state, expected, *, overwrite=False, token=None, camera_preview=False):
     """Decode original resolution, render once, then atomically commit beside source."""
     path = Path(path)
     if fingerprint(path) != expected:
@@ -329,7 +329,7 @@ def save_image(path, state, expected, *, overwrite=False, token=None):
     fmt = SAVE_FORMATS.get(path.suffix.lower()) if overwrite else "PNG"
     if fmt is None:
         raise ValueError("此格式仅支持保存 PNG 副本")
-    image = read_image(path, token=token)
+    image = read_image(path, token=token, camera_preview=camera_preview)
     output, _ = render(to_pillow(image), state, token=token)
     kwargs = {}
     try:

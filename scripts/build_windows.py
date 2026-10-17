@@ -61,7 +61,7 @@ def prepare_distribution(application: Path, assets: Path, *, version: str) -> No
         "plugins：功能与面板组件；skins：已安装皮肤；cache：可再生成的缓存；config：设置；logs：日志。\n"
         "assets/icons：图标资源；_internal：必需运行库，请勿删除。\n"
         "examples 提供文件浏览器、图片信息、浏览进度及 macOS 皮肤。\n"
-        "启动时默认安装；图片管理、临时编辑及皮肤默认关闭，其他面板与功能默认启用。\n"
+        "启动时默认安装；图片管理、简易编辑及皮肤默认关闭，其他面板与功能默认启用。\n"
         "顶栏 5 个快捷位可右键配置；毛玻璃面板隐藏后悬停边缘细条即可展开。\n"
         "三点条右键自动隐藏，侧面板拖动调宽、Shift 拖动左右换边。\n"
         "点击隐藏细条靠边固定；侧面板拖动细条左右换边并保持隐藏。\n"
@@ -152,12 +152,18 @@ def main() -> None:
             "PySide6.QtNetwork",
             "--collect-submodules",
             "picer.editing",
+            "--hidden-import",
+            "ctypes.wintypes",
+            "--hidden-import",
+            "picer.file_drag",
             "--copy-metadata",
             "rawpy",
             "--copy-metadata",
             "numpy",
             "--copy-metadata",
             "ExifRead",
+            "--copy-metadata",
+            "av",
             "--add-data",
             str(bundles) + ";picer/bundles",
             "--paths",
@@ -176,6 +182,7 @@ def main() -> None:
         f"Distribution: {report['before']['bytes']} -> {report['after']['bytes']} bytes; "
         f"saved {report['saved_bytes']} bytes; removed {report['removed']}"
     )
+    print("DISTRIBUTION_INVENTORY=" + json.dumps(report["after"], separators=(",", ":")))
 
 
 if __name__ == "__main__":

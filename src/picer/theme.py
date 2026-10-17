@@ -65,6 +65,8 @@ QSlider::handle:vertical { background: #E8FF59; height: 14px;
 border: none; margin: 0 -5px; border-radius: 7px; }
 QSlider::handle:disabled { background: #67676D; }
 QScrollBar { background: transparent; width: 8px; height: 8px; }
+QWidget[pluginSurface="true"] QScrollBar:vertical { width: 12px; margin-left: 4px; }
+QWidget[pluginSurface="true"] QScrollBar:horizontal { height: 12px; margin-top: 4px; }
 QScrollBar::handle { background: #454549; border-radius: 4px;
 min-height: 24px; min-width: 24px; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }

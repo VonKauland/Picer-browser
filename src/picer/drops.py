@@ -22,6 +22,10 @@ class ImageDropTarget(QObject):
             QEvent.Type.Drop,
         ):
             return False
+        source = event.source()
+        if source is not None and source.property("outboundImageFiles"):
+            event.ignore()
+            return True
         paths = [
             Path(url.toLocalFile())
             for url in event.mimeData().urls()

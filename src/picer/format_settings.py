@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QWi
 
 from picer.imaging import RAW_SUFFIXES, supported_suffixes
 from picer.ui import Card, Toggle
+from picer.video import VIDEO_SUFFIXES
 from picer.windows_integration import WindowsIntegration, open_default_apps
 
 
@@ -18,8 +19,9 @@ class FormatSelection(QWidget):
         self.buttons = {}
         self.unknown = []
         for group, extensions in (
-            ("常用与其他图片", supported_suffixes() - RAW_SUFFIXES),
+            ("常用与其他图片", supported_suffixes() - RAW_SUFFIXES - VIDEO_SUFFIXES),
             ("相机 RAW", RAW_SUFFIXES),
+            ("视频（仅静态预览）", VIDEO_SUFFIXES),
         ):
             row = layout.rowCount()
             layout.addWidget(QLabel(group), row, 0, 1, 3)

@@ -1,7 +1,7 @@
 {
   "id": "example.editor",
-  "name": "临时编辑",
-  "version": "1.0.0",
+  "name": "简易编辑",
+  "version": "1.1.0",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",

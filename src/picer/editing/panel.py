@@ -115,6 +115,7 @@ class EditingPanel(QWidget):
             self.section(key, title)
         self.stack.addStretch()
         footer = QHBoxLayout()
+        footer.setContentsMargins(0, 0, 8, 8)
         self.status = QLabel("临时预览")
         self.status.setWordWrap(True)
         self.status.setObjectName("muted")

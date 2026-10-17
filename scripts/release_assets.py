@@ -14,7 +14,7 @@ def archive_portable(application, output):
         raise ValueError("The portable application is incomplete")
     output.mkdir(parents=True, exist_ok=True)
     target = output / f"Picer-{metadata['version']}-windows-x64-portable.zip"
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for file in sorted(application.rglob("*")):
             if file.is_file():
                 archive.write(file, (Path("Picer") / file.relative_to(application)).as_posix())

@@ -1,8 +1,8 @@
 """Virtualized tiles: pixels come exclusively from the host thumbnail service."""
 
-from PySide6.QtCore import QAbstractListModel, QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QRadialGradient
-from PySide6.QtWidgets import QListView, QStyledItemDelegate
+from PySide6.QtCore import QAbstractListModel, QEvent, QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
+from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate
 
 from picer.annotations import CATEGORIES
 from picer.ui import colors_for
@@ -42,6 +42,10 @@ class PhotoGrid(QListView):
         self.setSpacing(0)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("QListView { border: none; background: transparent; }")
+        self.arrange_timer = QTimer(self)
+        self.arrange_timer.setSingleShot(True)
+        self.arrange_timer.timeout.connect(self.arrange)
+        self.viewport().installEventFilter(self)
         self.verticalScrollBar().valueChanged.connect(lambda _: owner.queue_load())
         self.setItemDelegate(PhotoDelegate(owner, self))
 
@@ -49,11 +53,24 @@ class PhotoGrid(QListView):
         super().resizeEvent(event)
         self.arrange()
 
+    def eventFilter(self, obj, event):
+        if obj is self.viewport() and event.type() == QEvent.Type.Resize:
+            # Scrollbar visibility changes the viewport without resizing QListView.
+            # Recompute after Qt settles its wrapping and scrollbar geometry.
+            self.arrange_timer.start(0)
+        return super().eventFilter(obj, event)
+
     def arrange(self):
         columns = max(1, min(4, round(200 / self.owner.size.value())))
-        # QListView reserves the potential vertical scrollbar while wrapping,
-        # even before it becomes visible. Leave that gutter in the cell budget.
-        available = self.viewport().width() - self.verticalScrollBar().sizeHint().width()
+        # Match QListView's wrapping budget: QSS margins contribute to the style
+        # extent even when sizeHint reports a narrower scrollbar. Using the live
+        # viewport here would also make cells oscillate as the bar appears/hides.
+        available = self.maximumViewportSize().width()
+        bar = self.verticalScrollBar()
+        if self.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded and not (
+            self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollView_ScrollBarOverlap, None, bar)
+        ):
+            available -= self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, bar)
         width = max(48, (available - 2) // columns)
         size = QSize(width, round(width * 0.68) + 25)
         if self.gridSize() != size:
@@ -83,25 +100,17 @@ class PhotoDelegate(QStyledItemDelegate):
         painter.setPen(QPen(QColor(colors["accent"]), 1) if selected else Qt.PenStyle.NoPen)
         painter.setBrush(QColor(colors["hover"]) if selected else Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(rect, 6, 6)
-        clip = QPainterPath()
-        clip.addRoundedRect(photo, 4, 4)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#38383B"))
+        painter.drawRoundedRect(photo, 4, 4)
         painter.save()
-        painter.setClipPath(clip)
-        painter.fillRect(photo, QColor("#38383B"))
         image = owner.pixels.get(key)
         if image is not None and not image.isNull():
-            source = QRectF(image.rect())
-            ratio = photo.width() / max(1, photo.height())
-            if source.width() / source.height() > ratio:
-                width = source.height() * ratio
-                source.setLeft((image.width() - width) / 2)
-                source.setWidth(width)
-            else:
-                height = source.width() / ratio
-                source.setTop((image.height() - height) / 2)
-                source.setHeight(height)
+            scale = min(photo.width() / image.width(), photo.height() / image.height())
+            target = QRectF(0, 0, image.width() * scale, image.height() * scale)
+            target.moveCenter(photo.center())
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            painter.drawImage(photo, image, source)
+            painter.drawImage(target, image, QRectF(image.rect()))
         mark = owner.notes.get(key, {})
         color = mark.get("color")
         if color in PALETTE:

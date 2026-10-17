@@ -7,7 +7,7 @@ from pathlib import Path
 from threading import Event, Thread
 from time import sleep
 
-from PIL import Image
+from PIL import Image, PngImagePlugin
 from PySide6.QtCore import QElapsedTimer, QMimeData, QPoint, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QColor,
@@ -28,7 +28,14 @@ from picer.panels import DOCK_AREAS
 from picer.plugins.dialog import PluginDialog
 from picer.progress_ring import RING_SIZE
 from picer.settings import ApplicationSettings
-from picer.smoke_samples import make_animation, make_dng, make_stills
+from picer.smoke_samples import (
+    make_animation,
+    make_cr3_metadata,
+    make_dng,
+    make_psd,
+    make_stills,
+    make_video,
+)
 from picer.ui import RoundedSlider, colors_for
 
 
@@ -530,6 +537,22 @@ def verify_media(window):
     directory = window.paths_layout.cache / "smoke-media"
     directory.mkdir(parents=True, exist_ok=True)
     previous = window.current_path
+    psd = make_psd(directory / "merged-preview.psd", depth=16, compression=3).resolve()
+    assert window.open_image(psd)
+    wait_for(lambda: window.current_path == psd, timeout=10_000)
+    wait_for(lambda: window.view.image_item.pixmap().width() == 40)
+    assert abs(window.view.image_item.pixmap().toImage().pixelColor(0, 0).blue() - 200) <= 1
+    info = window.plugins.records["example.info"].instance
+    wait_for(
+        lambda: info.metadata is not None and info.metadata["path"] == str(psd), timeout=10_000
+    )
+    assert info.metadata["dimensions"]["预览类型"] == "已保存的合成图"
+    browser = window.plugins.records["example.files"].instance
+    mime = browser.file_drags[0].mime_data(psd)
+    assert mime is not None and Path(mime.urls()[0].toLocalFile()) == psd
+    assert not mime.hasImage() and browser.file_drags[0].mime_data(directory) is None
+    assert mime.hasFormat('application/x-qt-windows-mime;value="Preferred DropEffect"')
+    print("Packaged merged-only PSD preview, file URL drag MIME and folder exclusion passed")
     progress = window.plugins.records["example.progress"].instance
     for extension in ("gif", "webp"):
         path = directory / f"motion.{extension}"
@@ -593,8 +616,33 @@ def verify_media(window):
     print(
         "Packaged tiny image/frame rings, thumbnail anchoring and static inner-ring removal passed"
     )
+    video = make_video(directory / "static.mp4").resolve()
+    assert window.open_image(video)
+    wait_for(lambda: window.current_path == video, timeout=10_000)
+    assert not window.animation.state.active
+    thumbnails = []
+    window.plugins.records["example.info"].context.request_thumbnail(video, thumbnails.append)
+    wait_for(lambda: bool(thumbnails), timeout=10_000)
+    assert not thumbnails[0].isNull() and thumbnails[0].pixelColor(0, 0).alpha() < 255
+    print("Packaged static video first-frame, frosted film border and shared thumbnail passed")
+    ai_path = (directory / "stable-diffusion.png").resolve()
+    ai_text = PngImagePlugin.PngInfo()
+    ai_text.add_text(
+        "parameters",
+        "mountain <lora:light:0.7>\nNegative prompt: blur\n"
+        "Steps: 20, Sampler: Euler, Seed: 42, Model: example, VAE: example-vae",
+    )
+    Image.new("RGB", (64, 48)).save(ai_path, pnginfo=ai_text)
+    assert window.open_image(ai_path)
+    info = window.plugins.records["example.info"].instance
+    wait_for(
+        lambda: info.metadata is not None and info.metadata["path"] == str(ai_path), timeout=10_000
+    )
+    assert info.metadata["ai_generation"]["fields"]["Seed"] == "42"
+    assert info.ai_notice.text() == "此图片为Stable Diffusion生成" and not info.ai_box.isHidden()
+    print("Packaged embedded AI generation record and selectable information list passed")
     raw = directory / "synthetic.dng"
-    make_dng(raw)
+    make_dng(raw, embedded=True)
     raw = raw.resolve()
     assert window.open_image(raw)
     try:
@@ -629,7 +677,30 @@ def verify_media(window):
     )
     assert info.metadata["exif_sections"]["基础信息"]["相机制造商"] == "Picer RAW Camera"
     assert not info.exif_box.isHidden() and "Picer RAW Camera" in info.exif_view.text()
+    assert info.camera_switch.isEnabled()
+    info.camera_switch.setChecked(True)
+    wait_for(lambda: window.view.image_item.pixmap().width() == 160, timeout=10_000)
+    assert window.view.image_item.pixmap().toImage().pixelColor(10, 10).red() > 240
+    info.camera_switch.setChecked(False)
+    wait_for(lambda: window.view.image_item.pixmap().width() == 256, timeout=10_000)
+    wait_for(
+        lambda: info.metadata is not None and info.metadata["path"] == str(raw), timeout=10_000
+    )
+    print("Packaged actual LibRaw embedded camera preview switch and cache isolation passed")
     print("Packaged RAW EXIF camera table passed")
+    from picer.metadata import inspect_image
+
+    cr3 = make_cr3_metadata(directory / "metadata.cr3")
+    data = inspect_image(cr3)
+    assert data["exif_sections"]["基础信息"]["相机型号"] == "Canon EOS Test"
+    assert len(data["focus_points"]["boxes"]) == 1
+    info.metadata["focus_points"] = data["focus_points"]
+    info.update_focus()
+    info.focus_switch.setChecked(True)
+    assert window.focus_points.item.isVisible()
+    info.focus_switch.setChecked(False)
+    assert not window.focus_points.item.isVisible()
+    print("Packaged CR3 EXIF and revocable AF overlay passed")
     assert window.open_image(previous)
     print(
         "Packaged LibRaw DNG decode, GIF/WebP playback/seek/pause and animated playback row passed"
@@ -644,6 +715,13 @@ def run(window, args, folder, done):
             assert set(expected) == supported_suffixes(), "A bundled image codec was lost"
             assert window.view.viewport().metaObject().className() == "QWidget"
             assert not (Path(sys._MEIPASS) / "PySide6" / "opengl32sw.dll").exists()
+            qt = Path(sys._MEIPASS) / "PySide6"
+            assert (qt / "plugins" / "platforms" / "qwindows.dll").is_file()
+            assert (qt / "plugins" / "platforms" / "qoffscreen.dll").is_file()
+            assert not (qt / "plugins" / "platforms" / "qdirect2d.dll").exists()
+            for locale in ("zh_CN", "zh_TW", "en"):
+                assert (qt / "translations" / f"qtbase_{locale}.qm").is_file()
+            assert not (qt / "translations" / "qtbase_de.qm").exists()
             print("Packaged raster viewport and complete pre-compaction format set passed")
         # Windows TEMP can contain 8.3 aliases (RUNNER~1); the Qt model and
         # viewer use resolved paths, so compare the same canonical directory.
@@ -673,7 +751,7 @@ def run(window, args, folder, done):
         for key in ("example.files", "example.info"):
             dock = window.plugins.panels[key]
             assert not (dock.allowedAreas() & DOCK_AREAS["bottom"])
-            assert window.height() - 1 - dock.geometry().bottom() <= 1
+            assert window.height() - 1 - dock.geometry().bottom() == 8
         archives = (
             (args.plugin_archive, "example.negative"),
             (args.skin_archive, "example.macos"),
@@ -978,6 +1056,41 @@ def run(window, args, folder, done):
                 verify_new_panels(window)
                 done(0)
                 return
+            browser = window.plugins.records["example.files"].instance
+            from importlib import import_module
+
+            module = import_module(type(browser).__module__.rsplit(".", 1)[0] + ".network")
+            dialog = module.LocationDialog([], browser.panel)
+            dialog.path.setText(r"\\192.168.0.20")
+            assert dialog.confirm.isEnabled()
+            dialog.show()
+            QTest.qWait(20)
+            pixels = dialog.grab().toImage()
+            assert pixels.pixelColor(5, dialog.height() // 2).alpha() == 255
+            assert pixels.pixelColor(0, 0).alpha() == 0
+            dialog.close()
+            dialog.deleteLater()
+            saved = browser.context.get_setting("network_locations", [])
+            browser.context.set_setting(
+                "network_locations", [{"name": "网络照片", "path": r"\\NAS\Photos"}]
+            )
+            browser.tabs.setCurrentIndex(3)
+            assert browser.tabs.tabToolTip(3) == "网络位置"
+            assert browser.network.list.count() == 1
+            assert browser.network.list.item(0).icon().cacheKey() == (
+                browser.network.folder_icon.cacheKey()
+            )
+            browser.search.setText("无匹配")
+            assert browser.network.list.item(0).isHidden()
+            browser.search.clear()
+            assert not browser.network.list.item(0).isHidden()
+            browser.context.set_setting("network_locations", saved)
+            browser.tabs.setCurrentIndex(0)
+            print(
+                "Packaged network locations, local search and frosted globe folders passed; "
+                "live NAS not tested",
+                flush=True,
+            )
             controller = window.panel_hovers.controllers["example.files"]
             controller.dock.close()
             assert controller.strip.isVisible()
@@ -1408,6 +1521,7 @@ def verify_new_panels(window):
     def confirm():
         dialog = QApplication.activeModalWidget()
         assert dialog is not None and dialog.windowTitle().endswith("保存修改")
+        assert dialog.grab().toImage().pixelColor(5, dialog.height() // 2).alpha() == 255
         dialog.choose(False)
 
     QTimer.singleShot(80, confirm)

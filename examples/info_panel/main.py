@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.plugins import PluginError, SettingField
+from picer.ui import Toggle
 
 from .annotations import Annotations
 from .exif_view import ExifView
@@ -83,6 +84,7 @@ class Plugin:
                 ("rating", "星级"),
                 ("classification", "颜色分类"),
                 ("extra", "其他元数据"),
+                ("ai", "AI 生成信息"),
             )
         )
         context.add_settings(self.fields, self.apply_settings)
@@ -120,6 +122,15 @@ class Plugin:
             rows.addLayout(table)
             self.groups[key], self.tables[key] = group, table
             self.body.addWidget(group)
+        self.ai_box, ai_layout = section("AI 生成信息")
+        self.ai_notice = DetailLabel()
+        ai_layout.addWidget(self.ai_notice)
+        self.ai_table = QFormLayout()
+        self.ai_table.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        self.ai_table.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
+        ai_layout.addLayout(self.ai_table)
+        self.body.addWidget(self.ai_box)
+        self.ai_box.hide()
         group, row = section("RGB 直方图（对数刻度）")
         self.groups["histogram"] = group
         self.histogram = Histogram()
@@ -137,6 +148,22 @@ class Plugin:
         self.exif_box, exif_layout = section("相机 EXIF")
         self.exif_view = ExifView(self.panel)
         exif_layout.addWidget(self.exif_view)
+        focus_row = QHBoxLayout()
+        focus_row.addWidget(DetailLabel("显示对焦点"), 1)
+        self.focus_switch = Toggle()
+        self.focus_switch.setAccessibleName("在图片中显示记录的对焦点")
+        self.focus_switch.setChecked(bool(context.get_setting("show_focus_points", False)))
+        self.focus_switch.setEnabled(False)
+        self.focus_switch.toggled.connect(self.set_focus_enabled)
+        focus_row.addWidget(self.focus_switch)
+        focus_row.addSpacing(8)
+        focus_row.addWidget(DetailLabel("机内直出"), 1)
+        self.camera_switch = Toggle()
+        self.camera_switch.setAccessibleName("查看 RAW 内嵌的机内直出预览")
+        self.camera_switch.setEnabled(False)
+        self.camera_switch.toggled.connect(self.set_camera_enabled)
+        focus_row.addWidget(self.camera_switch)
+        exif_layout.addLayout(focus_row)
         layout.addWidget(self.exif_box, 0)
         self.exif_box.hide()
         self.rating = Annotations()
@@ -147,6 +174,10 @@ class Plugin:
         context.subscribe("image.changed", self.on_image)
         context.subscribe("annotations.changed", self.on_annotations)
         self.apply_settings()
+        try:
+            context.set_raw_camera_preview(bool(context.get_setting("raw_camera_preview", False)))
+        except PluginError:
+            context.set_setting("raw_camera_preview", False)
         self.refresh()
 
     def resize_details(self, obj, event):
@@ -158,6 +189,7 @@ class Plugin:
             )
             for table in self.tables.values():
                 table.setRowWrapPolicy(policy)
+            self.ai_table.setRowWrapPolicy(policy)
         return False
 
     def apply_settings(self):
@@ -170,11 +202,24 @@ class Plugin:
             bool(self.context.get_setting("rating", True)),
             bool(self.context.get_setting("classification", True)),
         )
+        self.ai_box.setVisible(
+            bool(self.metadata and self.metadata.get("ai_generation"))
+            and bool(self.context.get_setting("ai", True))
+        )
 
     def on_image(self, event):
+        if event and event.reason in ("rotated", "raw-preview") and self.metadata:
+            self.update_focus()
+            return
         self.refresh()
 
     def refresh(self):
+        self.context.show_focus_points(None)
+        self.focus_switch.setEnabled(False)
+        self.camera_switch.setEnabled(False)
+        self.camera_switch.blockSignals(True)
+        self.camera_switch.setChecked(False)
+        self.camera_switch.blockSignals(False)
         self.read_timer.stop()
         if self.token:
             self.token.cancel()
@@ -183,6 +228,9 @@ class Plugin:
         self.exif_box.hide()
         self.exif_view.clear()
         self.metadata = None
+        self.ai_box.hide()
+        while self.ai_table.rowCount():
+            self.ai_table.removeRow(0)
         self.warning.setText("正在读取元数据…" if path else "")
         for table in self.tables.values():
             while table.rowCount():
@@ -214,10 +262,72 @@ class Plugin:
             "采样尺寸：" + " × ".join(str(v) for v in data.get("sample_size", ()))
         )
         self.exif_view.set_data(data.get("exif_sections", {}))
-        self.exif_box.setVisible(bool(data["exif"]))
+        self.exif_box.setVisible(bool(data["exif"]) or "raw_camera_preview_available" in data)
+        self.update_focus()
+        available = bool(data.get("raw_camera_preview_available"))
+        self.camera_switch.setEnabled(available)
+        self.camera_switch.blockSignals(True)
+        self.camera_switch.setChecked(
+            available and bool(self.context.get_setting("raw_camera_preview", False))
+        )
+        self.camera_switch.blockSignals(False)
+        self.camera_switch.setToolTip(
+            "使用 RAW 内嵌的相机处理预览，分辨率取决于相机"
+            if available
+            else "此图片没有可用的 RAW 机内预览"
+        )
+        ai = data.get("ai_generation")
+        while self.ai_table.rowCount():
+            self.ai_table.removeRow(0)
+        self.ai_box.setVisible(bool(ai) and bool(self.context.get_setting("ai", True)))
+        if ai:
+            self.ai_notice.setText(ai["message"])
+            for label, value in ai["fields"].items():
+                widget = DetailLabel(str(value) or "未记录")
+                widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                self.ai_table.addRow(DetailLabel(str(label)), widget)
         self.warning.setText("\n".join(data["warnings"]))
         self.update_annotations()
         self.rating.setEnabled(True)
+
+    def set_focus_enabled(self, enabled):
+        self.context.set_setting("show_focus_points", bool(enabled))
+        self.update_focus()
+
+    def set_camera_enabled(self, enabled):
+        previous = bool(self.context.get_setting("raw_camera_preview", False))
+        try:
+            self.context.set_setting("raw_camera_preview", bool(enabled))
+            self.context.set_raw_camera_preview(bool(enabled))
+        except PluginError as error:
+            self.context.set_setting("raw_camera_preview", previous)
+            self.camera_switch.blockSignals(True)
+            self.camera_switch.setChecked(not enabled)
+            self.camera_switch.blockSignals(False)
+            self.context.notify(str(error))
+
+    def update_focus(self):
+        data = self.metadata.get("focus_points", {}) if self.metadata else {}
+        available = bool(
+            data.get("boxes") or data.get("faces") or data.get("face_points") or data.get("eyes")
+        )
+        self.focus_switch.blockSignals(True)
+        self.focus_switch.setChecked(
+            available and bool(self.context.get_setting("show_focus_points", False))
+        )
+        self.focus_switch.blockSignals(False)
+        self.focus_switch.setEnabled(available)
+        self.focus_switch.setToolTip(
+            "实线显示记录的对焦区域，虚线显示人脸／眼部识别框；仅有中心记录时显示定位标记。"
+            if available
+            else data.get("message", "此照片未记录可识别的对焦点、人脸或眼部区域")
+        )
+        try:
+            self.context.show_focus_points(
+                data if available and self.focus_switch.isChecked() else None
+            )
+        except PluginError as error:
+            self.focus_switch.setToolTip(str(error))
 
     def update_annotations(self):
         if self.metadata:

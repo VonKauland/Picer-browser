@@ -107,7 +107,7 @@ def test_progress_is_compact_overlay_and_side_docks_reach_bottom(window, qtbot):
     assert window.dockWidgetArea(progress) == Qt.DockWidgetArea.NoDockWidgetArea
     for key in ("example.files", "example.info"):
         dock = window.plugins.panels[key]
-        assert window.height() - 1 - dock.geometry().bottom() <= 1
+        assert window.height() - 1 - dock.geometry().bottom() == 8
         assert not (dock.allowedAreas() & DOCK_AREAS["bottom"])
     window.resize(1500, 900)
     qtbot.wait(30)

@@ -3,7 +3,15 @@
 import re
 
 from PySide6.QtCore import QEvent, QObject, Qt
-from PySide6.QtWidgets import QComboBox, QFrame, QMenu, QStyledItemDelegate, QWidget
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
+    QFrame,
+    QMenu,
+    QStyledItemDelegate,
+    QWidget,
+)
 
 from picer.theme import CONTROLS
 
@@ -24,11 +32,29 @@ def prepare_popup(widget):
         widget.setWindowFlag(Qt.WindowType.NoDropShadowWindowHint)
         widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         widget.setAutoFillBackground(False)
+        surface = widget
+        selector = "QMenu"
         if not isinstance(widget, QMenu):
             widget.setObjectName("picerComboPopup")
             widget.setFrameShape(QFrame.Shape.NoFrame)
             widget.setLineWidth(0)
             widget.setMidLineWidth(0)
+            surface = widget.findChild(QAbstractItemView)
+            selector = "QAbstractItemView"
+        if surface is not None:
+            from picer.ui import colors_for
+
+            color = QColor(colors_for(widget)["accent"]).darker(230).name()
+            rule = f"{selector} {{ border: 1px solid {color}; }}"
+            previous = surface.property("picerPopupBorderRule")
+            style = surface.styleSheet()
+            if rule != previous or rule not in style:
+                surface.setProperty("picerPopupBorderRule", rule)
+                surface.setStyleSheet(
+                    style.replace(previous, rule)
+                    if previous and previous in style
+                    else style + "\n" + rule
+                )
 
 
 def mark_host(widget: QWidget) -> None:
@@ -82,7 +108,7 @@ class HostStyleFilter(QObject):
         ancestor = obj
         while ancestor is not None:
             if ancestor.property("pluginSurface"):
-                if event.type() == QEvent.Type.Polish:
+                if event.type() in (QEvent.Type.Polish, QEvent.Type.Show):
                     prepare_popup(obj)
                 return False
             if ancestor is self.window:
@@ -90,6 +116,8 @@ class HostStyleFilter(QObject):
                     return not self.window.app_preferences["tooltips"]
                 if not obj.property("picerHost"):
                     mark_host(obj)
+                elif event.type() in (QEvent.Type.Polish, QEvent.Type.Show):
+                    prepare_popup(obj)
                 break
             ancestor = ancestor.parentWidget()
         return False

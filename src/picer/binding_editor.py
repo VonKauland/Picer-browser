@@ -16,6 +16,9 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
     QStackedWidget,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -32,7 +35,8 @@ from picer.input_bindings import (
     read_bindings,
 )
 from picer.messages import MessageBox as QMessageBox
-from picer.ui import Card
+from picer.plugin_storage import is_external
+from picer.ui import Card, ui_icon
 
 DEVICES = ("keyboard", "mouse", "touch", "gamepad")
 
@@ -109,7 +113,62 @@ class TouchMap(QWidget):
         )
 
 
+class CommandDelegate(QStyledItemDelegate):
+    """Reserve a small trailing marker without changing command selection."""
+
+    def __init__(self, host, parent):
+        super().__init__(parent)
+        self.host = host
+
+    def paint(self, painter, option, index):
+        external = bool(index.data(Qt.ItemDataRole.UserRole + 1))
+        if not external:
+            super().paint(painter, option, index)
+            return
+        adjusted = QStyleOptionViewItem(option)
+        self.initStyleOption(adjusted, index)
+        label = adjusted.text
+        adjusted.text = ""
+        style = adjusted.widget.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, adjusted, painter, adjusted.widget)
+        text_rect = style.subElementRect(
+            QStyle.SubElement.SE_ItemViewItemText, adjusted, adjusted.widget
+        )
+        text_rect.adjust(0, 0, -24, 0)
+        painter.save()
+        painter.setPen(QColor(self.host.skin_colors["text"]))
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            adjusted.fontMetrics.elidedText(label, Qt.TextElideMode.ElideRight, text_rect.width()),
+        )
+        painter.restore()
+        if external:
+            rect = option.rect.adjusted(option.rect.width() - 21, 0, -5, 0)
+            rect.setTop(option.rect.center().y() - 8)
+            rect.setHeight(16)
+            ui_icon("plug", self.host.skin_colors["text"]).paint(painter, rect)
+
+
 class BindingEditor(QWidget):
+    def remove_plugin(self, plugin_id):
+        for row in reversed(range(self.functions.count())):
+            item = self.functions.item(row)
+            key = item.data(Qt.ItemDataRole.UserRole)
+            if key.startswith(plugin_id + ":"):
+                if self.current_key == key:
+                    self.current_key = None
+                self.functions.takeItem(row)
+                editor = self.primary_editors.pop(key)
+                self.keyboard_stack.removeWidget(editor)
+                editor.deleteLater()
+                self.actions.pop(key, None)
+                self.labels.pop(key, None)
+                self.profile.pop(key, None)
+        if self.current_key is None and self.functions.count():
+            self.functions.setCurrentRow(0)
+        self.show_bindings()
+
     def __init__(self, host):
         super().__init__()
         self.host = host
@@ -139,9 +198,14 @@ class BindingEditor(QWidget):
         left.addWidget(search)
         self.functions = QListWidget()
         self.functions.setMinimumSize(0, 0)
+        self.functions.setItemDelegate(CommandDelegate(host, self.functions))
         for key, action in self.actions.items():
             item = QListWidgetItem(action.text())
             item.setData(Qt.ItemDataRole.UserRole, key)
+            external = is_external(host.plugins, action.property("plugin_id"))
+            item.setData(Qt.ItemDataRole.UserRole + 1, external)
+            if external:
+                item.setToolTip("第三方插件提供的操作")
             self.functions.addItem(item)
         left.addWidget(self.functions)
         row.addWidget(function_pane)

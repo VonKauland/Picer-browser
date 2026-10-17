@@ -332,6 +332,20 @@ def test_scrollbar_preference_applies_to_hidden_and_new_panel_views(host, qtbot)
     assert [v.verticalScrollBarPolicy() for v in views] == original
     assert extra.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAsNeeded
     assert extra.horizontalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+    from PySide6.QtWidgets import QStyle, QStyleOptionSlider
+
+    for view in (*views, extra):
+        bar = view.verticalScrollBar()
+        option = QStyleOptionSlider()
+        bar.initStyleOption(option)
+        thumb = bar.style().subControlRect(
+            QStyle.ComplexControl.CC_ScrollBar,
+            option,
+            QStyle.SubControl.SC_ScrollBarSlider,
+            bar,
+        )
+        assert bar.sizeHint().width() == 12
+        assert thumb.left() == 4 and thumb.width() == 8
 
 
 def test_new_settings_persist_through_restart(host, qtbot):

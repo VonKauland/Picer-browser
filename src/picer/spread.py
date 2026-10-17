@@ -77,6 +77,7 @@ class DoublePage(QObject):
     def load(self, edge):
         host = self.host
         generation, first, path = self.generation, host.current_path, self.path
+        camera_preview = host.loader.camera_preview(path)
         try:
             key = host.loader.key(path, edge)
         except OSError:
@@ -123,7 +124,11 @@ class DoublePage(QObject):
             return
         worker = Worker(
             lambda token: read_image(
-                path, edge=edge, auto_orient=host.app_preferences["auto_orient"], token=token
+                path,
+                edge=edge,
+                auto_orient=host.app_preferences["auto_orient"],
+                token=token,
+                camera_preview=camera_preview,
             )
         )
         worker.setAutoDelete(False)

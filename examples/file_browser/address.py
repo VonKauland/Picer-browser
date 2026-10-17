@@ -56,6 +56,7 @@ class AddressBar(QWidget):
     def __init__(self, panel):
         super().__init__(panel)
         self.path = ""
+        self.virtual_label = None
         self.buttons = []
         self.hidden_parts = []
         self.setAccessibleName("文件夹地址")
@@ -121,20 +122,34 @@ QPushButton#crumbButton:focus, QPushButton#addressButton:focus { border: none; }
 
     def setText(self, path):
         self.path = str(path)
-        self.setToolTip(self.path)
+        self.setToolTip(self.virtual_label or self.path)
         for button in self.buttons:
             button.hide()
             button.deleteLater()
         self.buttons = []
-        parts = path_parts(Path(path)) if path else (("此电脑", ""),)
+        parts = (
+            ((self.virtual_label, None),)
+            if self.virtual_label
+            else path_parts(Path(path))
+            if path
+            else (("此电脑", ""),)
+        )
         for index, (label, target) in enumerate(parts):
             button = CrumbButton(label, target, index < len(parts) - 1, self.row)
+            if target is None:
+                button.setToolTip(label)
             button.clicked.connect(
-                lambda checked=False, target=target: self.pathRequested.emit(str(target))
+                lambda checked=False, target=target: (
+                    self.pathRequested.emit(str(target)) if target is not None else None
+                )
             )
             self.buttons.append(button)
         self.stack.setCurrentWidget(self.row)
         self.fit()
+
+    def set_virtual(self, label):
+        self.virtual_label = label
+        self.setText(self.path)
 
     def fit(self):
         while self.crumbs.count():
@@ -179,13 +194,15 @@ QPushButton#crumbButton:focus, QPushButton#addressButton:focus { border: none; }
                 self.overflow.show()
         self.crumbs.addStretch(1)
         self.crumbs.addWidget(self.edit)
-        self.edit.show()
+        self.edit.setVisible(not self.virtual_label)
 
     def resizeEvent(self, event):
         self.fit()
         super().resizeEvent(event)
 
     def start_edit(self):
+        if self.virtual_label:
+            return
         self.editor.setText(self.path)
         self.stack.setCurrentWidget(self.editor)
         self.editor.setFocus()

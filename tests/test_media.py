@@ -278,6 +278,53 @@ def test_raw_embedded_preview_avoids_sensor_unpack(tmp_path, qapp, monkeypatch):
     image = read_image(tmp_path / "camera.nef", edge=128)
     assert image.width() == 128 and image.pixelColor(0, 0).red() > 240
     assert image.text("picer.native_width") == "6000"
+    camera = read_image(tmp_path / "camera.nef", camera_preview=True)
+    assert camera.width() == 160 and camera.text("picer.camera_preview") == "1"
+    assert camera.text("picer.native_width") == "160"
+
+
+def test_raw_camera_mode_cache_clipboard_and_revocation(host, qtbot, tmp_path):
+    from PySide6.QtWidgets import QApplication
+
+    path = tmp_path / "camera.dng"
+    make_dng(path, embedded=True)
+    assert host.open_image(path)
+    qtbot.waitUntil(lambda: host.current_path == path)
+    qtbot.waitUntil(lambda: host.view.image_item.pixmap().width() == 256)
+    info = host.plugins.records["example.info"].instance
+    qtbot.waitUntil(lambda: info.camera_switch.isEnabled())
+    original = host.loader.key(path, 0)
+    info.camera_switch.setChecked(True)
+    qtbot.waitUntil(lambda: host.view.image_item.pixmap().width() == 160)
+    qtbot.waitUntil(lambda: host.loader.cached(host.loader.key(path, 0)) is not None)
+    assert original != host.loader.key(path, 0)
+    host.copy_image()
+    assert QApplication.clipboard().image().pixelColor(10, 10).red() > 240
+    host.plugins.disable("example.info")
+    qtbot.waitUntil(lambda: host.view.image_item.pixmap().width() == 256)
+    assert not host.loader.camera_preview_owners
+
+
+def test_video_main_view_and_shared_thumbnail_do_not_play(host, qtbot, tmp_path, monkeypatch):
+    from picer.smoke_samples import make_video
+
+    path = make_video(tmp_path / "video.mp4")
+    assert host.open_image(path)
+    qtbot.waitUntil(lambda: host.current_path == path)
+    assert not host.animation.state.active
+    images = []
+    context = host.plugins.records["example.files"].context
+    context.request_thumbnail(path, images.append)
+    qtbot.waitUntil(lambda: len(images) == 1)
+    assert not images[0].isNull() and images[0].pixelColor(0, 0).alpha() < 255
+
+    def unexpected_decode(*args, **kwargs):
+        raise AssertionError("shared video thumbnail must reuse warmed memory")
+
+    monkeypatch.setattr("picer.video.read_video", unexpected_decode)
+    context.request_thumbnail(path, images.append)
+    qtbot.waitUntil(lambda: len(images) == 2)
+    assert not images[1].isNull()
 
 
 def test_frame_cache_bounded_and_finite_loop_stops(host, qtbot, tmp_path):

@@ -32,6 +32,7 @@ from picer.cache import ThumbnailCache
 from picer.chrome import STYLE, TitleBar
 from picer.components import ComponentUI
 from picer.drops import ImageDropTarget
+from picer.focus_points import FocusPoints
 from picer.folder_navigation import FolderNavigation
 from picer.formats import enabled_formats
 from picer.fullscreen import FullscreenChrome
@@ -43,7 +44,7 @@ from picer.messages import MessageBox as QMessageBox
 from picer.navigation import NavigationKeys
 from picer.notifications import NotificationBubble
 from picer.panel_scrollbars import PanelScrollbars
-from picer.panels import GlassBackdrop, PanelHovers
+from picer.panels import PANEL_BOTTOM_GAP, GlassBackdrop, PanelHovers
 from picer.paths import AppPaths
 from picer.plugins.dialog import PluginDialog
 from picer.plugins.manager import PluginManager
@@ -163,6 +164,7 @@ class MainWindow(QMainWindow):
         QApplication.instance().installEventFilter(self._skin_filter)
         self.setStyleSheet(scope_style(STYLE))
         self.setAcceptDrops(True)
+        self.setContentsMargins(0, 0, 0, PANEL_BOTTOM_GAP)
         self.paths: list[Path] = []
         self.path_positions = {}
         self.path_source = None
@@ -175,10 +177,11 @@ class MainWindow(QMainWindow):
         self.navigation_feedback = 0
         self.last_error = ""
         self.view = ImageView()
+        self.focus_points = FocusPoints(self)
         self.title_bar = TitleBar(self)
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.setContentsMargins(6, 0, 6, 6)
+        layout.setContentsMargins(6, 0, 6, 0)
         layout.setSpacing(0)
         self.chrome_slot = QWidget(self)
         self.chrome_slot.setFixedHeight(48)
@@ -377,6 +380,7 @@ class MainWindow(QMainWindow):
         self.panel_scrollbars.refresh()
         self.double_page.refresh()
         self.panel_hovers.update_progress_ring()
+        self.focus_points.refresh()
         self.update()
 
     def restore_shortcuts(self, shortcuts, bindings=None):
@@ -474,6 +478,7 @@ class MainWindow(QMainWindow):
         path, generation, rotation = self.current_path, self.loader.generation, self.image_rotation
         revision = self.image_revision
         auto_orient = self.app_preferences["auto_orient"]
+        camera_preview = self.loader.camera_preview(path)
         self.notify("正在复制原图")
 
         def finish(image, error):
@@ -500,7 +505,9 @@ class MainWindow(QMainWindow):
             return
         self.loader.submit(
             "full",
-            lambda token: read_image(path, auto_orient=auto_orient, token=token),
+            lambda token: read_image(
+                path, auto_orient=auto_orient, token=token, camera_preview=camera_preview
+            ),
             finish,
         )
 
@@ -532,6 +539,7 @@ class MainWindow(QMainWindow):
 
     def replace_image(self, image) -> None:
         self.image_edited = True
+        self.focus_points.clear()
         self.double_page.clear()
         self.loader.generation += 1
         self.loader.refine.stop()
@@ -559,6 +567,7 @@ class MainWindow(QMainWindow):
         self.view.fit_image()
         self.image_revision += 1
         self.plugins.emit_image("rotated")
+        self.focus_points.refresh()
 
     def plugin_notification(self, message: str) -> None:
         self.notify(message)
@@ -777,6 +786,7 @@ class MainWindow(QMainWindow):
         self.update_actions()
         self.image_revision += 1
         self.double_page.refresh()
+        self.focus_points.clear()
         self.plugins.emit_image("opened")
         if self.app_preferences["focus_image"]:
             self.view.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -788,6 +798,7 @@ class MainWindow(QMainWindow):
             image = image.transformed(QTransform().rotate(self.image_rotation))
         self.view.image_item.setPixmap(QPixmap.fromImage(image))
         self.view.image_item.setScale(self.view.native_width / image.width())
+        self.focus_points.refresh()
         self.view.scene.setSceneRect(self.view.scene.itemsBoundingRect())
         if self.view.fit_mode:
             self.view.fit_image()

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.file_drag import ImageFileDrag
 from picer.host_style import PLUGIN_STYLE
 from picer.imaging import supported_suffixes
 from picer.messages import MessageBox as QMessageBox
@@ -25,6 +26,7 @@ from picer.plugins import SettingField, ui_icon
 from .address import AddressBar
 from .input import BrowserPanel, ParentEntry
 from .model import BrowserModel
+from .network import NetworkLocations, is_network_path, normalize_path
 from .places import PlacesList, navigation_tabs, saved_paths
 from .thumbnails import PhotoTree, configure_view
 
@@ -106,7 +108,7 @@ class Plugin:
         self.search.setPlaceholderText("搜索当前文件夹")
         self.search.setAccessibleName("搜索当前级的文件和文件夹")
         self.search.setClearButtonEnabled(True)
-        self.search.textChanged.connect(lambda text: self.model.set_search(text))
+        self.search.textChanged.connect(self.search_changed)
         search_row.addWidget(self.search, 1)
         self.random_button = QPushButton()
         self.random_button.setObjectName("circleButton")
@@ -159,6 +161,14 @@ class Plugin:
         self.tiles.doubleClicked.connect(self.enter_folder)
         for view in (self.tree, self.tiles):
             view.viewport().setProperty("browserViewport", True)
+        self.file_drags = [
+            ImageFileDrag(
+                view,
+                lambda index: None if self.model.isDir(index) else self.model.filePath(index),
+                context.readable_suffixes,
+            )
+            for view in (self.tree, self.tiles)
+        ]
         self.views = QStackedWidget()
         self.views.addWidget(self.tree)
         self.views.addWidget(self.tiles)
@@ -167,6 +177,8 @@ class Plugin:
         self.recent = PlacesList(self, "recent_folders")
         self.pages.addWidget(self.favorites)
         self.pages.addWidget(self.recent)
+        self.network = NetworkLocations(self)
+        self.pages.addWidget(self.network)
         self.tabs.currentChanged.connect(self.change_tab)
         self.note = QLabel()
         self.note.setWordWrap(True)
@@ -233,7 +245,7 @@ class Plugin:
         self.readable_formats = formats
         self.parent_entry.set_accent(event["accent"])
         self.tabs.set_accent(event["accent"])
-        for view in (self.tree, self.tiles, self.favorites, self.recent):
+        for view in (self.tree, self.tiles, self.favorites, self.recent, self.network.list):
             view.viewport().update()
 
     def values(self):
@@ -256,6 +268,7 @@ class Plugin:
         self.tiles.setGridSize(QSize(size * 2 + 32, size * 2 + 40))
         self.favorites.reload()
         self.recent.reload()
+        self.network.reload()
 
     def resize_icons(self, steps):
         field = self.fields[1]
@@ -374,8 +387,12 @@ class Plugin:
         self.quick_actions["descending"].setChecked(descending)
         path = self.location.text()
         self.quick_actions["favorite"].setEnabled(
-            bool(path) and path not in saved_paths(self.context, "favorites")
+            self.tabs.currentIndex() != 3
+            and bool(path)
+            and path not in saved_paths(self.context, "favorites")
         )
+        for key in ("ascending", "descending"):
+            self.quick_actions[key].setEnabled(self.tabs.currentIndex() != 3)
 
     def set_view(self, mode):
         self.context.set_setting("view", mode)
@@ -386,11 +403,26 @@ class Plugin:
         self.save_order(self.current_order()[0], descending)
 
     def change_tab(self, index):
+        network = index == 3
+        previous_network = self.pages.currentWidget() is self.network
         self.pages.setCurrentIndex(index)
+        if network != previous_network:
+            self.network.cancel_navigation()
+            self.search.clear()
+            self.model.set_search("")
+        self.location.set_virtual("网络位置" if network else None)
+        self.search.setPlaceholderText("搜索网络位置" if network else "搜索当前文件夹")
+        self.search.setAccessibleName(
+            "搜索已保存的网络位置" if network else "搜索当前级的文件和文件夹"
+        )
+        self.random_button.setEnabled(not network)
+        self.sort.setEnabled(not network)
         if index == 1:
             self.favorites.reload()
         elif index == 2:
             self.recent.reload()
+        elif network:
+            self.network.show_saved()
         self.note.setText(
             "尚未收藏文件夹。快速设置 → 加入快速访问。"
             if index == 1 and not self.favorites.count()
@@ -399,7 +431,15 @@ class Plugin:
             else ""
         )
 
+    def search_changed(self, text):
+        if self.tabs.currentIndex() == 3:
+            self.network.reload()
+        else:
+            self.model.set_search(text)
+
     def add_favorite(self):
+        if self.tabs.currentIndex() == 3:
+            return
         path = self.location.text()
         if path:
             paths = saved_paths(self.context, "favorites")
@@ -409,7 +449,7 @@ class Plugin:
             self.context.notify("已加入快速访问")
 
     def open_selected(self):
-        if self.parent_entry.isChecked():
+        if self.pages.currentWidget() is self.files_page and self.parent_entry.isChecked():
             self.go_up()
         elif self.pages.currentWidget() is self.files_page:
             index = self.views.currentWidget().currentIndex()
@@ -417,6 +457,9 @@ class Plugin:
                 self.enter_folder(index)
         else:
             view = self.pages.currentWidget()
+            if view is self.network:
+                self.network.open_item(self.network.list.currentItem())
+                return
             item = view.currentItem()
             if item is not None:
                 self.open_folder(item.data(Qt.ItemDataRole.UserRole))
@@ -450,6 +493,9 @@ class Plugin:
             view.scrollTo(index, view.ScrollHint.PositionAtCenter)
 
     def refresh(self):
+        if self.tabs.currentIndex() == 3:
+            self.network.reload()
+            return
         query = self.search.text()
         # QFileSystemModel has no public refresh API. Recreate the lazy model
         # so cached directory contents and same-path thumbnails are reread.
@@ -464,22 +510,26 @@ class Plugin:
         self.sort_tree()
         old.stop()
         old.deleteLater()
-        self.open_folder(self.location.text(), remember=False)
-        self.search.setText(query)
+        self.open_folder(
+            self.location.text(), remember=False, on_open=lambda: self.search.setText(query)
+        )
 
-    def open_folder(self, directory, *, remember=True):
+    def open_folder(self, directory, *, remember=True, on_open=None, _network_ready=False):
+        if is_network_path(str(directory)) and not _network_ready:
+            self.network.open_path(str(directory), remember, on_open)
+            return False
+        self.network.cancel_navigation()
         if str(directory) == "":
             target = ""
+        elif _network_ready:
+            target = normalize_path(str(directory))
         else:
             path = Path(directory).expanduser()
             if not path.is_dir():
                 self.note.setText("文件夹不存在，请修改首页路径或输入其他路径。")
                 return False
             target = str(path.resolve())
-        if remember and (self.history_index < 0 or self.history[self.history_index] != target):
-            self.history = self.history[: self.history_index + 1] + [target]
-            self.history = self.history[-64:]
-            self.history_index = len(self.history) - 1
+        self.remember_location(target, remember)
         if target:
             recent = saved_paths(self.context, "recent_folders")
             updated = [target] + [entry for entry in recent if entry != target][:63]
@@ -509,6 +559,8 @@ class Plugin:
         self.parent_entry.setVisible(bool(target))
         parent = str(Path(target).parent) if target else ""
         at_root = bool(target) and parent == target
+        if is_network_path(target) and len(target[2:].rstrip("\\").split("\\")) == 2:
+            parent, at_root = "\\\\" + target[2:].split("\\")[0], False
         self.parent_entry.setText("..  此电脑" if at_root else "..  上层文件夹")
         self.parent_entry.setToolTip(f"双击返回：{'此电脑' if at_root else parent} · Backspace")
         self.note.setText("")
@@ -519,7 +571,14 @@ class Plugin:
             self.return_timer.start()
         elif self.context.current_path() and str(self.context.current_path().parent) == target:
             self.on_image(None)
+        if on_open:
+            on_open()
         return True
+
+    def remember_location(self, target, remember=True):
+        if remember and (self.history_index < 0 or self.history[self.history_index] != target):
+            self.history = (self.history[: self.history_index + 1] + [target])[-64:]
+            self.history_index = len(self.history) - 1
 
     def restore_return_selection(self):
         self.return_attempts += 1
@@ -538,29 +597,47 @@ class Plugin:
 
     def go_home(self):
         path = self.values()["home"]
+        if is_network_path(path):
+            self.open_folder(path)
+            return
         self.open_folder(path if Path(path).expanduser().is_dir() else str(Path.home()))
         if not Path(path).expanduser().is_dir():
             self.note.setText("系统图片目录不存在，已暂时打开用户目录。可在设置中自定义首页。")
 
     def go_up(self):
+        if self.tabs.currentIndex() == 3 and self.network.server:
+            self.network.show_saved()
+            return
         path = self.location.text()
         if path:
+            if is_network_path(path) and len(path[2:].rstrip("\\").split("\\")) == 2:
+                self.open_folder("\\\\" + path[2:].split("\\")[0])
+                return
             parent = str(Path(path).parent)
             self.open_folder("" if parent == path else parent)
 
     def go_back(self):
+        if self.tabs.currentIndex() == 3 and self.network.server:
+            self.network.show_saved()
+            return
         if self.history_index > 0:
             target = self.history_index - 1
-            if self.open_folder(self.history[target], remember=False):
-                self.history_index = target
+            self.open_folder(
+                self.history[target],
+                remember=False,
+                on_open=lambda: setattr(self, "history_index", target),
+            )
         else:
             self.go_up()
 
     def go_forward(self):
         if self.history_index + 1 < len(self.history):
             target = self.history_index + 1
-            if self.open_folder(self.history[target], remember=False):
-                self.history_index = target
+            self.open_folder(
+                self.history[target],
+                remember=False,
+                on_open=lambda: setattr(self, "history_index", target),
+            )
 
     def select_entry(self, index):
         self.image_timer.stop()
@@ -590,7 +667,10 @@ class Plugin:
             QMessageBox.warning(self.panel, "无法打开", f"无法读取图片：{path.name}")
 
     def deactivate(self):
+        for drag in self.file_drags:
+            drag.stop()
         self.active = False
+        self.network.stop()
         self.image_timer.stop()
         self.return_timer.stop()
         self.panel.stop()
