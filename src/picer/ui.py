@@ -22,6 +22,7 @@ from picer.theme import COLORS
 
 ACCENT = "#E8FF59"
 ICON_PATHS = {
+    "plug": '<path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>',
     "filter": '<path d="M3 4h18l-7 8v7l-4 2v-9z"/>',
     "sort": '<path d="M6 3v18m-3-3 3 3 3-3M13 5h8M13 10h6M13 15h4"/>',
     "photo": (
