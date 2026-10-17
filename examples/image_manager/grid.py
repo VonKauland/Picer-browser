@@ -1,7 +1,7 @@
 """Virtualized tiles: pixels come exclusively from the host thumbnail service."""
 
 from PySide6.QtCore import QAbstractListModel, QEvent, QPointF, QRectF, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QRadialGradient
+from PySide6.QtGui import QColor, QPainter, QPen, QRadialGradient
 from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate
 
 from picer.annotations import CATEGORIES
@@ -100,25 +100,17 @@ class PhotoDelegate(QStyledItemDelegate):
         painter.setPen(QPen(QColor(colors["accent"]), 1) if selected else Qt.PenStyle.NoPen)
         painter.setBrush(QColor(colors["hover"]) if selected else Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(rect, 6, 6)
-        clip = QPainterPath()
-        clip.addRoundedRect(photo, 4, 4)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#38383B"))
+        painter.drawRoundedRect(photo, 4, 4)
         painter.save()
-        painter.setClipPath(clip)
-        painter.fillRect(photo, QColor("#38383B"))
         image = owner.pixels.get(key)
         if image is not None and not image.isNull():
-            source = QRectF(image.rect())
-            ratio = photo.width() / max(1, photo.height())
-            if source.width() / source.height() > ratio:
-                width = source.height() * ratio
-                source.setLeft((image.width() - width) / 2)
-                source.setWidth(width)
-            else:
-                height = source.width() / ratio
-                source.setTop((image.height() - height) / 2)
-                source.setHeight(height)
+            scale = min(photo.width() / image.width(), photo.height() / image.height())
+            target = QRectF(0, 0, image.width() * scale, image.height() * scale)
+            target.moveCenter(photo.center())
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            painter.drawImage(photo, image, source)
+            painter.drawImage(target, image, QRectF(image.rect()))
         mark = owner.notes.get(key, {})
         color = mark.get("color")
         if color in PALETTE:
