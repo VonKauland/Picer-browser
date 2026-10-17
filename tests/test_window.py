@@ -137,6 +137,6 @@ def test_equal_colored_window_controls_and_maximize_restore(window, qtbot):
             for y in range(pixels.height())
         )
     qtbot.mouseClick(controls["maximize"], Qt.MouseButton.LeftButton)
-    assert window.isMaximized()
+    qtbot.waitUntil(window.isMaximized)
     qtbot.mouseClick(controls["maximize"], Qt.MouseButton.LeftButton)
-    assert not window.isMaximized()
+    qtbot.waitUntil(lambda: not window.isMaximized())
