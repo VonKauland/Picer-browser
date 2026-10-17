@@ -227,7 +227,8 @@ Picer 0.8.1 提供 `from picer.plugins import RoundedSlider`，它是 QSlider �
 
 `request_metadata` 保留原 `exif` 字典，并增加 `exif_sections`：`基础信息` 为标签 / 值映射，`详细信息` 为分组 / 标签 / 值映射。无相机标签的图片不显示 EXIF 区域，缺少个别字段显示 `未记录`。RAW 标签解析独立于像素解码，无法生成直方图时仍可返回相机信息与警告。
 
-`focus_points` 包含 `boxes`（最多 512 个归一化 `x, y, width, height`）和 EXIF `orientation`。当前解析 Canon AFInfo / AFInfo2 的实际合焦位图，包括 JPEG、CR2 与 CR3；没有可识别合焦记录时数组为空，不推测中心点。CR3 按容器边界读取 CMT1–CMT4，不扫描像素数据。`show_focus_points` 接受该对象，标记随图像方向、预览细化及缩放平移；切换图片、修改图像几何或停用组件时清理，不改写像素。
+`focus_points` 保留 `boxes`（最多 512 个归一化 `x, y, width, height`）和 EXIF `orientation`，新增 `faces`（最多 64 个同格式人脸框）与 `face_points`（最多 64 个归一化 `x, y` 人脸中心）。`show_focus_points` 向后兼容只有 `boxes` 的 API v1 数据。对焦区域显示实线，人脸区域显示虚线；只有中心的记录显示小型虚线定位标记。没有可识别记录时返回空数组，不推测中心。CR3 按容器边界读取 CMT1–CMT4，其他 RAW 定点读取元数据或内嵌 JPEG 头部，不扫描像素数据。切换图片、修改图像几何或停用组件时清理，不改写像素。[厂商与结构覆盖范围](camera-regions.md) 包含尚未支持的机型／记录说明，尤其适马 fp／fp L 原生焦点仍待样片确认。
+
 
 `request_metadata` 还可返回 `raw_camera_preview_available` 和 `ai_generation`。
 前者表示 RAW 有可读取的内嵌相机 JPEG / 位图；`set_raw_camera_preview(bool)` 切换该效果与 RAW 解码，
