@@ -182,6 +182,7 @@ def main() -> None:
         f"Distribution: {report['before']['bytes']} -> {report['after']['bytes']} bytes; "
         f"saved {report['saved_bytes']} bytes; removed {report['removed']}"
     )
+    print("DISTRIBUTION_INVENTORY=" + json.dumps(report["after"], separators=(",", ":")))
 
 
 if __name__ == "__main__":
