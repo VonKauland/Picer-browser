@@ -198,9 +198,9 @@ class FilterPopup(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setPen(QPen(QColor(colors_for(self)["accent"]).darker(230), 1))
         painter.setBrush(QColor(colors_for(self)["menu"]))
-        painter.drawRoundedRect(QRectF(self.rect()), 12, 12)
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
 
     def change_scope(self, local):
         self.state["local"] = local

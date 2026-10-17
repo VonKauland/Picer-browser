@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QComboBox, QFrame, QLabel, QMenu
 from picer.host_style import mark_host
 from picer.settings import ApplicationSettings
 from picer.theme import COLORS, STYLE
-from picer.ui import RoundedSlider
+from picer.ui import RoundedSlider, colors_for
 from picer.window import MainWindow
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,7 +56,7 @@ def assert_clear_corners(widget):
 
 
 @pytest.mark.parametrize("level", ["top", "submenu", "slot"])
-def test_each_menu_level_has_transparent_corners_and_no_border(window, qtbot, level):
+def test_each_menu_level_has_transparent_corners_and_dim_accent_border(window, qtbot, level):
     # Keep QAction wrappers alive while accessing their associated QMenus.
     actions = window.title_bar.menu.actions()
     menu = (
@@ -71,7 +71,10 @@ def test_each_menu_level_has_transparent_corners_and_no_border(window, qtbot, le
     image = assert_clear_corners(menu)
     assert menu.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
     assert menu.windowFlags() & Qt.WindowType.FramelessWindowHint
-    assert pixel(image, menu.width() // 2, 0) == QColor(COLORS["menu"])
+    assert (
+        pixel(image, menu.width() // 2, 0).name()
+        == QColor(colors_for(menu)["accent"]).darker(230).name()
+    )
     menu.hide()
 
 
@@ -93,7 +96,10 @@ def test_combobox_popup_rounding_selection_and_complete_rows(window, qtbot, tmp_
         qtbot.waitUntil(popup.isVisible)
         qtbot.wait(20)
         image = assert_clear_corners(popup)
-        assert pixel(image, popup.width() // 2, 0) == QColor(COLORS["menu"])
+        assert (
+            pixel(image, popup.width() // 2, 0).name()
+            == QColor(colors_for(popup)["accent"]).darker(230).name()
+        )
         for index in range(combo.count()):
             rect = view.visualRect(
                 view.model().index(index, combo.modelColumn(), combo.rootModelIndex())
@@ -110,6 +116,27 @@ def test_combobox_popup_rounding_selection_and_complete_rows(window, qtbot, tmp_
     if owner == "panel":
         assert plugin.current_order()[0] == "size"
         assert plugin.context.get_setting("folder_orders")[plugin.location.text()]["sort"] == "size"
+
+
+def test_reused_host_and_panel_popups_follow_changed_accent(window, qtbot, tmp_path):
+    browser = enable_example(window, tmp_path, "file_browser")
+    menus = (window.main_menus[0], browser.quick_menu)
+    for color in ("#E05288", "#5298E0"):
+        window.plugins.preferences["ui"].setdefault("application", {})["accent_color"] = color
+        window.apply_preferences()
+        for menu in menus:
+            menu.popup(window.mapToGlobal(QPoint(100, 100)))
+            qtbot.waitUntil(menu.isVisible)
+            image = assert_clear_corners(menu)
+            assert pixel(image, menu.width() // 2, 0).name() == QColor(color).darker(230).name()
+            assert menu.styleSheet().count(menu.property("picerPopupBorderRule")) == 1
+            menu.hide()
+        browser.sort.showPopup()
+        popup = browser.sort.view().window()
+        qtbot.waitUntil(popup.isVisible)
+        image = assert_clear_corners(popup)
+        assert pixel(image, popup.width() // 2, 0).name() == QColor(color).darker(230).name()
+        browser.sort.hidePopup()
 
 
 @pytest.mark.parametrize("skin", ["default", "macos"])
@@ -186,7 +213,11 @@ def test_all_persistent_host_management_and_browser_menus_have_clear_corners(
             continue
         menu.popup(window.mapToGlobal(QPoint(180, 180)))
         qtbot.waitUntil(menu.isVisible)
-        assert_clear_corners(menu)
+        image = assert_clear_corners(menu)
+        assert (
+            pixel(image, menu.width() // 2, 0).name()
+            == QColor(colors_for(menu)["accent"]).darker(230).name()
+        )
         menu.hide()
     assert len(menus) >= 15
     for combo in (management.status_filter, management.filter, browser.sort):

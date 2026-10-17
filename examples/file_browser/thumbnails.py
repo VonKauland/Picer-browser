@@ -215,7 +215,6 @@ QTreeView::item:hover, QListView::item:hover { background: transparent; border: 
 QTreeView::branch { background: transparent; border: none; }
 QTreeView::branch:selected, QTreeView::branch:hover, QTreeView::branch:focus {
 background: transparent; border: none; outline: none; image: none; }
-QScrollBar:vertical { background: transparent; width: 8px; margin: 0; border: none; }
 QScrollBar::handle:vertical { background: #454549; min-height: 24px; border-radius: 4px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none;
 background: transparent; }

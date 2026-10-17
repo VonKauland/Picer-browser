@@ -643,6 +643,18 @@ def test_information_resizes_long_fields_without_horizontal_overflow(
     if width == 220:
         assert plugin.dock.width() <= 240
     assert not plugin.exif_box.isHidden()
+    for expanded in (False, True):
+        if expanded:
+            plugin.exif_view.button.click()
+            qtbot.wait(320)
+        button = plugin.exif_view.button
+        button_bottom = button.mapTo(plugin.panel, button.rect().bottomLeft()).y()
+        switches_top = min(
+            switch.mapTo(plugin.panel, QPoint(0, 0)).y()
+            for switch in (plugin.focus_switch, plugin.camera_switch)
+        )
+        assert switches_top - button_bottom >= 10
+        assert button.height() >= button.fontMetrics().height() + 8
 
 
 def test_browser_branch_gutter_and_scrollbar_have_no_white_frames(

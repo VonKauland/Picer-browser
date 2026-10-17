@@ -90,6 +90,55 @@ def test_resize_handle_fallback_preserves_opposite_corner_and_minimum(window, qt
     assert after.width() >= window.minimumWidth() and after.height() >= window.minimumHeight()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Native placement requires Windows")
+def test_button_and_native_double_click_preserve_same_restore_placement(window, qtbot):
+    from picer.window_frame import Point, Rect
+
+    class Placement(ctypes.Structure):
+        _fields_ = [
+            ("length", ctypes.c_uint32),
+            ("flags", ctypes.c_uint32),
+            ("show", ctypes.c_uint32),
+            ("minimum", Point),
+            ("maximum", Point),
+            ("normal", Rect),
+        ]
+
+    frame = window.window_frame
+    hwnd = int(window.winId())
+    get_placement = frame.user32.GetWindowPlacement
+    get_placement.argtypes = [ctypes.c_void_p, ctypes.POINTER(Placement)]
+    get_placement.restype = ctypes.c_int
+
+    def placement():
+        value = Placement()
+        value.length = ctypes.sizeof(value)
+        assert get_placement(hwnd, ctypes.byref(value))
+        return value
+
+    window.resize(window.minimumWidth() + 20, 540)
+    window.move(40, 60)
+    qtbot.wait(30)
+    original = window.size()
+    normal = placement().normal
+    bounds = (normal.left, normal.top, normal.right, normal.bottom)
+    for via_button in (True, False, True):
+        if via_button:
+            window.title_bar.control_buttons["maximize"].click()
+        else:
+            # HTCAPTION double-click is handled by DefWindowProc, as on the desktop.
+            frame.user32.SendMessageW(hwnd, 0x00A3, 2, 0)
+        qtbot.waitUntil(window.isMaximized)
+        saved = placement()
+        assert saved.show == 3  # SW_SHOWMAXIMIZED, not just maximized client geometry.
+        rect = saved.normal
+        assert (rect.left, rect.top, rect.right, rect.bottom) == bounds
+        # Native restore uses the placement also consumed by caption drag-to-restore.
+        frame.user32.SendMessageW(hwnd, 0x0112, 0xF120, 0)
+        qtbot.waitUntil(lambda: not window.isMaximized())
+        assert window.size() == original
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Real HWND styles/hit tests require Windows")
 def test_windows_real_hwnd_caption_edges_and_native_maximize(window, qtbot):
     frame = window.window_frame

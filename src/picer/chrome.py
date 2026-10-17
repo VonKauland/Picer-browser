@@ -172,10 +172,7 @@ class TitleBar(QWidget):
         button.update()
 
     def toggle_maximized(self) -> None:
-        if self.window.isMaximized():
-            self.window.showNormal()
-        else:
-            self.window.showMaximized()
+        self.window.window_frame.toggle_maximized()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:

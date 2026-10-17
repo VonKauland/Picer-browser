@@ -23,7 +23,7 @@ class ExifView(QWidget):
         self.fraction = 0.0
         self.data = {}
         self.layout_row = QVBoxLayout(self)
-        self.layout_row.setContentsMargins(0, 0, 0, 0)
+        self.layout_row.setContentsMargins(0, 0, 0, 10)
         self.layout_row.setSpacing(6)
         self.scroll = QScrollArea()
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -37,7 +37,10 @@ class ExifView(QWidget):
         self.scroll.setWidget(self.content)
         self.layout_row.addWidget(self.scroll, 1)
         self.button = QPushButton("展开详细信息 ▴")
-        self.button.setFixedHeight(28)
+        self.button.setStyleSheet(
+            "QPushButton { padding: 4px 12px; min-height: 0; border-radius: 14px; }"
+        )
+        self.button.setFixedHeight(max(28, self.button.fontMetrics().height() + 10))
         self.button.setAccessibleName("展开或收起 EXIF 详细信息")
         self.button.clicked.connect(self.toggle)
         self.layout_row.addWidget(self.button)
@@ -101,7 +104,8 @@ class ExifView(QWidget):
         self.basic.layout().activate()
         basic = max(150, self.basic.heightForWidth(max(80, self.scroll.viewport().width())))
         available = max(100, self.panel.height() - 120)
-        return min(available, basic + 34 + round(min(240, available * 0.4) * self.fraction))
+        controls = self.button.height() + self.layout_row.spacing() + 10
+        return min(available, basic + controls + round(min(240, available * 0.4) * self.fraction))
 
     def adjust_height(self):
         if self.data:
