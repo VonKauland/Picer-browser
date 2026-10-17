@@ -58,7 +58,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m ruff format --check .
       - name: Check native window frame and edge hover
-        run: python -m pytest tests/test_window_frame.py tests/test_panel_tabs.py tests/test_progress_layout.py tests/test_example_panels.py::test_actual_hover_enter_leave_and_dialog_hold
+        run: python -m pytest tests/test_window_frame.py tests/test_panel_tabs.py tests/test_progress_layout.py tests/test_image_manager.py tests/test_example_panels.py::test_actual_hover_enter_leave_and_dialog_hold
       - name: Run GUI tests on Windows
         run: python -m pytest --maxfail=1 --junitxml=test-results.xml
       - name: Build complete Windows application folder

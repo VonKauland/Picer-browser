@@ -3,6 +3,7 @@
 import pytest
 from PIL import Image
 from PySide6.QtCore import QPoint, Qt
+from pytestqt.exceptions import TimeoutError as QtTimeoutError
 
 from picer.annotations import AnnotationStore
 from picer.plugins.api import PluginError
@@ -63,7 +64,12 @@ def test_default_off_right_only_images_and_visible_shared_thumbnails(host, qtbot
     window.panel_hovers.controllers["example.images"].pin()
     qtbot.wait(100)
     first, second, third = [panel.grid.visualRect(panel.model.index(n)) for n in range(3)]
-    assert second.top() == first.top() and third.top() > first.top()
+    assert second.top() == first.top() and third.top() > first.top(), (
+        panel.grid.size(),
+        panel.grid.viewport().size(),
+        panel.grid.gridSize(),
+        panel.grid.verticalScrollBar().sizeHint(),
+    )
     assert all(path.parent == folder and path.suffix == ".png" for path in panel.model.paths)
     qtbot.waitUntil(
         lambda: bool(panel.pixels) or window.plugins.records["example.images"].state != "enabled",
@@ -131,9 +137,31 @@ def test_device_scope_known_only_and_local_directory_follow(host, qtbot, tmp_pat
     panel.filter_menu()
     popup = panel.popup
     popup.scope.setChecked(False)
-    qtbot.waitUntil(lambda: panel.count_paths[False] == [marked], timeout=5000)
-    popup.apply()
-    qtbot.waitUntil(lambda: panel.model.paths == [marked])
+    try:
+        qtbot.waitUntil(lambda: panel.count_paths[False] == [marked], timeout=5000)
+        popup.apply()
+        qtbot.waitUntil(lambda: panel.model.paths == [marked])
+    except QtTimeoutError:
+        record = window.plugins.records["example.images"]
+        pytest.fail(
+            repr(
+                {
+                    "state": record.state,
+                    "error": record.error,
+                    "active": panel.active,
+                    "filters": panel.filters,
+                    "paths": panel.model.paths,
+                    "counts": panel.count_paths,
+                    "notes": panel.notes,
+                    "generation": panel.generation,
+                    "job": panel.job,
+                    "scope_job": panel.scope_job,
+                    "popup": panel.popup,
+                    "refresh_timer": panel.refresh_timer.isActive(),
+                    "scope_timer": panel.scope_timer.isActive(),
+                }
+            )
+        )
     panel.open_index(panel.model.index(0))
     assert window.current_path == marked
     panel.filters["local"] = True
@@ -171,3 +199,17 @@ def test_two_columns_when_no_vertical_scrollbar_is_needed(host, qtbot):
     qtbot.wait(100)
     first, second, third = [panel.grid.visualRect(panel.model.index(n)) for n in range(3)]
     assert second.top() == first.top() and third.top() > first.top()
+    outer_size = panel.grid.size()
+    for policy in (
+        Qt.ScrollBarPolicy.ScrollBarAlwaysOn,
+        Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+    ):
+        panel.grid.setVerticalScrollBarPolicy(policy)
+
+        def two_columns():
+            rectangles = [panel.grid.visualRect(panel.model.index(n)) for n in range(3)]
+            return rectangles[0].top() == rectangles[1].top() < rectangles[2].top()
+
+        qtbot.waitUntil(two_columns)
+        assert panel.grid.size() == outer_size
