@@ -37,6 +37,7 @@ from picer.folder_navigation import FolderNavigation
 from picer.formats import enabled_formats
 from picer.fullscreen import FullscreenChrome
 from picer.host_style import HostStyleFilter, mark_host, scope_style
+from picer.i18n import load_language, tr
 from picer.imaging import read_image
 from picer.input_bindings import InputBindings, mouse_value
 from picer.loading import ImageLoader
@@ -145,11 +146,12 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self.paths_layout = AppPaths.resolve(plugin_root)
+        load_language(self.paths_layout.config)
         self.thumbnail_cache = ThumbnailCache(self.paths_layout.cache)
         self.thumbnails = ThumbnailService(self.thumbnail_cache, self)
         self.current_thumbnail = QImage()
         self.setWindowIcon(QIcon(str(self.paths_layout.icon)))
-        self.setWindowTitle("揽映")
+        self.setWindowTitle(tr("揽映"))
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setMinimumSize(800, 420)
         self.resize(1200, 800)
@@ -190,7 +192,7 @@ class MainWindow(QMainWindow):
         self.fullscreen_chrome = FullscreenChrome(self)
         layout.addWidget(self.view, 1)
         self.setCentralWidget(container)
-        self.empty_label = QLabel("打开图片，开始浏览\nCtrl+O  ·  或将图片拖入窗口", self.view)
+        self.empty_label = QLabel(tr("打开图片，开始浏览\nCtrl+O  ·  或将图片拖入窗口"), self.view)
         self.view.empty_label = self.empty_label
         self.empty_label.setObjectName("empty")
         self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -205,12 +207,12 @@ class MainWindow(QMainWindow):
         self.animation.pixels.connect(self.animation_frame)
         self.animation.changed.connect(self.animation_changed)
         self.animation.failed.connect(lambda error: setattr(self, "last_error", error))
-        file_menu = self.title_bar.menu.addMenu("文件")
-        edit_menu = self.title_bar.menu.addMenu("编辑")
-        view_menu = self.title_bar.menu.addMenu("视图")
-        plugin_menu = self.title_bar.menu.addMenu("插件")
-        self.options_menu = self.title_bar.menu.addMenu("选项")
-        help_menu = self.title_bar.menu.addMenu("帮助")
+        file_menu = self.title_bar.menu.addMenu(tr("文件"))
+        edit_menu = self.title_bar.menu.addMenu(tr("编辑"))
+        view_menu = self.title_bar.menu.addMenu(tr("视图"))
+        plugin_menu = self.title_bar.menu.addMenu(tr("插件"))
+        self.options_menu = self.title_bar.menu.addMenu(tr("选项"))
+        help_menu = self.title_bar.menu.addMenu(tr("帮助"))
         self.main_menus = (
             file_menu,
             edit_menu,
@@ -219,7 +221,7 @@ class MainWindow(QMainWindow):
             self.options_menu,
             help_menu,
         )
-        run_menu = plugin_menu.addMenu("调用功能")
+        run_menu = plugin_menu.addMenu(tr("调用功能"))
         self.plugin_menus = {"编辑": edit_menu, "视图": view_menu, "插件": run_menu}
         self.open_action = self.add_action(file_menu, "打开图片…", "Ctrl+O", self.choose_image)
         self.add_action(file_menu, "打开文件夹…", "Ctrl+Shift+O", self.choose_folder)
@@ -234,10 +236,10 @@ class MainWindow(QMainWindow):
         self.settings_action = self.add_action(
             self.options_menu, "设置…", "Ctrl+,", self.show_settings
         )
-        self.settings_action.setText("系统设置…")
+        self.settings_action.setText(tr("系统设置…"))
         self.options_menu.addSeparator()
-        self.options_menu.addAction("导出设置…", self.export_settings)
-        self.options_menu.addAction("导入设置…", self.import_settings)
+        self.options_menu.addAction(tr("导出设置…"), self.export_settings)
+        self.options_menu.addAction(tr("导入设置…"), self.import_settings)
         self.previous_action = self.add_action(
             view_menu, "上一张", "Left", lambda: self.navigate(-1)
         )
@@ -283,9 +285,9 @@ class MainWindow(QMainWindow):
         self.actual_action = self.add_action(view_menu, "原始大小", "Ctrl+1", self.view.actual_size)
         view_menu.addSeparator()
         self.fullscreen_action = self.add_action(view_menu, "全屏", "F11", self.toggle_fullscreen)
-        self.fullscreen_action.setText("切换全屏")
+        self.fullscreen_action.setText(tr("切换全屏"))
         self.add_action(view_menu, "启用全屏", "", self.enter_fullscreen)
-        self.add_action(view_menu, "退出全屏", "", self.exit_fullscreen).setText("取消全屏")
+        self.add_action(view_menu, "退出全屏", "", self.exit_fullscreen).setText(tr("取消全屏"))
         self.add_action(view_menu, "切换图片缩放", "", self.toggle_image_scale)
         self.add_action(help_menu, "关于揽映", "", self.show_about)
         self.add_action(plugin_menu, "插件管理…", "Ctrl+Shift+P", self.show_plugins)
@@ -311,6 +313,10 @@ class MainWindow(QMainWindow):
         self.update_actions()
         self.title_bar.arrange()
         self.window_frame = WindowFrame(self)
+        from picer.updates import UpdateChecker
+
+        self.updates = UpdateChecker(self)
+        help_menu.addAction(tr("检测新版本"), lambda: self.updates.check(manual=True))
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -321,7 +327,7 @@ class MainWindow(QMainWindow):
         self.panel_hovers.layout_strips()
 
     def add_action(self, menu, text, shortcut, callback) -> QAction:
-        action = QAction(text, self)
+        action = QAction(tr(text), self)
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
         action.triggered.connect(callback)
@@ -358,6 +364,8 @@ class MainWindow(QMainWindow):
 
     def apply_preferences(self):
         self.app_preferences = read_preferences(self.plugins)
+        if hasattr(self, "updates"):
+            self.updates.configure()
         suffixes = enabled_formats(self.app_preferences)
         if suffixes != self.supported_suffixes:
             self.supported_suffixes = suffixes
@@ -409,7 +417,9 @@ class MainWindow(QMainWindow):
                         used.add(normalized)
         shortcut = self.open_action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
         self.empty_label.setText(
-            "打开图片，开始浏览\n" + (shortcut + "  ·  " if shortcut else "") + "或将图片拖入窗口"
+            tr("打开图片，开始浏览\n")
+            + (shortcut + "  ·  " if shortcut else "")
+            + tr("或将图片拖入窗口")
         )
 
     def restore_startup(self, *, restore_image=True):
@@ -435,7 +445,7 @@ class MainWindow(QMainWindow):
             self.plugins.fullscreen_changed(self.isFullScreen())
 
     def choose_folder(self) -> None:
-        folder = QFileDialog.getExistingDirectory(self, "打开文件夹")
+        folder = QFileDialog.getExistingDirectory(self, tr("打开文件夹"))
         if not folder:
             return
         self.loader.open_folder(Path(folder).resolve())
@@ -444,7 +454,7 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         menu.addAction(self.copy_image_action)
         menu.addAction(self.copy_action)
-        reveal = menu.addAction("在 Windows 资源管理器中显示")
+        reveal = menu.addAction(tr("在 Windows 资源管理器中显示"))
         reveal.setEnabled(self.current_path is not None)
         reveal.triggered.connect(self.reveal_current_image)
         menu.addSeparator()
@@ -473,13 +483,13 @@ class MainWindow(QMainWindow):
             or pixels.width() == self.view.native_width
         ):
             QApplication.clipboard().setImage(pixels)
-            self.notify("已复制图片")
+            self.notify(tr("已复制图片"))
             return
         path, generation, rotation = self.current_path, self.loader.generation, self.image_rotation
         revision = self.image_revision
         auto_orient = self.app_preferences["auto_orient"]
         camera_preview = self.loader.camera_preview(path)
-        self.notify("正在复制原图")
+        self.notify(tr("正在复制原图"))
 
         def finish(image, error):
             if (
@@ -489,12 +499,12 @@ class MainWindow(QMainWindow):
             ):
                 return
             if error or image is None:
-                self.notify("复制图片失败")
+                self.notify(tr("复制图片失败"))
                 return
             if rotation:
                 image = image.transformed(QTransform().rotate(rotation))
             QApplication.clipboard().setImage(image)
-            self.notify("已复制图片")
+            self.notify(tr("已复制图片"))
 
         try:
             cached = self.loader.cached(self.loader.key(path, 0))
@@ -517,7 +527,7 @@ class MainWindow(QMainWindow):
             if self.open_image(path):
                 if self.current_path != path:
                     self.loader.folder_candidates = deque(paths[index + 1 :])
-                self.notify("已跳转至尾图" if last else "已跳转至首图")
+                self.notify(tr("已跳转至尾图") if last else tr("已跳转至首图"))
                 return
 
     def toggle_reading_direction(self):
@@ -528,9 +538,9 @@ class MainWindow(QMainWindow):
         self.plugins._save()
         self.apply_preferences()
         self.notify(
-            "浏览方向：从右到左"
+            tr("浏览方向：从右到左")
             if self.app_preferences["reading_direction"] == "rtl"
-            else "浏览方向：从左到右"
+            else tr("浏览方向：从左到右")
         )
 
     @property
@@ -607,24 +617,24 @@ class MainWindow(QMainWindow):
         folder = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
         filename, _ = QFileDialog.getSaveFileName(
             self.settings_dialog or self,
-            "导出设置",
+            tr("导出设置"),
             str(Path(folder) / "Picer-settings.json"),
-            "揽映设置 (*.json)",
+            tr("揽映设置 (*.json)"),
         )
         if not filename:
             return
         try:
             write_backup(filename, self)
         except (OSError, ValueError, TypeError) as error:
-            QMessageBox.warning(self.settings_dialog or self, "设置未导出", str(error))
+            QMessageBox.warning(self.settings_dialog or self, tr("设置未导出"), str(error))
         else:
-            self.notify("当前生效的设置已导出")
+            self.notify(tr("当前生效的设置已导出"))
 
     def import_settings(self):
         from picer.settings_backup import read_backup
 
         filename, _ = QFileDialog.getOpenFileName(
-            self.settings_dialog or self, "导入设置", "", "揽映设置 (*.json)"
+            self.settings_dialog or self, tr("导入设置"), "", tr("揽映设置 (*.json)")
         )
         if not filename:
             return
@@ -633,9 +643,9 @@ class MainWindow(QMainWindow):
             dialog = self.show_settings()
             dialog.load_backup(data)
         except (OSError, ValueError, TypeError) as error:
-            QMessageBox.warning(self.settings_dialog or self, "设置未导入", str(error))
+            QMessageBox.warning(self.settings_dialog or self, tr("设置未导入"), str(error))
         else:
-            self.notify("设置已导入，请点击应用或保存更改")
+            self.notify(tr("设置已导入，请点击应用或保存更改"))
 
     def closeEvent(self, event) -> None:
         if self.settings_dialog is not None:
@@ -646,6 +656,7 @@ class MainWindow(QMainWindow):
         if self.current_path:
             ui["last_image"] = str(self.current_path)
         self.plugins._save()
+        self.updates.dispose()
         self.window_frame.dispose()
         self.notifications.dispose()
         self.navigation_keys.dispose()
@@ -677,7 +688,7 @@ class MainWindow(QMainWindow):
         if not self.isFullScreen():
             self.was_maximized = self.isMaximized()
             self.showFullScreen()
-            self.notify("已进入全屏")
+            self.notify(tr("已进入全屏"))
 
     def exit_fullscreen(self) -> None:
         if self.isFullScreen():
@@ -685,7 +696,7 @@ class MainWindow(QMainWindow):
                 self.showMaximized()
             else:
                 self.showNormal()
-            self.notify("已退出全屏")
+            self.notify(tr("已退出全屏"))
 
     def open_data_directory(self) -> None:
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.paths_layout.root)))
@@ -696,9 +707,9 @@ class MainWindow(QMainWindow):
             self.thumbnails.discard_seeds()
             self.thumbnail_cache.clear()
         except OSError as error:
-            QMessageBox.warning(self, "清理缓存失败", str(error))
+            QMessageBox.warning(self, tr("清理缓存失败"), str(error))
         else:
-            self.notify("图片缓存已清理")
+            self.notify(tr("图片缓存已清理"))
 
     def show_about(self) -> None:
         from picer.about import AboutDialog
@@ -711,13 +722,13 @@ class MainWindow(QMainWindow):
         patterns = " ".join(f"*{suffix}" for suffix in sorted(self.supported_suffixes))
         filename, _ = QFileDialog.getOpenFileName(
             self,
-            "打开图片",
+            tr("打开图片"),
             str(self.current_path.parent) if self.current_path else "",
-            f"图片 ({patterns});;所有文件 (*)",
+            tr("图片 ({0});;所有文件 (*)").format(patterns),
         )
         if filename:
             if not self.open_image(Path(filename)):
-                QMessageBox.warning(self, "无法打开图片", self.last_error)
+                QMessageBox.warning(self, tr("无法打开图片"), self.last_error)
 
     def open_image(self, path: Path) -> bool:
         """Accept a request; large images/RAW/animation finish in the background."""
@@ -757,9 +768,9 @@ class MainWindow(QMainWindow):
             self.path_positions = {item: index for index, item in enumerate(self.paths)}
             self.image_path_snapshot = tuple(self.paths)
         if feedback < 0 and self.path_positions.get(path) == 0:
-            self.notify("已到第一张")
+            self.notify(tr("已到第一张"))
         elif feedback > 0 and self.path_positions.get(path) == len(self.paths) - 1:
-            self.notify("已到最后一张")
+            self.notify(tr("已到最后一张"))
         self.current_thumbnail = image.scaled(
             min(256, image.width()),
             min(256, image.height()),
@@ -781,7 +792,7 @@ class MainWindow(QMainWindow):
             self.view.actual_size()
         self.last_error = ""
         self.empty_label.hide()
-        self.setWindowTitle(f"{path.name} — 揽映")
+        self.setWindowTitle(tr("{0} — 揽映").format(path.name))
         self.title_bar.set_filename(path.name)
         self.update_actions()
         self.image_revision += 1
@@ -815,7 +826,7 @@ class MainWindow(QMainWindow):
             self.plugins.emit_animation(state)
 
     def loading_failed(self, path, error):
-        self.last_error = f"无法打开 {path.name}：{error}"
+        self.last_error = tr("无法打开 {0}：{1}").format(path.name, error)
         request, self.navigation_request = self.navigation_request, None
         if request and request[0] == path and request[2] > 0:
             self.loader.requested = path
@@ -824,7 +835,7 @@ class MainWindow(QMainWindow):
         self.loader.requested = self.current_path
         # Keep the last good image and expose a nonmodal failure on the caption.
         self.navigation_feedback = 0
-        self.notify("图片读取失败")
+        self.notify(tr("图片读取失败"))
         self.title_bar.caption.setToolTip(self.last_error)
         if self.current_path is None:
             self.empty_label.setText(self.last_error)
@@ -849,7 +860,7 @@ class MainWindow(QMainWindow):
             target = index + offset + (step - 1) * (1 if offset > 0 else -1)
             if not self.app_preferences["wrap"] and not 0 <= target < len(paths):
                 self.navigation_feedback = 0
-                self.notify("已到第一张" if offset < 0 else "已到最后一张")
+                self.notify(tr("已到第一张") if offset < 0 else tr("已到最后一张"))
                 return
             path = paths[target % len(paths)]
             if self.loader.open(path):

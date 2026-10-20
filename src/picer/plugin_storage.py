@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWi
 
 from picer.bundles import EXAMPLES
 from picer.confirmation import confirm
+from picer.i18n import plugin_text, tr
 from picer.messages import MessageBox
 from picer.plugins.api import PluginError
 from picer.plugins.tasks import Worker
@@ -53,7 +54,7 @@ def size_text(size):
 
 class PluginStorage(Card):
     def __init__(self, settings):
-        super().__init__("插件文件")
+        super().__init__(tr("插件文件"))
         self.settings, self.manager = settings, settings.manager
         self.rows = {}
         self.jobs = []
@@ -84,20 +85,22 @@ class PluginStorage(Card):
             row = QWidget()
             layout = QHBoxLayout(row)
             layout.setContentsMargins(0, 4, 0, 4)
-            name = QLabel(record.manifest.name)
+            name = QLabel(plugin_text(self.manager, plugin_id, record.manifest.name))
             name.setWordWrap(True)
             name.setToolTip(plugin_id)
             layout.addWidget(name, 1)
-            kind = QLabel("第三方" if is_external(self.manager, plugin_id) else "内置")
+            kind = QLabel(tr("第三方") if is_external(self.manager, plugin_id) else tr("内置"))
             kind.setObjectName("muted")
             layout.addWidget(kind)
-            size = QLabel("统计中…" if record.directory else "随应用提供")
+            size = QLabel(tr("统计中…") if record.directory else tr("随应用提供"))
             size.setMinimumWidth(85)
             layout.addWidget(size)
-            button = QPushButton("卸载")
+            button = QPushButton(tr("卸载"))
             button.setEnabled(record.directory is not None)
             button.setToolTip(
-                "内置代码随应用提供，无法单独卸载" if not record.directory else "卸载插件和配置"
+                tr("内置代码随应用提供，无法单独卸载")
+                if not record.directory
+                else tr("卸载插件和配置")
             )
             button.clicked.connect(lambda checked=False, key=plugin_id: self.uninstall(key))
             layout.addWidget(button)
@@ -122,7 +125,7 @@ class PluginStorage(Card):
         job = Worker(scan)
         self.jobs.append(job)
         job.signals.finished.connect(self.scanned)
-        self.total.setText(f"共 {len(self.rows)} 个插件 · 正在统计独立插件文件")
+        self.total.setText(tr("共 {0} 个插件 · 正在统计独立插件文件").format(len(self.rows)))
         QThreadPool.globalInstance().start(job)
 
     def scanned(self, payload, error):
@@ -132,10 +135,12 @@ class PluginStorage(Card):
         result = payload[1]
         self.sizes = result
         for key, size in result.items():
-            self.rows[key].setText(size_text(size) if size is not None else "暂不可读")
+            self.rows[key].setText(size_text(size) if size is not None else tr("暂不可读"))
         total = sum(size for size in result.values() if size is not None)
-        suffix = " · 部分文件暂不可读" if None in result.values() else ""
-        self.total.setText(f"共 {len(self.rows)} 个插件 · 独立文件 {size_text(total)}{suffix}")
+        suffix = tr(" · 部分文件暂不可读") if None in result.values() else ""
+        self.total.setText(
+            tr("共 {0} 个插件 · 独立文件 {1}{2}").format(len(self.rows), size_text(total), suffix)
+        )
 
     def uninstall(self, plugin_id):
         record = self.manager.records.get(plugin_id)
@@ -143,17 +148,17 @@ class PluginStorage(Card):
             return
         if not confirm(
             self.settings,
-            "卸载插件？",
-            f"将卸载「{record.manifest.name}」及其配置。已启用的插件会先停用。",
-            "卸载",
+            tr("卸载插件？"),
+            tr("将卸载「{0}」及其配置。已启用的插件会先停用。").format(record.manifest.name),
+            tr("卸载"),
         ):
             return
         try:
             if self.manager._dependents(plugin_id):
-                raise PluginError("请先停用依赖此插件的其他插件。")
+                raise PluginError(tr("请先停用依赖此插件的其他插件。"))
             if record.state == "enabled":
                 self.manager.disable(plugin_id)
             self.manager.uninstall(plugin_id)
             self.settings.binding_editor.remove_plugin(plugin_id)
         except PluginError as error:
-            MessageBox.warning(self.settings, "无法卸载", str(error))
+            MessageBox.warning(self.settings, tr("无法卸载"), str(error))

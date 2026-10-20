@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from picer.file_drag import ImageFileDrag
 from picer.host_style import prepare_popup
+from picer.i18n import tr
 from picer.ui import RoundedSlider, ui_icon
 
 from .filters import FilterPopup, matches
@@ -62,12 +63,12 @@ class Plugin:
         tools = QHBoxLayout()
         tools.setSpacing(5)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("搜索图片")
+        self.search.setPlaceholderText(tr("搜索图片"))
         tools.addWidget(self.search, 1)
         self.sort_button, self.filter_button = QPushButton(), QPushButton()
         for button, icon, label in (
-            (self.sort_button, "sort", "排序"),
-            (self.filter_button, "filter", "筛选"),
+            (self.sort_button, "sort", tr("排序")),
+            (self.filter_button, "filter", tr("筛选")),
         ):
             button.setIcon(ui_icon(icon))
             button.setFixedSize(28, 28)
@@ -83,8 +84,8 @@ class Plugin:
         self.size.setRange(50, 200)
         value = context.get_setting("thumbnail_zoom", 100)
         self.size.setValue(value if type(value) is int and 50 <= value <= 200 else 100)
-        self.size.setAccessibleName("缩略图大小")
-        self.size.setToolTip("调整缩略图大小")
+        self.size.setAccessibleName(tr("缩略图大小"))
+        self.size.setToolTip(tr("调整缩略图大小"))
         self.load_timer = QTimer(self.panel)
         self.load_timer.setSingleShot(True)
         self.load_timer.setInterval(25)
@@ -238,7 +239,8 @@ class Plugin:
             self.count_paths[local] = result[0]
             self.model.replace(result[1])
             self.count.setText(
-                ("当前文件夹" if local else "本设备已标记") + f" · {len(result[1])} 张"
+                (tr("当前文件夹") if local else tr("本设备已标记"))
+                + tr(" · {0} 张").format(len(result[1]))
             )
             self.grid.arrange()
             row = self.model.positions.get(str(self.current))
@@ -300,7 +302,7 @@ class Plugin:
     def open_index(self, index):
         if index.isValid() and self.model.paths[index.row()] != self.current:
             if not self.context.open_image(self.model.paths[index.row()]):
-                self.context.notify("无法打开这张图片")
+                self.context.notify(tr("无法打开这张图片"))
 
     def resize_tiles(self, value):
         self.context.set_setting("thumbnail_zoom", value)
@@ -309,13 +311,17 @@ class Plugin:
     def sort_menu(self):
         menu = QMenu(self.panel)
         prepare_popup(menu)
-        for key, text in (("name", "名称"), ("modified", "修改时间"), ("rating", "星级评分")):
+        for key, text in (
+            ("name", tr("名称")),
+            ("modified", tr("修改时间")),
+            ("rating", tr("星级评分")),
+        ):
             action = menu.addAction(text)
             action.setCheckable(True)
             action.setChecked(self.sort == key)
             action.triggered.connect(lambda _, key=key: self.set_sort(key))
         menu.addSeparator()
-        for descending, text in ((False, "正序排列"), (True, "倒序排列")):
+        for descending, text in ((False, tr("正序排列")), (True, tr("倒序排列"))):
             action = menu.addAction(text)
             action.setCheckable(True)
             action.setChecked(self.descending == descending)

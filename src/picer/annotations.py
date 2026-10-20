@@ -6,6 +6,8 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
+from picer.i18n import tr
+
 CATEGORIES = (
     ("red", "红色", "#F65B62"),
     ("orange", "橙色", "#FF9D42"),
@@ -64,18 +66,18 @@ class AnnotationStore:
     def set(self, path, *, rating=None, color=None):
         path = os.path.abspath(os.fspath(path))
         if "\0" in path:
-            raise ValueError("图片路径无效")
+            raise ValueError(tr("图片路径无效"))
         if rating is not None and (
             type(rating) not in (int, float)
             or not 0 <= rating <= 5
             or not math.isfinite(rating)
             or rating * 2 != int(rating * 2)
         ):
-            raise ValueError("评分须为 0 至 5，步长为 0.5")
+            raise ValueError(tr("评分须为 0 至 5，步长为 0.5"))
         if color is not None and (not isinstance(color, str) or color not in COLORS | {""}):
-            raise ValueError("未知颜色分类")
+            raise ValueError(tr("未知颜色分类"))
         if self.error:
-            raise ValueError("标注库无法写入：" + self.error)
+            raise ValueError(tr("标注库无法写入：") + self.error)
         previous = self.values.get(path, (None, ""))
         value = (
             previous[0] if rating is None else float(rating),

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.i18n import tr
 from picer.plugins import PluginError, SettingField
 from picer.ui import Toggle
 
@@ -77,14 +78,14 @@ class Plugin:
         self.fields = tuple(
             SettingField(key, label, "bool", True)
             for key, label in (
-                ("file", "文件信息"),
-                ("dimensions", "尺寸与格式"),
-                ("color", "颜色信息"),
-                ("histogram", "RGB 直方图"),
-                ("rating", "星级"),
-                ("classification", "颜色分类"),
-                ("extra", "其他元数据"),
-                ("ai", "AI 生成信息"),
+                ("file", tr("文件信息")),
+                ("dimensions", tr("尺寸与格式")),
+                ("color", tr("颜色信息")),
+                ("histogram", tr("RGB 直方图")),
+                ("rating", tr("星级")),
+                ("classification", tr("颜色分类")),
+                ("extra", tr("其他元数据")),
+                ("ai", tr("AI 生成信息")),
             )
         )
         context.add_settings(self.fields, self.apply_settings)
@@ -94,7 +95,7 @@ class Plugin:
         layout = QVBoxLayout(self.panel)
         layout.setContentsMargins(12, 12, 12, 0)
         top = QHBoxLayout()
-        self.title = DetailLabel("图片信息")
+        self.title = DetailLabel(tr("图片信息"))
         self.title.setTextFormat(Qt.TextFormat.PlainText)
         self.title.setWordWrap(True)
         top.addWidget(self.title, 1)
@@ -110,10 +111,10 @@ class Plugin:
         self.groups = {}
         self.tables = {}
         for key, label in (
-            ("file", "文件"),
-            ("dimensions", "尺寸与格式"),
-            ("color", "颜色"),
-            ("extra", "其他元数据"),
+            ("file", tr("文件")),
+            ("dimensions", tr("尺寸与格式")),
+            ("color", tr("颜色")),
+            ("extra", tr("其他元数据")),
         ):
             group, rows = section(label)
             table = QFormLayout()
@@ -122,7 +123,7 @@ class Plugin:
             rows.addLayout(table)
             self.groups[key], self.tables[key] = group, table
             self.body.addWidget(group)
-        self.ai_box, ai_layout = section("AI 生成信息")
+        self.ai_box, ai_layout = section(tr("AI 生成信息"))
         self.ai_notice = DetailLabel()
         ai_layout.addWidget(self.ai_notice)
         self.ai_table = QFormLayout()
@@ -131,7 +132,7 @@ class Plugin:
         ai_layout.addLayout(self.ai_table)
         self.body.addWidget(self.ai_box)
         self.ai_box.hide()
-        group, row = section("RGB 直方图（对数刻度）")
+        group, row = section(tr("RGB 直方图（对数刻度）"))
         self.groups["histogram"] = group
         self.histogram = Histogram()
         self.sample_label = DetailLabel()
@@ -145,21 +146,21 @@ class Plugin:
         self.scroll.setWidget(body)
         layout.addWidget(self.scroll, 1)
         # A separate layout region, never a scroll child or overlay over other details.
-        self.exif_box, exif_layout = section("相机 EXIF")
+        self.exif_box, exif_layout = section(tr("相机 EXIF"))
         self.exif_view = ExifView(self.panel)
         exif_layout.addWidget(self.exif_view)
         focus_row = QHBoxLayout()
-        focus_row.addWidget(DetailLabel("显示对焦点"), 1)
+        focus_row.addWidget(DetailLabel(tr("显示对焦点")), 1)
         self.focus_switch = Toggle()
-        self.focus_switch.setAccessibleName("在图片中显示记录的对焦点")
+        self.focus_switch.setAccessibleName(tr("在图片中显示记录的对焦点"))
         self.focus_switch.setChecked(bool(context.get_setting("show_focus_points", False)))
         self.focus_switch.setEnabled(False)
         self.focus_switch.toggled.connect(self.set_focus_enabled)
         focus_row.addWidget(self.focus_switch)
         focus_row.addSpacing(8)
-        focus_row.addWidget(DetailLabel("机内直出"), 1)
+        focus_row.addWidget(DetailLabel(tr("机内直出")), 1)
         self.camera_switch = Toggle()
-        self.camera_switch.setAccessibleName("查看 RAW 内嵌的机内直出预览")
+        self.camera_switch.setAccessibleName(tr("查看 RAW 内嵌的机内直出预览"))
         self.camera_switch.setEnabled(False)
         self.camera_switch.toggled.connect(self.set_camera_enabled)
         focus_row.addWidget(self.camera_switch)
@@ -224,14 +225,14 @@ class Plugin:
         if self.token:
             self.token.cancel()
         path = self.context.current_path()
-        self.title.setText(path.name if path else "打开图片后查看信息")
+        self.title.setText(path.name if path else tr("打开图片后查看信息"))
         self.exif_box.hide()
         self.exif_view.clear()
         self.metadata = None
         self.ai_box.hide()
         while self.ai_table.rowCount():
             self.ai_table.removeRow(0)
-        self.warning.setText("正在读取元数据…" if path else "")
+        self.warning.setText(tr("正在读取元数据…") if path else "")
         for table in self.tables.values():
             while table.rowCount():
                 table.removeRow(0)
@@ -251,15 +252,19 @@ class Plugin:
         self.metadata = data
         for key, table in self.tables.items():
             for label, value in data.get(key, {}).items():
-                widget = DetailLabel(str(value))
+                widget = DetailLabel(
+                    tr(str(value))
+                    if label in {"透明度", "色彩模式", "预览类型"} or value == "未嵌入"
+                    else str(value)
+                )
                 widget.setTextFormat(Qt.TextFormat.PlainText)
                 widget.setWordWrap(True)
                 widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-                table.addRow(DetailLabel(str(label)), widget)
+                table.addRow(DetailLabel(tr(str(label))), widget)
         self.histogram.channels = data.get("histogram", [])
         self.histogram.update()
         self.sample_label.setText(
-            "采样尺寸：" + " × ".join(str(v) for v in data.get("sample_size", ()))
+            tr("采样尺寸：") + " × ".join(str(v) for v in data.get("sample_size", ()))
         )
         self.exif_view.set_data(data.get("exif_sections", {}))
         self.exif_box.setVisible(bool(data["exif"]) or "raw_camera_preview_available" in data)
@@ -272,20 +277,20 @@ class Plugin:
         )
         self.camera_switch.blockSignals(False)
         self.camera_switch.setToolTip(
-            "使用 RAW 内嵌的相机处理预览，分辨率取决于相机"
+            tr("使用 RAW 内嵌的相机处理预览，分辨率取决于相机")
             if available
-            else "此图片没有可用的 RAW 机内预览"
+            else tr("此图片没有可用的 RAW 机内预览")
         )
         ai = data.get("ai_generation")
         while self.ai_table.rowCount():
             self.ai_table.removeRow(0)
         self.ai_box.setVisible(bool(ai) and bool(self.context.get_setting("ai", True)))
         if ai:
-            self.ai_notice.setText(ai["message"])
+            self.ai_notice.setText(tr("此图片为{0}生成").format(ai["source"]))
             for label, value in ai["fields"].items():
-                widget = DetailLabel(str(value) or "未记录")
+                widget = DetailLabel(str(value) or tr("未记录"))
                 widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-                self.ai_table.addRow(DetailLabel(str(label)), widget)
+                self.ai_table.addRow(DetailLabel(tr(str(label))), widget)
         self.warning.setText("\n".join(data["warnings"]))
         self.update_annotations()
         self.rating.setEnabled(True)
@@ -318,9 +323,9 @@ class Plugin:
         self.focus_switch.blockSignals(False)
         self.focus_switch.setEnabled(available)
         self.focus_switch.setToolTip(
-            "实线显示记录的对焦区域，虚线显示人脸／眼部识别框；仅有中心记录时显示定位标记。"
+            tr("实线显示记录的对焦区域，虚线显示人脸／眼部识别框；仅有中心记录时显示定位标记。")
             if available
-            else data.get("message", "此照片未记录可识别的对焦点、人脸或眼部区域")
+            else data.get("message", tr("此照片未记录可识别的对焦点、人脸或眼部区域"))
         )
         try:
             self.context.show_focus_points(
@@ -348,7 +353,7 @@ class Plugin:
                 self.context.set_image_annotation(self.metadata["path"], **values)
             except PluginError as error:
                 self.update_annotations()
-                self.context.notify(f"标注未保存：{error}")
+                self.context.notify(tr("标注未保存：{0}").format(error))
 
     def set_rating(self, value):
         self.save_annotations(rating=value)

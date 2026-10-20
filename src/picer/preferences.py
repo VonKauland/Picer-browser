@@ -1,6 +1,8 @@
 """Validated application preferences; component settings remain separate."""
 
 DEFAULTS = {
+    "language": "zh_CN",
+    "check_updates": True,
     "readable_formats": None,
     "start": "empty",
     "remember_window": True,
@@ -24,6 +26,7 @@ DEFAULTS = {
     "cache_mb": 512,
 }
 CHOICES = {
+    "language": {"zh_CN", "zh_TW", "en", "ru", "ja", "ko", "es"},
     "reading_direction": {"ltr", "rtl"},
     "start": {"empty", "last"},
     "default_scale": {"fit", "actual"},

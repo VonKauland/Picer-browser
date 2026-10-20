@@ -1,12 +1,13 @@
 """An external plugin that also works in the packaged EXE."""
 
+from picer.i18n import tr
 from picer.plugins import PluginContext
 
 
 class Plugin:
     def activate(self, context: PluginContext) -> None:
         self.context = context
-        context.add_command("negative", "负片预览", self.negative)
+        context.add_command("negative", tr("负片预览"), self.negative)
         context.subscribe("image.opened", self.on_opened)
 
     def negative(self) -> None:

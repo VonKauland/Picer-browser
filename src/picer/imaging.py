@@ -8,6 +8,7 @@ from PIL import Image, ImageOps
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QImageReader, QTransform
 
+from picer.i18n import tr
 from picer.video import VIDEO_SUFFIXES
 
 RAW_SUFFIXES = frozenset(
@@ -55,7 +56,7 @@ def read_image(path, *, edge=0, auto_orient=True, token=None, camera_preview=Fal
         with rawpy.RawPy() as raw:
             raw.open_file(str(path))
             if raw.sizes.width * raw.sizes.height > MAX_PIXELS:
-                raise ValueError("图片超过 1.2 亿像素的读取上限")
+                raise ValueError(tr("图片超过 1.2 亿像素的读取上限"))
             native = (raw.sizes.width, raw.sizes.height)
             flip = getattr(raw.sizes, "flip", 0)
             image = None
@@ -65,7 +66,7 @@ def read_image(path, *, edge=0, auto_orient=True, token=None, camera_preview=Fal
                     if thumb.format == rawpy.ThumbFormat.JPEG:
                         with Image.open(BytesIO(thumb.data)) as source:
                             if source.width * source.height > MAX_PIXELS:
-                                raise ValueError("机内预览超过像素读取上限")
+                                raise ValueError(tr("机内预览超过像素读取上限"))
                             orientation = source.getexif().get(274, 1)
                             if auto_orient:
                                 source = ImageOps.exif_transpose(source)
@@ -120,7 +121,7 @@ def read_image(path, *, edge=0, auto_orient=True, token=None, camera_preview=Fal
         size = reader.size()
         native = (size.width(), size.height())
         if size.width() * size.height() > MAX_PIXELS:
-            raise ValueError("图片超过 1.2 亿像素的读取上限")
+            raise ValueError(tr("图片超过 1.2 亿像素的读取上限"))
         if edge and size.isValid() and max(size.width(), size.height()) > edge:
             reader.setScaledSize(size.scaled(edge, edge, Qt.AspectRatioMode.KeepAspectRatio))
         image = reader.read()

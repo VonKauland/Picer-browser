@@ -10,6 +10,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
 
+from picer.i18n import tr
+
 BUTTON_MASKS = {
     "DpadUp": 0x0001,
     "DpadDown": 0x0002,
@@ -153,7 +155,7 @@ class XInputBackend:
         self.available = False
         self.guide_supported = False
         self.dll = self.reader = None
-        self.message = "手柄输入仅在 Windows 上可用；仍可设置并保存绑定。"
+        self.message = tr("手柄输入仅在 Windows 上可用；仍可设置并保存绑定。")
         if sys.platform != "win32":
             return
         system = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32"
@@ -177,10 +179,10 @@ class XInputBackend:
             self.extended = extended
             self.guide_supported = extended is not None
             self.available = True
-            self.message = "支持 XInput 手柄，连接后按下按钮可识别。"
+            self.message = tr("支持 XInput 手柄，连接后按下按钮可识别。")
             break
         if not self.available:
-            self.message = "Windows XInput 不可用；仍可设置并保存绑定。"
+            self.message = tr("Windows XInput 不可用；仍可设置并保存绑定。")
 
     def read(self, index):
         if not self.available or index not in range(4):

@@ -719,10 +719,21 @@ def run(window, args, folder, done):
             assert (qt / "plugins" / "platforms" / "qwindows.dll").is_file()
             assert (qt / "plugins" / "platforms" / "qoffscreen.dll").is_file()
             assert not (qt / "plugins" / "platforms" / "qdirect2d.dll").exists()
-            for locale in ("zh_CN", "zh_TW", "en"):
+            for locale in ("zh_CN", "zh_TW", "en", "ru", "ja", "ko", "es"):
                 assert (qt / "translations" / f"qtbase_{locale}.qm").is_file()
             assert not (qt / "translations" / "qtbase_de.qm").exists()
             print("Packaged raster viewport and complete pre-compaction format set passed")
+        from picer.i18n import LANGUAGES, language, set_language, tr
+
+        original_language = language()
+        try:
+            for code in LANGUAGES:
+                set_language(code)
+                assert tr("发现新版本") and tr("界面语言")
+                if code != "zh_CN":
+                    assert tr("设置") != "设置", f"Missing {code} UI catalog"
+        finally:
+            set_language(original_language)
         # Windows TEMP can contain 8.3 aliases (RUNNER~1); the Qt model and
         # viewer use resolved paths, so compare the same canonical directory.
         folder = Path(folder).resolve()

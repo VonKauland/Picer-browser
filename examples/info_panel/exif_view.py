@@ -11,7 +11,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.i18n import tr
+
 from .labels import DetailLabel
+
+
+def value_text(key, value):
+    enums = {
+        "对比",
+        "光源",
+        "曝光程序",
+        "饱和度",
+        "锐利度",
+        "白平衡",
+        "亮度测量解释",
+        "方向",
+        "测光模式",
+        "闪光灯模式",
+    }
+    text = str(value)
+    return tr(text) if key in enums or text == "未记录" else text
 
 
 class ExifView(QWidget):
@@ -36,12 +55,12 @@ class ExifView(QWidget):
         self.rows.setSpacing(12)
         self.scroll.setWidget(self.content)
         self.layout_row.addWidget(self.scroll, 1)
-        self.button = QPushButton("展开详细信息 ▴")
+        self.button = QPushButton(tr("展开详细信息 ▴"))
         self.button.setStyleSheet(
             "QPushButton { padding: 4px 12px; min-height: 0; border-radius: 14px; }"
         )
         self.button.setFixedHeight(max(28, self.button.fontMetrics().height() + 10))
-        self.button.setAccessibleName("展开或收起 EXIF 详细信息")
+        self.button.setAccessibleName(tr("展开或收起 EXIF 详细信息"))
         self.button.clicked.connect(self.toggle)
         self.layout_row.addWidget(self.button)
         self.motion = QVariantAnimation(self)
@@ -58,14 +77,14 @@ class ExifView(QWidget):
             if widget:
                 widget.hide()
                 widget.deleteLater()
-        self.button.setText("展开详细信息 ▴")
+        self.button.setText(tr("展开详细信息 ▴"))
 
     def table(self, values, heading=None):
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         if heading:
-            label = DetailLabel(heading)
+            label = DetailLabel(tr(heading))
             label.setStyleSheet("color: #A2A2A6; border-top: 1px solid #414145; padding-top: 8px;")
             layout.addWidget(label)
         grid = QGridLayout()
@@ -76,7 +95,7 @@ class ExifView(QWidget):
         grid.setColumnStretch(1, 3)
         for row, (key, value) in enumerate(values.items()):
             for column, text in enumerate((key, value)):
-                cell = DetailLabel(str(text))
+                cell = DetailLabel(tr(str(text)) if column == 0 else value_text(key, text))
                 cell.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
                 if column == 0:
                     cell.setStyleSheet("color: #A2A2A6;")
@@ -119,7 +138,7 @@ class ExifView(QWidget):
     def toggle(self):
         self.expanded = not self.expanded
         self.details.show()
-        self.button.setText("收起详细信息 ▾" if self.expanded else "展开详细信息 ▴")
+        self.button.setText(tr("收起详细信息 ▾") if self.expanded else tr("展开详细信息 ▴"))
         self.motion.stop()
         self.motion.blockSignals(True)
         self.motion.setStartValue(self.fraction)

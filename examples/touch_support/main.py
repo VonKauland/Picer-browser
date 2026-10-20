@@ -4,13 +4,15 @@ from pathlib import Path
 
 from PySide6.QtGui import QIcon
 
+from picer.i18n import tr
+
 
 class Plugin:
     def activate(self, context):
         self.context = context
         self.action = context.add_command(
             "toggle",
-            "触控支持",
+            tr("触控支持"),
             self.toggle,
             icon=QIcon(str(Path(__file__).with_name("icon.svg"))),
             requires_image=False,

@@ -4,6 +4,8 @@ from PySide6.QtCore import QEvent, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QWidget
 
+from picer.i18n import tr
+
 
 class PreviewStrip(QWidget):
     def __init__(self, owner):
@@ -18,7 +20,7 @@ class PreviewStrip(QWidget):
         self.setProperty("pluginSurface", True)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet("background: transparent; border: none;")
-        self.setAccessibleName("图片缩略预览")
+        self.setAccessibleName(tr("图片缩略预览"))
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.layout_timer = QTimer(self)
         self.layout_timer.setSingleShot(True)

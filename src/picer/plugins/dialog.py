@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from picer.components import TYPES, component_icon
 from picer.host_style import mark_host
+from picer.i18n import plugin_text, tr
 from picer.messages import MessageBox as QMessageBox
 from picer.plugins.api import PluginError
 from picer.plugins.settings import SettingsForm
@@ -34,14 +35,14 @@ STATES = {"enabled": "已启用", "disabled": "已停用", "error": "已出错",
 
 class PluginDialog(StyledDialog):
     def __init__(self, manager, parent=None, *, selected_id=None, open_settings=False):
-        super().__init__("插件管理", "管理皮肤、功能与面板", parent)
+        super().__init__(tr("插件管理"), tr("管理皮肤、功能与面板"), parent)
         self.manager = manager
         self.resize(1100, 760)
         self.setMinimumSize(940, 600)
         self.form_id, self.settings_form = None, None
         top = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("搜索组件")
+        self.search.setPlaceholderText(tr("搜索组件"))
         self.search.addAction(
             ui_icon("search", manager.host.skin_colors["text"]),
             QLineEdit.ActionPosition.LeadingPosition,
@@ -50,15 +51,15 @@ class PluginDialog(StyledDialog):
         top.addWidget(self.search, 1)
         self.status_filter = QComboBox()
         for label, value in (
-            ("全部状态", ""),
-            ("已启用", "enabled"),
-            ("已停用", "disabled"),
-            ("有问题", "problem"),
+            (tr("全部状态"), ""),
+            (tr("已启用"), "enabled"),
+            (tr("已停用"), "disabled"),
+            (tr("有问题"), "problem"),
         ):
             self.status_filter.addItem(label, value)
         self.status_filter.currentIndexChanged.connect(self.refresh)
         top.addWidget(self.status_filter)
-        self.install_button = QPushButton("安装组件")
+        self.install_button = QPushButton(tr("安装组件"))
         self.install_button.setIcon(ui_icon("install", manager.host.skin_colors["title"]))
         self.install_button.setObjectName("primaryButton")
         self.install_button.clicked.connect(self.install)
@@ -66,13 +67,13 @@ class PluginDialog(StyledDialog):
         self.body.addLayout(top)
         self.filter = QComboBox(self)  # Retain the existing filter API for extensions/tests.
         self.filter.hide()
-        self.filter.addItem("全部组件", "")
+        self.filter.addItem(tr("全部组件"), "")
         self.type_tabs = QTabBar()
         self.type_tabs.setDrawBase(False)
-        self.type_tabs.addTab("全部")
+        self.type_tabs.addTab(tr("全部"))
         for key, label in TYPES.items():
-            self.filter.addItem(label, key)
-            self.type_tabs.addTab(label)
+            self.filter.addItem(tr(label), key)
+            self.type_tabs.addTab(tr(label))
         self.type_tabs.currentChanged.connect(self.filter.setCurrentIndex)
         self.filter.currentIndexChanged.connect(self.type_tabs.setCurrentIndex)
         self.filter.currentIndexChanged.connect(self.refresh)
@@ -87,8 +88,8 @@ class PluginDialog(StyledDialog):
         right = QVBoxLayout()
         self.page_tabs = QTabBar()
         self.page_tabs.setDrawBase(False)
-        self.page_tabs.addTab("概览")
-        self.page_tabs.addTab("设置")
+        self.page_tabs.addTab(tr("概览"))
+        self.page_tabs.addTab(tr("设置"))
         self.page_tabs.currentChanged.connect(self.show_page)
         right.addWidget(self.page_tabs)
         self.pages = QStackedWidget()
@@ -102,20 +103,20 @@ class PluginDialog(StyledDialog):
         self.overview.body.addWidget(self.details, 1)
         self.overview_buttons = QHBoxLayout()
         for label, callback, name in (
-            ("启用", self.toggle, "toggle_button"),
-            ("设置…", self.settings, "settings_button"),
-            ("重新加载", self.reload, "reload_button"),
+            (tr("启用"), self.toggle, "toggle_button"),
+            (tr("设置…"), self.settings, "settings_button"),
+            (tr("重新加载"), self.reload, "reload_button"),
         ):
             button = QPushButton(label)
             button.clicked.connect(callback)
             setattr(self, name, button)
             self.overview_buttons.addWidget(button)
         self.overview.body.addLayout(self.overview_buttons)
-        self.directory_button = QPushButton("打开组件目录")
+        self.directory_button = QPushButton(tr("打开组件目录"))
         self.directory_button.setIcon(ui_icon("folder", manager.host.skin_colors["text"]))
         self.directory_button.clicked.connect(self.open_directory)
         self.overview.body.addWidget(self.directory_button)
-        self.uninstall_button = QPushButton("卸载组件")
+        self.uninstall_button = QPushButton(tr("卸载组件"))
         self.uninstall_button.setObjectName("dangerButton")
         self.uninstall_button.clicked.connect(self.uninstall)
         self.overview.body.addWidget(self.uninstall_button)
@@ -131,7 +132,7 @@ class PluginDialog(StyledDialog):
         self.summary = QLabel()
         self.summary.setObjectName("muted")
         footer.addWidget(self.summary, 1)
-        logs = QPushButton("查看日志")
+        logs = QPushButton(tr("查看日志"))
         logs.setObjectName("quietButton")
         logs.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(manager.paths.logs)))
@@ -193,18 +194,18 @@ class PluginDialog(StyledDialog):
             )
             glyph.setPixmap(icon.pixmap(26, 26))
             layout.addWidget(glyph)
-            name = QLabel(manifest.name)
-            name.setToolTip(manifest.name)
+            name = QLabel(plugin_text(self.manager, plugin_id, manifest.name))
+            name.setToolTip(plugin_text(self.manager, plugin_id, manifest.name))
             name.setMinimumWidth(90)
             name.setWordWrap(True)
             layout.addWidget(name, 1)
-            kind = QLabel(TYPES[manifest.type])
+            kind = QLabel(tr(TYPES[manifest.type]))
             kind.setObjectName("typePill")
             kind.setFixedSize(48, 24)
             kind.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(kind)
             toggle = Toggle()
-            toggle.setAccessibleName(manifest.name + " · 启停")
+            toggle.setAccessibleName(manifest.name + tr(" · 启停"))
             toggle.setChecked(record.state == "enabled")
             toggle.setEnabled(record.state != "incompatible")
             toggle.clicked.connect(lambda _, key=plugin_id: self.toggle_id(key))
@@ -213,7 +214,7 @@ class PluginDialog(StyledDialog):
             more.setIcon(ui_icon("more", self.manager.host.skin_colors["text"]))
             more.setObjectName("circleButton")
             more.setFixedSize(32, 32)
-            more.setToolTip("组件操作")
+            more.setToolTip(tr("组件操作"))
             more.clicked.connect(lambda _, key=plugin_id, widget=more: self.row_menu(key, widget))
             layout.addWidget(more)
             self.list.setItemWidget(item, row)
@@ -224,10 +225,14 @@ class PluginDialog(StyledDialog):
             self.list.setCurrentRow(0)
         enabled = sum(record.state == "enabled" for record in self.manager.records.values())
         self.summary.setText(
-            f"已启用 {enabled} 个组件" if self.list.count() else "没有找到组件 · 换个关键词试试"
+            tr("已启用 {0} 个组件").format(enabled)
+            if self.list.count()
+            else tr("没有找到组件 · 换个关键词试试")
         )
         if self.manager.diagnostics:
-            self.summary.setText(self.summary.text() + f" · {len(self.manager.diagnostics)} 条诊断")
+            self.summary.setText(
+                self.summary.text() + tr(" · {0} 条诊断").format(len(self.manager.diagnostics))
+            )
             self.summary.setToolTip("\n".join(self.manager.diagnostics))
         self.selection_changed()
         mark_host(self)
@@ -244,24 +249,36 @@ class PluginDialog(StyledDialog):
             self.page_tabs.setCurrentIndex(0)
             self.clear_form()
         if record is None:
-            self.detail_title.setText("没有找到组件")
+            self.detail_title.setText(tr("没有找到组件"))
             self.details.clear()
             return
         manifest = record.manifest
-        self.detail_title.setText(manifest.name)
-        self.toggle_button.setText("停用" if record.state == "enabled" else "启用")
+        self.detail_title.setText(plugin_text(self.manager, manifest.id, manifest.name))
+        self.toggle_button.setText(tr("停用") if record.state == "enabled" else tr("启用"))
         self.toggle_button.setEnabled(record.state != "incompatible")
         self.reload_button.setEnabled(record.state == "enabled")
         self.uninstall_button.setEnabled(record.directory is not None and record.state != "enabled")
         self.details.setPlainText(
-            f"{manifest.description}\n\n状态：{STATES.get(record.state, record.state)}\n"
-            f"版本：{manifest.version}\n类型：{TYPES[manifest.type]}\n"
-            f"来源：{'本地组件' if record.directory else '内置'}\n"
-            f"作者：{manifest.author or '未填写'}\nAPI：{manifest.api_version}\n"
-            f"ID：{manifest.id}\n权限：{', '.join(manifest.permissions) or '无'}\n"
-            f"依赖：{', '.join(manifest.requires) or '无'}\n"
-            + (f"\n错误：{record.error}" if record.error else "")
-            + ("\n\n第三方 Python 组件在本机运行，请仅启用可信来源。" if record.directory else "")
+            tr(
+                "{0}\n\n状态：{1}\n版本：{2}\n类型：{3}\n来源：{4}\n作者：{5}\nAPI：{6}\nID：{7}\n权限：{8}\n依赖：{9}\n"
+            ).format(
+                plugin_text(self.manager, manifest.id, manifest.description),
+                tr(STATES.get(record.state, record.state)),
+                manifest.version,
+                tr(TYPES[manifest.type]),
+                tr("本地组件") if record.directory else tr("内置"),
+                manifest.author or tr("未填写"),
+                manifest.api_version,
+                manifest.id,
+                ", ".join(manifest.permissions) or tr("无"),
+                ", ".join(manifest.requires) or tr("无"),
+            )
+            + (tr("\n错误：{0}").format(record.error) if record.error else "")
+            + (
+                tr("\n\n第三方 Python 组件在本机运行，请仅启用可信来源。")
+                if record.directory
+                else ""
+            )
         )
 
     def clear_form(self):
@@ -288,15 +305,15 @@ class PluginDialog(StyledDialog):
                 footer = QWidget()
                 row = QHBoxLayout(footer)
                 row.setContentsMargins(0, 8, 0, 0)
-                reset = QPushButton("恢复默认")
+                reset = QPushButton(tr("恢复默认"))
                 reset.setObjectName("quietButton")
                 reset.clicked.connect(self.settings_form.reset)
                 row.addWidget(reset)
                 row.addStretch()
-                cancel = QPushButton("取消")
+                cancel = QPushButton(tr("取消"))
                 cancel.clicked.connect(self.cancel_settings)
                 row.addWidget(cancel)
-                save = QPushButton("保存更改")
+                save = QPushButton(tr("保存更改"))
                 save.setObjectName("primaryButton")
                 save.clicked.connect(self.save_settings)
                 row.addWidget(save)
@@ -313,17 +330,17 @@ class PluginDialog(StyledDialog):
 
     def save_settings(self):
         if self.settings_form and self.settings_form.save():
-            self.summary.setText("设置已保存")
+            self.summary.setText(tr("设置已保存"))
 
     def operation(self, callback):
         try:
             callback()
         except PluginError as error:
-            QMessageBox.warning(self, "插件操作未完成", str(error))
+            QMessageBox.warning(self, tr("插件操作未完成"), str(error))
         self.refresh()
 
     def install(self):
-        filename, _ = QFileDialog.getOpenFileName(self, "安装组件", "", "组件包 (*.zip)")
+        filename, _ = QFileDialog.getOpenFileName(self, tr("安装组件"), "", tr("组件包 (*.zip)"))
         if filename:
             self.operation(lambda: self.manager.install(Path(filename), replace_existing=True))
 
@@ -350,7 +367,9 @@ class PluginDialog(StyledDialog):
         plugin_id = self.selected_id()
         if (
             plugin_id
-            and QMessageBox.question(self, "卸载组件", "卸载后可重新安装。删除该组件和配置？")
+            and QMessageBox.question(
+                self, tr("卸载组件"), tr("卸载后可重新安装。删除该组件和配置？")
+            )
             == QMessageBox.StandardButton.Yes
         ):
             self.operation(lambda: self.manager.uninstall(plugin_id))
@@ -364,12 +383,12 @@ class PluginDialog(StyledDialog):
     def row_menu(self, plugin_id, widget):
         self.select(plugin_id)
         menu = QMenu(self)
-        settings = menu.addAction("设置…", self.settings)
+        settings = menu.addAction(tr("设置…"), self.settings)
         settings.setEnabled(plugin_id in self.manager.settings_forms)
-        reload = menu.addAction("重新加载", self.reload)
+        reload = menu.addAction(tr("重新加载"), self.reload)
         reload.setEnabled(self.manager.records[plugin_id].state == "enabled")
         menu.addAction(self.toggle_button.text(), self.toggle)
-        uninstall = menu.addAction("卸载组件", self.uninstall)
+        uninstall = menu.addAction(tr("卸载组件"), self.uninstall)
         uninstall.setEnabled(self.uninstall_button.isEnabled())
         mark_host(menu)
         menu.exec(widget.mapToGlobal(widget.rect().bottomLeft()))

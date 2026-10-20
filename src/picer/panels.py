@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.host_style import PLUGIN_STYLE
+from picer.i18n import language, tr
 from picer.progress_ring import RING_SIZE, paint_progress
 from picer.theme import COLORS, accent_style
 from picer.ui import colors_for
@@ -216,8 +217,8 @@ class PanelGrip(QWidget):
         self.controller = None
         self.origin = None
         self.moving = False
-        self.setToolTip("拖动调整大小 · Shift 拖动换边 · 右键隐藏或停靠")
-        self.setAccessibleName("面板三点拖拽条")
+        self.setToolTip(tr("拖动调整大小 · Shift 拖动换边 · 右键隐藏或停靠"))
+        self.setAccessibleName(tr("面板三点拖拽条"))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -286,7 +287,7 @@ class PanelTab(QAbstractButton):
         self.press_origin = None
         self.dragging = False
         self.setText(target.dock.windowTitle())
-        self.setToolTip(self.text() + " · 拖动排序或更换停靠侧")
+        self.setToolTip(self.text() + tr(" · 拖动排序或更换停靠侧"))
         self.setAccessibleName(self.text())
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -371,6 +372,21 @@ class PanelTab(QAbstractButton):
         font = painter.font()
         font.setPixelSize(13)
         painter.setFont(font)
+        if language() in {"en", "ru", "es"}:
+            painter.translate(self.width() / 2, self.height() / 2)
+            painter.rotate(-90)
+            rect = QRect(
+                -self.height() // 2 + 10,
+                -self.width() // 2 + 8,
+                self.height() - 20,
+                self.width() - 16,
+            )
+            painter.setClipRect(rect)
+            text = painter.fontMetrics().elidedText(
+                self.text(), Qt.TextElideMode.ElideRight, rect.width()
+            )
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+            return
         # Each glyph owns a padded cell: no multiline layout can cross the outline.
         for index, character in enumerate(self.text()):
             cell = QRect(8, 10 + index * 18, self.width() - 16, 18)
@@ -416,7 +432,7 @@ class DockSurface(GlassSurface):
             self.layout().setContentsMargins(0, height, 0, 0)
             self.grip.setGeometry((self.width() - 44) // 2, 0, 44, height)
             self.grip.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.grip.setToolTip("右键固定 / 自动隐藏 · 双击切换")
+            self.grip.setToolTip(tr("右键固定 / 自动隐藏 · 双击切换"))
         else:
             left = self.area == DOCK_AREAS["left"]
             self.layout().setContentsMargins(0 if left else 16, 0, 16 if left else 0, 0)
@@ -427,7 +443,11 @@ class DockSurface(GlassSurface):
         top = 3
         mask = QRegion()
         for tab in self.tabs.values():
-            height = len(tab.text()) * 18 + 20
+            height = (
+                min(160, tab.fontMetrics().horizontalAdvance(tab.text()) + 20)
+                if language() in {"en", "ru", "es"}
+                else len(tab.text()) * 18 + 20
+            )
             tab.setGeometry(0, top, 36, height)
             mask |= QRegion(tab.geometry())
             top += height + 6
@@ -538,9 +558,9 @@ class HiddenStrip(QWidget):
         self.origin = None
         self.dragging = False
         self.setProperty("pluginSurface", True)
-        tip = controller.dock.windowTitle() + " · 悬停展开，点击固定"
+        tip = controller.dock.windowTitle() + tr(" · 悬停展开，点击固定")
         if not controller.dock.property("progressPanel"):
-            tip += "，拖动左右换边"
+            tip += tr("，拖动左右换边")
         self.setToolTip(tip)
         self.setAccessibleName(tip)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -834,11 +854,15 @@ class HiddenPanel(QObject):
         )
         hidden = self.dock.isHidden()
         menu.addAction(
-            "靠边固定" if hidden else "自动隐藏", self.pin if hidden else self.dock.close
+            tr("靠边固定") if hidden else tr("自动隐藏"), self.pin if hidden else self.dock.close
         )
         if not self.dock.property("progressPanel"):
             menu.addSeparator()
-        for name, label in (("left", "停靠左侧"), ("right", "停靠右侧"), ("bottom", "停靠底部")):
+        for name, label in (
+            ("left", tr("停靠左侧")),
+            ("right", tr("停靠右侧")),
+            ("bottom", tr("停靠底部")),
+        ):
             if self.dock.property("progressPanel"):
                 break
             if not (self.dock.allowedAreas() & DOCK_AREAS[name]):
@@ -1190,7 +1214,9 @@ class PanelHovers(QObject):
                 host = self.host
                 index = host.path_positions.get(host.current_path, -1)
                 position = f"{index + 1 if index >= 0 else 0}/{len(host.paths)}"
-                controller.strip.setToolTip(f"当前图片 {position} · 悬停展开，点击固定")
+                controller.strip.setToolTip(
+                    tr("当前图片 {0} · 悬停展开，点击固定").format(position)
+                )
                 controller.strip.update()
 
     def progress_ring_rect(self, controller, *, resting=False):

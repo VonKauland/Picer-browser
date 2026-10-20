@@ -1,7 +1,7 @@
 {
   "id": "example.touch",
   "name": "触控支持",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "function",
   "api_version": 1,
   "entrypoint": "main:Plugin",

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.host_style import mark_host
+from picer.i18n import tr
 from picer.theme import COLORS
 
 ACCENT = "#E8FF59"
@@ -267,7 +268,7 @@ class DialogHeader(QWidget):
         close.setObjectName("circleButton")
         close.setProperty("picerDialogClose", True)
         close.setFixedSize(32, 32)
-        close.setAccessibleName("关闭窗口")
+        close.setAccessibleName(tr("关闭窗口"))
         close.clicked.connect(dialog.reject)
         layout.addWidget(close)
 
@@ -300,7 +301,7 @@ class DialogSurface(QFrame):
 class StyledDialog(QDialog):
     def __init__(self, title, subtitle="", parent=None, *, surface_type=DialogSurface):
         super().__init__(parent)
-        self.setWindowTitle("揽映 · " + title)
+        self.setWindowTitle(tr("揽映 · ") + title)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         outer = QVBoxLayout(self)

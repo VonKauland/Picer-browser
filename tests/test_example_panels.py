@@ -938,7 +938,16 @@ def test_glass_folder_classification_watch_and_neutral_icons(window, tmp_path, q
     image = ordinary / "photo.png"
     Image.new("RGB", (10, 10), "red").save(image)
     qtbot.waitUntil(lambda: folders.cache.get(str(ordinary)) is True)
-    image.unlink()
+
+    def remove_image():
+        # Windows denies deletion while a thumbnail worker has the file open.
+        try:
+            image.unlink()
+        except PermissionError:
+            return False
+        return True
+
+    qtbot.waitUntil(remove_image, timeout=5000)
     qtbot.waitUntil(lambda: folders.cache.get(str(ordinary)) is False)
     for icon in folders.icons:
         normal = icon.pixmap(32, 32, QIcon.Mode.Normal).toImage()

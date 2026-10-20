@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from picer.color_editor import ColorEditor
 from picer.confirmation import confirm
 from picer.host_style import mark_host
+from picer.i18n import plugin_text, tr
 from picer.messages import MessageBox as QMessageBox
 from picer.panels import DOCK_AREAS
 from picer.plugins.api import PluginError
@@ -28,7 +29,7 @@ from picer.ui import Card, RoundedSlider, StyledDialog, Toggle, form_row, ui_ico
 
 class ApplicationSettings(StyledDialog):
     def __init__(self, window):
-        super().__init__("设置", "", window)
+        super().__init__(tr("设置"), "", window)
         self.host, self.manager = window, window.plugins
         self.values = read_preferences(self.manager)
         self.editors, self.shortcut_editors, self.panel_editors = {}, {}, {}
@@ -44,15 +45,18 @@ class ApplicationSettings(StyledDialog):
         self.navigation = QListWidget()
         self.navigation.setFixedWidth(150)
         self.navigation.setSpacing(6)
+        self.navigation.setWordWrap(False)
+        self.navigation.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.pages = QStackedWidget()
         for label, icon, builder in (
-            ("常规", "settings", self.general_page),
-            ("外观", "skin", self.appearance_page),
-            ("图片浏览", "photo", self.browsing_page),
-            ("面板与布局", "panel", self.panels_page),
-            ("快捷键", "keyboard", self.shortcuts_page),
-            ("缓存与存储", "storage", self.storage_page),
-            ("格式设置", "photo", self.formats_page),
+            (tr("常规"), "settings", self.general_page),
+            (tr("外观"), "skin", self.appearance_page),
+            (tr("图片浏览"), "photo", self.browsing_page),
+            (tr("面板与布局"), "panel", self.panels_page),
+            (tr("快捷键"), "keyboard", self.shortcuts_page),
+            (tr("缓存与存储"), "storage", self.storage_page),
+            (tr("格式设置"), "photo", self.formats_page),
         ):
             from PySide6.QtWidgets import QListWidgetItem
 
@@ -83,23 +87,32 @@ class ApplicationSettings(StyledDialog):
         self.skin_baseline = self.skin.currentData()
         self.panel_baseline = {key: area.currentData() for key, area in self.panel_editors.items()}
         footer = QHBoxLayout()
-        reset = QPushButton("恢复默认")
+        reset = QPushButton(tr("恢复默认"))
         reset.setObjectName("quietButton")
         reset.clicked.connect(self.reset)
         footer.addWidget(reset)
         footer.addStretch()
-        cancel = QPushButton("取消")
+        cancel = QPushButton(tr("取消"))
         cancel.clicked.connect(self.reject)
         footer.addWidget(cancel)
-        self.apply_button = QPushButton("应用")
+        self.apply_button = QPushButton(tr("应用"))
         self.apply_button.clicked.connect(self.apply)
         footer.addWidget(self.apply_button)
-        save = QPushButton("保存更改")
+        save = QPushButton(tr("保存更改"))
         save.setObjectName("primaryButton")
         save.clicked.connect(self.save)
         footer.addWidget(save)
         self.body.addLayout(footer)
         mark_host(self)
+        self.navigation.ensurePolished()
+        width = (
+            max(
+                self.navigation.fontMetrics().horizontalAdvance(self.navigation.item(i).text())
+                for i in range(self.navigation.count())
+            )
+            + 68
+        )
+        self.navigation.setFixedWidth(max(150, min(260, width)))
 
     def preference(self, card, key, label, choices=None):
         value = self.values[key]
@@ -124,17 +137,34 @@ class ApplicationSettings(StyledDialog):
         return editor
 
     def general_page(self, layout):
-        card = Card("启动")
-        self.preference(
-            card, "start", "启动页面", (("empty", "空白首页"), ("last", "上次浏览的图片"))
-        )
-        self.preference(card, "remember_window", "记住窗口位置与大小")
+        from picer.i18n import LANGUAGES
+
+        card = Card(tr("语言"))
+        self.preference(card, "language", tr("界面语言"), tuple(LANGUAGES.items()))
+        note = QLabel(tr("保存后重启应用以切换语言。"))
+        note.setWordWrap(True)
+        note.setObjectName("muted")
+        card.body.addWidget(note)
         layout.addWidget(card)
-        card = Card("操作反馈")
-        self.preference(card, "tooltips", "显示操作提示")
-        duration = self.preference(card, "notification_ms", "通知气泡显示时长")
+
+        card = Card(tr("软件更新"))
+        self.preference(card, "check_updates", tr("自动检测新版本"))
+        layout.addWidget(card)
+
+        card = Card(tr("启动"))
+        self.preference(
+            card,
+            "start",
+            tr("启动页面"),
+            (("empty", tr("空白首页")), ("last", tr("上次浏览的图片"))),
+        )
+        self.preference(card, "remember_window", tr("记住窗口位置与大小"))
+        layout.addWidget(card)
+        card = Card(tr("操作反馈"))
+        self.preference(card, "tooltips", tr("显示操作提示"))
+        duration = self.preference(card, "notification_ms", tr("通知气泡显示时长"))
         duration.setSuffix(" ms")
-        self.preference(card, "focus_image", "打开图片后聚焦画布")
+        self.preference(card, "focus_image", tr("打开图片后聚焦画布"))
         layout.addWidget(card)
 
     def formats_page(self, layout):
@@ -143,95 +173,106 @@ class ApplicationSettings(StyledDialog):
         build_format_page(self, layout)
 
     def appearance_page(self, layout):
-        card = Card("主题")
+        card = Card(tr("主题"))
         self.skin = QComboBox()
-        self.skin.addItem("默认深色 · Charcoal / Lime", "")
+        self.skin.addItem(tr("默认深色 · Charcoal / Lime"), "")
         current = ""
         for key, record in self.manager.records.items():
             if record.manifest.type == "skin":
-                self.skin.addItem(record.manifest.name, key)
+                self.skin.addItem(plugin_text(self.manager, key, record.manifest.name), key)
                 if record.state == "enabled":
                     current = key
         self.skin.setCurrentIndex(self.skin.findData(current))
-        card.body.addLayout(form_row("当前皮肤", self.skin))
-        button = QPushButton("管理皮肤")
+        card.body.addLayout(form_row(tr("当前皮肤"), self.skin))
+        button = QPushButton(tr("管理皮肤"))
         button.clicked.connect(self.host.show_plugins)
         card.body.addWidget(button)
         layout.addWidget(card)
-        card = Card("强调色")
+        card = Card(tr("强调色"))
         accent = ColorEditor(self.values["accent_color"])
         self.editors["accent_color"] = accent
-        card.body.addLayout(form_row("界面强调色", accent))
+        card.body.addLayout(form_row(tr("界面强调色"), accent))
         note = QLabel(
-            "输入 #RRGGBB 或选择颜色，留空跟随皮肤。保存后应用；恢复默认可清除自定义颜色。"
+            tr("输入 #RRGGBB 或选择颜色，留空跟随皮肤。保存后应用；恢复默认可清除自定义颜色。")
         )
         note.setWordWrap(True)
         note.setObjectName("muted")
         card.body.addWidget(note)
         layout.addWidget(card)
-        card = Card("界面")
-        self.preference(card, "density", "界面密度", (("standard", "标准"), ("compact", "紧凑")))
-        self.preference(card, "glass", "自动隐藏面板使用毛玻璃")
+        card = Card(tr("界面"))
+        self.preference(
+            card, "density", tr("界面密度"), (("standard", tr("标准")), ("compact", tr("紧凑")))
+        )
+        self.preference(card, "glass", tr("自动隐藏面板使用毛玻璃"))
         slider = RoundedSlider(Qt.Orientation.Horizontal)
         slider.setRange(0, 100)
         slider.setValue(self.values["glass_strength"])
         slider.setMinimumWidth(200)
         self.editors["glass_strength"] = slider
-        card.body.addLayout(form_row("毛玻璃层次", slider))
-        card.body.addLayout(form_row("文件名", QLabel("始终居中")))
+        card.body.addLayout(form_row(tr("毛玻璃层次"), slider))
+        card.body.addLayout(form_row(tr("文件名"), QLabel(tr("始终居中"))))
         layout.addWidget(card)
 
     def browsing_page(self, layout):
-        card = Card("打开图片")
+        card = Card(tr("打开图片"))
         self.preference(
-            card, "default_scale", "默认显示", (("fit", "适应窗口"), ("actual", "原始大小"))
+            card,
+            "default_scale",
+            tr("默认显示"),
+            (("fit", tr("适应窗口")), ("actual", tr("原始大小"))),
         )
-        self.preference(card, "auto_orient", "自动纠正 EXIF 方向")
+        self.preference(card, "auto_orient", tr("自动纠正 EXIF 方向"))
         layout.addWidget(card)
-        card = Card("导航")
-        self.preference(card, "browse_folder", "浏览当前文件夹")
-        self.preference(card, "wrap", "到末尾循环浏览")
+        card = Card(tr("导航"))
+        self.preference(card, "browse_folder", tr("浏览当前文件夹"))
+        self.preference(card, "wrap", tr("到末尾循环浏览"))
         self.preference(
             card,
             "reading_direction",
-            "浏览方向",
-            (("ltr", "从左到右"), ("rtl", "从右到左")),
+            tr("浏览方向"),
+            (("ltr", tr("从左到右")), ("rtl", tr("从右到左"))),
         )
-        delay = self.preference(card, "key_repeat_delay_ms", "长按开始连击的延迟")
+        delay = self.preference(card, "key_repeat_delay_ms", tr("长按开始连击的延迟"))
         delay.setSuffix(" ms")
-        repeat = self.preference(card, "key_repeat_ms", "长按方向键切换间隔")
+        repeat = self.preference(card, "key_repeat_ms", tr("长按方向键切换间隔"))
         repeat.setSuffix(" ms")
         note = QLabel(
-            "30–2000 毫秒，默认 120 毫秒。值越大切换越慢；长按期间暂停原图精修，松开后恢复。"
+            tr("30–2000 毫秒，默认 120 毫秒。值越大切换越慢；长按期间暂停原图精修，松开后恢复。")
         )
         note.setWordWrap(True)
         note.setObjectName("muted")
         card.body.addWidget(note)
         layout.addWidget(card)
-        card = Card("缩放")
-        self.preference(card, "zoom_step", "滚轮缩放步长")
+        card = Card(tr("缩放"))
+        self.preference(card, "zoom_step", tr("滚轮缩放步长"))
         self.preference(
             card,
             "double_click",
-            "双击图片",
-            (("toggle", "适应 / 原始大小切换"), ("fit", "适应窗口"), ("actual", "原始大小")),
+            tr("双击图片"),
+            (
+                ("toggle", tr("适应 / 原始大小切换")),
+                ("fit", tr("适应窗口")),
+                ("actual", tr("原始大小")),
+            ),
         )
         layout.addWidget(card)
 
     def panels_page(self, layout):
-        card = Card("滚动条")
-        self.preference(card, "panel_scrollbars", "显示所有面板的滚动条")
-        note = QLabel("隐藏后仍可使用滚轮、触控板和键盘滚动；不会启用面板原本禁用的横向滚动条。")
+        card = Card(tr("滚动条"))
+        self.preference(card, "panel_scrollbars", tr("显示所有面板的滚动条"))
+        note = QLabel(
+            tr("隐藏后仍可使用滚轮、触控板和键盘滚动；不会启用面板原本禁用的横向滚动条。")
+        )
         note.setWordWrap(True)
         note.setObjectName("muted")
         card.body.addWidget(note)
         layout.addWidget(card)
-        card = Card("面板停靠位置")
+        card = Card(tr("面板停靠位置"))
         for plugin_id, controller in self.host.panel_hovers.controllers.items():
             row = QHBoxLayout()
             row.addWidget(QLabel(controller.dock.windowTitle()), 1)
             area = QComboBox()
-            for key, label in (("left", "左侧"), ("right", "右侧"), ("bottom", "底部")):
+            for key, label in (("left", tr("左侧")), ("right", tr("右侧")), ("bottom", tr("底部"))):
                 if controller.dock.allowedAreas() & DOCK_AREAS[key]:
                     area.addItem(label, DOCK_AREAS[key])
             area.setCurrentIndex(area.findData(controller.area))
@@ -239,12 +280,12 @@ class ApplicationSettings(StyledDialog):
             self.panel_editors[plugin_id] = area
             card.body.addLayout(row)
         if not self.panel_editors:
-            card.body.addWidget(QLabel("启用面板组件后，可在这里调整停靠位置。"))
-        reset = QPushButton("重置布局")
+            card.body.addWidget(QLabel(tr("启用面板组件后，可在这里调整停靠位置。")))
+        reset = QPushButton(tr("重置布局"))
         reset.clicked.connect(self.reset_layout)
         card.body.addWidget(reset)
         layout.addWidget(card)
-        note = QLabel("面板内容设置统一位于：插件管理 → 选中组件 → 设置。")
+        note = QLabel(tr("面板内容设置统一位于：插件管理 → 选中组件 → 设置。"))
         note.setWordWrap(True)
         note.setObjectName("muted")
         layout.addWidget(note)
@@ -257,20 +298,20 @@ class ApplicationSettings(StyledDialog):
         layout.addWidget(self.binding_editor, 1)
 
     def storage_page(self, layout):
-        card = Card("应用数据")
+        card = Card(tr("应用数据"))
         path = QLineEdit(str(self.manager.paths.root))
         path.setReadOnly(True)
         card.body.addWidget(path)
-        button = QPushButton("打开数据目录")
+        button = QPushButton(tr("打开数据目录"))
         button.clicked.connect(self.host.open_data_directory)
         card.body.addWidget(button)
         layout.addWidget(card)
-        card = Card("图片缓存")
+        card = Card(tr("图片缓存"))
         self.cache_label = QLabel()
         self.refresh_cache_size()
         card.body.addWidget(self.cache_label)
-        self.preference(card, "cache_mb", "缓存空间上限")
-        button = QPushButton("清理图片缓存")
+        self.preference(card, "cache_mb", tr("缓存空间上限"))
+        button = QPushButton(tr("清理图片缓存"))
         button.clicked.connect(self.clear_cache)
         card.body.addWidget(button)
         layout.addWidget(card)
@@ -278,15 +319,15 @@ class ApplicationSettings(StyledDialog):
 
         self.plugin_storage = PluginStorage(self)
         layout.addWidget(self.plugin_storage)
-        card = Card("日志")
-        button = QPushButton("打开日志目录")
+        card = Card(tr("日志"))
+        button = QPushButton(tr("打开日志目录"))
         button.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.manager.paths.logs)))
         )
         card.body.addWidget(button)
         note = QLabel(
             self.manager.paths.notice
-            or "便携目录中的配置随软件保留，目录不可写时使用本地应用数据目录。"
+            or tr("便携目录中的配置随软件保留，目录不可写时使用本地应用数据目录。")
         )
         note.setWordWrap(True)
         note.setObjectName("muted")
@@ -298,9 +339,9 @@ class ApplicationSettings(StyledDialog):
             size = sum(
                 file.stat().st_size for file in self.host.thumbnail_cache.directory.glob("*.png")
             )
-            self.cache_label.setText(f"已使用 {size / 1048576:.1f} MB")
+            self.cache_label.setText(tr("已使用 {0:.1f} MB").format(size / 1048576))
         except OSError:
-            self.cache_label.setText("缓存大小暂不可读")
+            self.cache_label.setText(tr("缓存大小暂不可读"))
 
     def clear_cache(self):
         self.host.clear_thumbnail_cache()
@@ -308,7 +349,9 @@ class ApplicationSettings(StyledDialog):
 
     def reset_layout(self):
         if confirm(
-            self, "恢复默认布局？", "面板停靠位置与尺寸将恢复默认。点击应用或保存更改后生效。"
+            self,
+            tr("恢复默认布局？"),
+            tr("面板停靠位置与尺寸将恢复默认。点击应用或保存更改后生效。"),
         ):
             self._reset_layout()
 
@@ -322,9 +365,11 @@ class ApplicationSettings(StyledDialog):
     def reset(self):
         if not confirm(
             self,
-            "恢复默认设置？",
-            "外观、浏览行为、输入绑定和面板布局将恢复默认。"
-            "点击应用或保存更改后生效；取消会保留当前表单。",
+            tr("恢复默认设置？"),
+            tr(
+                "外观、浏览行为、输入绑定和面板布局将恢复默认。"
+                "点击应用或保存更改后生效；取消会保留当前表单。"
+            ),
         ):
             return
         self.pending_backup = None
@@ -387,7 +432,7 @@ class ApplicationSettings(StyledDialog):
                     else editor.value()
                 )
         except ValueError as error:
-            QMessageBox.warning(self, "设置未保存", str(error))
+            QMessageBox.warning(self, tr("设置未保存"), str(error))
             return
         # A modeless window can coexist with reading-direction/skin/layout changes
         # made in the main window. Untouched fields must not revert those changes.
@@ -407,12 +452,12 @@ class ApplicationSettings(StyledDialog):
         try:
             if skin:
                 if skin not in self.manager.records:
-                    raise PluginError("该皮肤已移除，请重新打开设置。")
+                    raise PluginError(tr("该皮肤已移除，请重新打开设置。"))
                 self.manager.enable(skin)
             else:
                 self.host.components.default_skin()
         except PluginError as error:
-            QMessageBox.warning(self, "设置未保存", str(error))
+            QMessageBox.warning(self, tr("设置未保存"), str(error))
             return
         ui = self.manager.preferences["ui"]
         ui["application"], ui["shortcuts"] = values, shortcuts
@@ -491,4 +536,4 @@ class ApplicationSettings(StyledDialog):
                 editor.setValue(values[key])
         if close:
             self.accept()
-        self.host.notify("设置已保存" if close else "设置已应用")
+        self.host.notify(tr("设置已保存") if close else tr("设置已应用"))

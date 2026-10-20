@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLay
 
 from picer import __version__
 from picer.host_style import mark_host
+from picer.i18n import tr
 from picer.ui import DialogHeader, StyledDialog, colors_for, ui_icon
 
 PROJECT_URL = "https://github.com/VonKauland/Picer-browser"
@@ -52,7 +53,7 @@ class PixelSurface(QFrame):
 
 class AboutDialog(StyledDialog):
     def __init__(self, host):
-        super().__init__("关于", parent=host.settings_dialog or host, surface_type=PixelSurface)
+        super().__init__(tr("关于"), parent=host.settings_dialog or host, surface_type=PixelSurface)
         self.host = host
         self.setMinimumSize(560, 340)
         self.resize(600, 360)
@@ -80,7 +81,7 @@ class AboutDialog(StyledDialog):
         row.addWidget(self.artwork, 0, Qt.AlignmentFlag.AlignVCenter)
         text = QVBoxLayout()
         text.setSpacing(6)
-        self.name = QLabel("揽映")
+        self.name = QLabel(tr("揽映"))
         self.name.setStyleSheet("font-size: 28px; font-weight: 600;")
         text.addWidget(self.name)
         english = QLabel("Picer")
@@ -93,29 +94,31 @@ class AboutDialog(StyledDialog):
             if sys.platform.startswith("linux")
             else sys.platform
         )
-        self.version = QLabel(f"版本 {__version__} · {platform}")
+        self.version = QLabel(tr("版本 {0} · {1}").format(__version__, platform))
         self.version.setObjectName("muted")
         text.addWidget(self.version)
         self.poem = QLabel()
         accent = colors_for(self)["accent"]
         muted = colors_for(self)["muted"]
         self.poem.setText(
-            f'<span style="color:{accent}">揽</span>景入方寸，<br>'
-            f'<span style="color:{accent}">映</span>眸见万象。'
+            tr(
+                '<span style="color:{0}">揽</span>景入方寸，<br>'
+                '<span style="color:{1}">映</span>眸见万象。'
+            ).format(accent, accent)
         )
         self.poem.setStyleSheet(f"font-size: 15px; color: {muted};")
-        self.poem.setAccessibleName(POEM)
+        self.poem.setAccessibleName(tr(POEM))
         text.addWidget(self.poem)
         row.addLayout(text, 1)
         self.body.addLayout(row)
         self.body.addStretch()
         footer = QHBoxLayout()
         footer.addStretch()
-        self.project_button = QPushButton("项目主页")
+        self.project_button = QPushButton(tr("项目主页"))
         self.project_button.setObjectName("quietButton")
         self.project_button.clicked.connect(self.open_project)
         footer.addWidget(self.project_button)
-        self.done_button = QPushButton("关闭")
+        self.done_button = QPushButton(tr("关闭"))
         self.done_button.setObjectName("primaryButton")
         self.done_button.clicked.connect(self.accept)
         footer.addWidget(self.done_button)
@@ -124,4 +127,4 @@ class AboutDialog(StyledDialog):
 
     def open_project(self):
         if not QDesktopServices.openUrl(QUrl(PROJECT_URL)):
-            self.host.notify("无法打开项目主页")
+            self.host.notify(tr("无法打开项目主页"))

@@ -6,6 +6,8 @@ from PIL import ImageFilter
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QLinearGradient, QPainter, QPainterPath, QPen
 
+from picer.i18n import tr
+
 VIDEO_SUFFIXES = frozenset(
     ".mp4 .m4v .mov .mkv .avi .webm .wmv .mpg .mpeg .mpe .flv .mts .m2ts .ts .ogv .3gp .3g2".split()
 )
@@ -64,18 +66,20 @@ def video_info(path):
 
     with Path(path).open("rb") as handle, av.open(handle) as container:
         if not container.streams.video:
-            raise ValueError("文件中没有可读取的视频画面")
+            raise ValueError(tr("文件中没有可读取的视频画面"))
         stream = container.streams.video[0]
         return {
             "宽度": str(stream.width),
             "高度": str(stream.height),
             "格式": Path(path).suffix[1:].upper(),
-            "预览类型": "视频静态封面",
-            "编码": stream.codec_context.name or "未知",
-            "帧率": f"{float(stream.average_rate):.3g} fps" if stream.average_rate else "未记录",
-            "时长": f"{container.duration / av.time_base:.2f} 秒"
+            "预览类型": tr("视频静态封面"),
+            "编码": stream.codec_context.name or tr("未知"),
+            "帧率": f"{float(stream.average_rate):.3g} fps"
+            if stream.average_rate
+            else tr("未记录"),
+            "时长": tr("{0:.2f} 秒").format(container.duration / av.time_base)
             if container.duration
-            else "未记录",
+            else tr("未记录"),
         }
 
 
@@ -86,10 +90,10 @@ def read_video(path, *, edge=0, token=None, auto_orient=True):
 
     with Path(path).open("rb") as handle, av.open(handle) as container:
         if not container.streams.video:
-            raise ValueError("文件中没有可读取的视频画面")
+            raise ValueError(tr("文件中没有可读取的视频画面"))
         stream = container.streams.video[0]
         if stream.width * stream.height > MAX_PIXELS:
-            raise ValueError("视频画面超过像素读取上限")
+            raise ValueError(tr("视频画面超过像素读取上限"))
         stream.codec_context.thread_count = 1
         scanned = 0
         for index, packet in enumerate(container.demux(stream)):
@@ -102,7 +106,7 @@ def read_video(path, *, edge=0, token=None, auto_orient=True):
                 if token:
                     token.checkpoint()
                 if frame.width * frame.height > MAX_PIXELS:
-                    raise ValueError("视频画面超过像素读取上限")
+                    raise ValueError(tr("视频画面超过像素读取上限"))
                 angle = getattr(frame, "rotation", 0) or -int(stream.metadata.get("rotate", 0))
                 native = (frame.width, frame.height)
                 limit = edge or 3840
@@ -126,4 +130,4 @@ def read_video(path, *, edge=0, token=None, auto_orient=True):
                 image.setText("picer.native_height", str(round(image.height() * scale)))
                 image.setText("picer.video_preview", "1")
                 return image
-    raise ValueError("未能在有界读取范围内提取视频封面")
+    raise ValueError(tr("未能在有界读取范围内提取视频封面"))

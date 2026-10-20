@@ -9,6 +9,8 @@ from pathlib import Path
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 
+from picer.i18n import tr
+
 APP_NAME = "Picer"
 PROG_ID = "Picer.Image"
 CAPABILITIES = r"Software\Picer\Capabilities"
@@ -16,20 +18,20 @@ CAPABILITIES = r"Software\Picer\Capabilities"
 
 def application_executable():
     if sys.platform != "win32" or not getattr(sys, "frozen", False):
-        raise OSError("请在 Windows 中运行打包后的 Picer.exe，再注册系统集成。")
+        raise OSError(tr("请在 Windows 中运行打包后的 Picer.exe，再注册系统集成。"))
     return Path(sys.executable).resolve()
 
 
 def reveal_file(path):
     path = Path(path).resolve()
     if not path.is_file():
-        raise OSError("当前图片文件已不存在。")
+        raise OSError(tr("当前图片文件已不存在。"))
     if sys.platform == "win32":
         explorer = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "explorer.exe"
         # Keep the filename separate so spaces/commas cannot become Explorer switches.
         subprocess.Popen([str(explorer), "/select,", str(path)])
     elif not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path.parent))):
-        raise OSError("无法打开图片所在文件夹。")
+        raise OSError(tr("无法打开图片所在文件夹。"))
 
 
 class WindowsIntegration:
@@ -42,7 +44,7 @@ class WindowsIntegration:
         self.root = root
         self.executable = Path(executable or application_executable()).resolve()
         if not self.executable.is_file() or self.executable.suffix.lower() != ".exe":
-            raise OSError("找不到可注册的应用程序 EXE。")
+            raise OSError(tr("找不到可注册的应用程序 EXE。"))
         self.command = f'"{self.executable}" "%1"'
 
     def path(self, key):
@@ -78,18 +80,18 @@ class WindowsIntegration:
 
         suffixes = sorted(set(suffixes))
         if not suffixes or not valid_formats(suffixes):
-            raise ValueError("请至少选择一种可读取的图片格式。")
+            raise ValueError(tr("请至少选择一种可读取的图片格式。"))
         return suffixes
 
     def register_viewer(self, suffixes):
         suffixes = self.formats(suffixes)
         classes = r"Software\Classes"
         application = classes + r"\Applications\Picer.exe"
-        self.write(classes + "\\" + PROG_ID, "", "揽映图片")
+        self.write(classes + "\\" + PROG_ID, "", tr("揽映图片"))
         for key in (classes + "\\" + PROG_ID, application):
             self.write(key + r"\DefaultIcon", "", f'"{self.executable}",0')
             self.write(key + r"\shell\open\command", "", self.command)
-        self.write(application, "FriendlyAppName", "揽映 Picer")
+        self.write(application, "FriendlyAppName", tr("揽映 Picer"))
         self.delete(application + r"\SupportedTypes")
         self.delete(CAPABILITIES + r"\FileAssociations")
         previous = self.stored_formats(CAPABILITIES, "Extensions")
@@ -102,8 +104,8 @@ class WindowsIntegration:
             self.write(
                 classes + "\\" + suffix + r"\OpenWithProgids", PROG_ID, b"", self.registry.REG_NONE
             )
-        self.write(CAPABILITIES, "ApplicationName", "揽映 Picer")
-        self.write(CAPABILITIES, "ApplicationDescription", "本地图片与 RAW 照片浏览器")
+        self.write(CAPABILITIES, "ApplicationName", tr("揽映 Picer"))
+        self.write(CAPABILITIES, "ApplicationDescription", tr("本地图片与 RAW 照片浏览器"))
         self.write(CAPABILITIES, "ApplicationIcon", f'"{self.executable}",0')
         self.write(CAPABILITIES, "Extensions", suffixes, self.registry.REG_MULTI_SZ)
         self.write(r"Software\RegisteredApplications", APP_NAME, CAPABILITIES)
@@ -125,7 +127,7 @@ class WindowsIntegration:
             self.delete(self.menu_key(suffix))
         for suffix in suffixes:
             key = self.menu_key(suffix)
-            self.write(key, "", "使用揽映打开")
+            self.write(key, "", tr("使用揽映打开"))
             self.write(key, "Icon", f'"{self.executable}",0')
             self.write(key, "MultiSelectModel", "Single")
             self.write(key + r"\command", "", self.command)
@@ -155,4 +157,4 @@ class WindowsIntegration:
 
 def open_default_apps():
     if not QDesktopServices.openUrl(QUrl("ms-settings:defaultapps?registeredAppUser=Picer")):
-        raise OSError("无法打开 Windows 默认应用设置，请在系统设置中手动选择揽映。")
+        raise OSError(tr("无法打开 Windows 默认应用设置，请在系统设置中手动选择揽映。"))

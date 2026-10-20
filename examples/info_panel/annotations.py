@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 from picer.annotations import CATEGORIES
+from picer.i18n import tr
 from picer.ui import colors_for
 
 
@@ -26,8 +27,8 @@ class Annotations(QWidget):
         self.setFixedHeight(self.ROW_HEIGHT * 2)
         self.setMinimumWidth(154)
         self.setMouseTracking(True)
-        self.setAccessibleName("半星评分与颜色分类")
-        self.setToolTip("点击星星以半星评分；再次点击清除。点击颜色加入分类，再次点击移除。")
+        self.setAccessibleName(tr("半星评分与颜色分类"))
+        self.setToolTip(tr("点击星星以半星评分；再次点击清除。点击颜色加入分类，再次点击移除。"))
 
     def configure(self, rating, categories):
         self.show_rating, self.show_categories = rating, categories
@@ -69,7 +70,7 @@ class Annotations(QWidget):
         if self.show_rating:
             y = 19 if self.show_categories else self.ROW_HEIGHT / 2
             painter.setPen(QColor(colors["muted"]))
-            painter.drawText(QRectF(0, y - 10, 30, 20), Qt.AlignmentFlag.AlignVCenter, "评分")
+            painter.drawText(QRectF(0, y - 10, 30, 20), Qt.AlignmentFlag.AlignVCenter, tr("评分"))
             for index in range(5):
                 x = self.START + index * self.STAR_STEP
                 path = self.star_path(QPointF(x + self.STAR_STEP / 2, y))
@@ -88,7 +89,7 @@ class Annotations(QWidget):
         if self.show_categories:
             y = 47 if self.show_rating else self.ROW_HEIGHT / 2
             painter.setPen(QColor(colors["muted"]))
-            painter.drawText(QRectF(0, y - 10, 30, 20), Qt.AlignmentFlag.AlignVCenter, "分类")
+            painter.drawText(QRectF(0, y - 10, 30, 20), Qt.AlignmentFlag.AlignVCenter, tr("分类"))
             for index, (key, _, color) in enumerate(CATEGORIES):
                 center = QPointF(self.START + 7.5 + index * self.COLOR_STEP, y)
                 painter.setPen(Qt.PenStyle.NoPen)

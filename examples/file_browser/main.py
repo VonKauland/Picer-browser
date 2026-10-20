@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from picer.file_drag import ImageFileDrag
 from picer.host_style import PLUGIN_STYLE
+from picer.i18n import tr
 from picer.imaging import supported_suffixes
 from picer.messages import MessageBox as QMessageBox
 from picer.plugins import SettingField, ui_icon
@@ -41,28 +42,36 @@ class Plugin:
             QStandardPaths.StandardLocation.PicturesLocation
         )
         self.fields = (
-            SettingField("home", "首页路径", "path", self.home or str(Path.home())),
-            SettingField("icon_size", "图标大小（像素）", "int", 24, 16, 64),
+            SettingField("home", tr("首页路径"), "path", self.home or str(Path.home())),
+            SettingField("icon_size", tr("图标大小（像素）"), "int", 24, 16, 64),
             SettingField(
                 "sort",
-                "普通文件夹默认排序",
+                tr("普通文件夹默认排序"),
                 "choice",
                 "name",
                 choices=(
-                    ("name", "名称"),
-                    ("size", "大小"),
-                    ("type", "类型"),
-                    ("modified", "修改时间"),
+                    ("name", tr("名称")),
+                    ("size", tr("大小")),
+                    ("type", tr("类型")),
+                    ("modified", tr("修改时间")),
                 ),
             ),
-            SettingField("descending", "倒序排列", "bool", False),
+            SettingField("descending", tr("倒序排列"), "bool", False),
             SettingField(
-                "view", "浏览视图", "choice", "list", choices=(("list", "列表"), ("tiles", "平铺"))
+                "view",
+                tr("浏览视图"),
+                "choice",
+                "list",
+                choices=(("list", tr("列表")), ("tiles", tr("平铺"))),
             ),
         )
         self.fields += (
             SettingField(
-                "photo_sort", "图片文件夹默认排序", "choice", "name", choices=self.fields[2].choices
+                "photo_sort",
+                tr("图片文件夹默认排序"),
+                "choice",
+                "name",
+                choices=self.fields[2].choices,
             ),
         )
         context.add_settings(self.fields, self.apply_settings)
@@ -74,8 +83,8 @@ class Plugin:
         layout.setContentsMargins(12, 12, 12, 12)
         toolbar = QHBoxLayout()
         for icon, tip, callback in (
-            ("home", "首页", self.go_home),
-            ("up", "上一级", self.go_up),
+            ("home", tr("首页"), self.go_home),
+            ("up", tr("上一级"), self.go_up),
         ):
             button = QPushButton()
             button.setIcon(ui_icon(icon))
@@ -94,8 +103,8 @@ class Plugin:
         self.view_button.setObjectName("circleButton")
         self.view_button.setFixedSize(32, 32)
         self.view_button.setIcon(ui_icon("settings"))
-        self.view_button.setToolTip("快速设置")
-        self.view_button.setAccessibleName("快速设置")
+        self.view_button.setToolTip(tr("快速设置"))
+        self.view_button.setAccessibleName(tr("快速设置"))
         self.create_quick_menu()
         self.view_button.clicked.connect(self.show_quick_menu)
         toolbar.addWidget(self.view_button)
@@ -105,8 +114,8 @@ class Plugin:
         layout.addWidget(self.location)
         search_row = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("搜索当前文件夹")
-        self.search.setAccessibleName("搜索当前级的文件和文件夹")
+        self.search.setPlaceholderText(tr("搜索当前文件夹"))
+        self.search.setAccessibleName(tr("搜索当前级的文件和文件夹"))
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self.search_changed)
         search_row.addWidget(self.search, 1)
@@ -114,8 +123,8 @@ class Plugin:
         self.random_button.setObjectName("circleButton")
         self.random_button.setFixedSize(32, 32)
         self.random_button.setIcon(ui_icon("shuffle"))
-        self.random_button.setToolTip("随机定位一个当前层文件夹")
-        self.random_button.setAccessibleName("随机定位文件夹")
+        self.random_button.setToolTip(tr("随机定位一个当前层文件夹"))
+        self.random_button.setAccessibleName(tr("随机定位文件夹"))
         self.random_button.clicked.connect(self.random_folder)
         search_row.addWidget(self.random_button)
         layout.addLayout(search_row)
@@ -358,15 +367,15 @@ class Plugin:
         self.quick_menu.setStyleSheet(PLUGIN_STYLE)
         self.quick_actions = {}
         for key, label, callback, checkable in (
-            ("tiles", "平铺视图", lambda: self.set_view("tiles"), True),
-            ("list", "列表视图", lambda: self.set_view("list"), True),
+            ("tiles", tr("平铺视图"), lambda: self.set_view("tiles"), True),
+            ("list", tr("列表视图"), lambda: self.set_view("list"), True),
             (None, None, None, False),
-            ("refresh", "刷新", self.refresh, False),
+            ("refresh", tr("刷新"), self.refresh, False),
             (None, None, None, False),
-            ("ascending", "正序排列", lambda: self.set_descending(False), True),
-            ("descending", "倒序排列", lambda: self.set_descending(True), True),
+            ("ascending", tr("正序排列"), lambda: self.set_descending(False), True),
+            ("descending", tr("倒序排列"), lambda: self.set_descending(True), True),
             (None, None, None, False),
-            ("favorite", "加入快速访问", self.add_favorite, False),
+            ("favorite", tr("加入快速访问"), self.add_favorite, False),
         ):
             if key is None:
                 self.quick_menu.addSeparator()
@@ -410,10 +419,10 @@ class Plugin:
             self.network.cancel_navigation()
             self.search.clear()
             self.model.set_search("")
-        self.location.set_virtual("网络位置" if network else None)
-        self.search.setPlaceholderText("搜索网络位置" if network else "搜索当前文件夹")
+        self.location.set_virtual(tr("网络位置") if network else None)
+        self.search.setPlaceholderText(tr("搜索网络位置") if network else tr("搜索当前文件夹"))
         self.search.setAccessibleName(
-            "搜索已保存的网络位置" if network else "搜索当前级的文件和文件夹"
+            tr("搜索已保存的网络位置") if network else tr("搜索当前级的文件和文件夹")
         )
         self.random_button.setEnabled(not network)
         self.sort.setEnabled(not network)
@@ -424,9 +433,9 @@ class Plugin:
         elif network:
             self.network.show_saved()
         self.note.setText(
-            "尚未收藏文件夹。快速设置 → 加入快速访问。"
+            tr("尚未收藏文件夹。快速设置 → 加入快速访问。")
             if index == 1 and not self.favorites.count()
-            else "暂无历史记录。"
+            else tr("暂无历史记录。")
             if index == 2 and not self.recent.count()
             else ""
         )
@@ -446,7 +455,7 @@ class Plugin:
             if path not in paths:
                 self.context.set_setting("favorites", (paths + [path])[-64:])
             self.favorites.reload()
-            self.context.notify("已加入快速访问")
+            self.context.notify(tr("已加入快速访问"))
 
     def open_selected(self):
         if self.pages.currentWidget() is self.files_page and self.parent_entry.isChecked():
@@ -526,7 +535,7 @@ class Plugin:
         else:
             path = Path(directory).expanduser()
             if not path.is_dir():
-                self.note.setText("文件夹不存在，请修改首页路径或输入其他路径。")
+                self.note.setText(tr("文件夹不存在，请修改首页路径或输入其他路径。"))
                 return False
             target = str(path.resolve())
         self.remember_location(target, remember)
@@ -561,8 +570,10 @@ class Plugin:
         at_root = bool(target) and parent == target
         if is_network_path(target) and len(target[2:].rstrip("\\").split("\\")) == 2:
             parent, at_root = "\\\\" + target[2:].split("\\")[0], False
-        self.parent_entry.setText("..  此电脑" if at_root else "..  上层文件夹")
-        self.parent_entry.setToolTip(f"双击返回：{'此电脑' if at_root else parent} · Backspace")
+        self.parent_entry.setText(tr("..  此电脑") if at_root else tr("..  上层文件夹"))
+        self.parent_entry.setToolTip(
+            tr("双击返回：{0} · Backspace").format("此电脑" if at_root else parent)
+        )
         self.note.setText("")
         self.sort_tree()
         if target:
@@ -602,7 +613,7 @@ class Plugin:
             return
         self.open_folder(path if Path(path).expanduser().is_dir() else str(Path.home()))
         if not Path(path).expanduser().is_dir():
-            self.note.setText("系统图片目录不存在，已暂时打开用户目录。可在设置中自定义首页。")
+            self.note.setText(tr("系统图片目录不存在，已暂时打开用户目录。可在设置中自定义首页。"))
 
     def go_up(self):
         if self.tabs.currentIndex() == 3 and self.network.server:
@@ -664,7 +675,9 @@ class Plugin:
             self.open_folder(str(path))
             return
         if path.is_file() and not self.context.open_image(path):
-            QMessageBox.warning(self.panel, "无法打开", f"无法读取图片：{path.name}")
+            QMessageBox.warning(
+                self.panel, tr("无法打开"), tr("无法读取图片：{0}").format(path.name)
+            )
 
     def deactivate(self):
         for drag in self.file_drags:

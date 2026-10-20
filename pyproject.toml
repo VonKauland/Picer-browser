@@ -32,4 +32,4 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.setuptools.package-data]
-picer = ["assets/icons/*.svg", "assets/icons/*.png", "assets/ui/*.png"]
+picer = ["locales/*.json", "assets/icons/*.svg", "assets/icons/*.png", "assets/ui/*.png"]

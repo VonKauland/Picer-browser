@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.i18n import tr
 from picer.input_bindings import (
     MODIFIERS,
     MOUSE,
@@ -67,7 +68,9 @@ class TouchMap(QWidget):
         self.combo, self.host = combo, host
         self.setObjectName("touchMap")
         self.setMinimumHeight(145)
-        self.setToolTip("L1 / R1 为上半区，L2 / R2 为下半区；Center 为中间上方区域。点击选择区域。")
+        self.setToolTip(
+            tr("L1 / R1 为上半区，L2 / R2 为下半区；Center 为中间上方区域。点击选择区域。")
+        )
         combo.currentTextChanged.connect(lambda _: self.update())
 
     def paintEvent(self, event):
@@ -179,10 +182,12 @@ class BindingEditor(QWidget):
         self.current_key = None
         body = QVBoxLayout(self)
         body.setContentsMargins(0, 0, 0, 0)
-        note = QLabel("选择左侧操作，可为键盘、鼠标、触控和手柄添加多个绑定。")
+        note = QLabel(tr("选择左侧操作，可为键盘、鼠标、触控和手柄添加多个绑定。"))
         note.setToolTip(
-            "目录键在文件浏览面板内生效；其他键盘操作在窗口内生效。"
-            "鼠标与触控作用于图片画布；触控与手柄默认未分配。"
+            tr(
+                "目录键在文件浏览面板内生效；其他键盘操作在窗口内生效。"
+                "鼠标与触控作用于图片画布；触控与手柄默认未分配。"
+            )
         )
         note.setWordWrap(True)
         note.setObjectName("muted")
@@ -194,7 +199,7 @@ class BindingEditor(QWidget):
         left = QVBoxLayout(function_pane)
         left.setContentsMargins(0, 0, 0, 0)
         search = QLineEdit()
-        search.setPlaceholderText("搜索操作或组件")
+        search.setPlaceholderText(tr("搜索操作或组件"))
         left.addWidget(search)
         self.functions = QListWidget()
         self.functions.setMinimumSize(0, 0)
@@ -205,7 +210,7 @@ class BindingEditor(QWidget):
             external = is_external(host.plugins, action.property("plugin_id"))
             item.setData(Qt.ItemDataRole.UserRole + 1, external)
             if external:
-                item.setToolTip("第三方插件提供的操作")
+                item.setToolTip(tr("第三方插件提供的操作"))
             self.functions.addItem(item)
         left.addWidget(self.functions)
         row.addWidget(function_pane)
@@ -229,41 +234,41 @@ class BindingEditor(QWidget):
             edit.editingFinished.connect(self.show_bindings)
         self.keyboard_add = QKeySequenceEdit()
         self.keyboard_add.setClearButtonEnabled(True)
-        self.keyboard_add.setAccessibleName("新增键盘绑定")
+        self.keyboard_add.setAccessibleName(tr("新增键盘绑定"))
         keyboard = QWidget()
         keyboard.setObjectName("bindingPage")
         layout = QVBoxLayout(keyboard)
-        layout.addWidget(QLabel("主要快捷键"))
+        layout.addWidget(QLabel(tr("主要快捷键")))
         layout.addWidget(self.keyboard_stack)
-        layout.addWidget(QLabel("添加另一个快捷键"))
+        layout.addWidget(QLabel(tr("添加另一个快捷键")))
         layout.addWidget(self.keyboard_add)
         layout.addStretch()
-        self.tabs.addTab(keyboard, "键盘")
+        self.tabs.addTab(keyboard, tr("键盘"))
         mouse = QWidget()
         mouse.setObjectName("bindingPage")
         layout = QVBoxLayout(mouse)
         self.mouse_modifiers, self.mouse = QComboBox(), QComboBox()
-        self.mouse_modifiers.addItems(["无修饰键"] + list(MODIFIERS[1:]))
+        self.mouse_modifiers.addItems([tr("无修饰键")] + list(MODIFIERS[1:]))
         for value, label in zip(
             MOUSE,
             (
-                "左键单击",
-                "左键双击",
-                "中键",
-                "右键",
-                "后退侧键",
-                "前进侧键",
-                "滚轮向上",
-                "滚轮向下",
+                tr("左键单击"),
+                tr("左键双击"),
+                tr("中键"),
+                tr("右键"),
+                tr("后退侧键"),
+                tr("前进侧键"),
+                tr("滚轮向上"),
+                tr("滚轮向下"),
             ),
             strict=True,
         ):
             self.mouse.addItem(label, value)
-        layout.addWidget(QLabel("修饰键与鼠标操作"))
+        layout.addWidget(QLabel(tr("修饰键与鼠标操作")))
         layout.addWidget(self.mouse_modifiers)
         layout.addWidget(self.mouse)
         layout.addStretch()
-        self.tabs.addTab(mouse, "鼠标")
+        self.tabs.addTab(mouse, tr("鼠标"))
         touch = QWidget()
         touch.setObjectName("bindingPage")
         layout = QVBoxLayout(touch)
@@ -274,23 +279,23 @@ class BindingEditor(QWidget):
         layout.addWidget(touch_map)
         layout.addWidget(self.touch)
         layout.addStretch()
-        self.tabs.addTab(touch, "触控")
+        self.tabs.addTab(touch, tr("触控"))
         from picer.gamepad_editor import GamepadPage
 
         self.gamepad_page = GamepadPage(host)
-        self.tabs.addTab(self.gamepad_page, "手柄")
+        self.tabs.addTab(self.gamepad_page, tr("手柄"))
         card.body.addWidget(self.tabs, 1)
-        card.body.addWidget(QLabel("已绑定输入"))
+        card.body.addWidget(QLabel(tr("已绑定输入")))
         self.bindings = QListWidget()
         self.bindings.setMinimumHeight(42)
         self.bindings.setMaximumHeight(64)
         self.bindings.currentItemChanged.connect(self.select_binding)
         card.body.addWidget(self.bindings)
         toolbar = QHBoxLayout()
-        self.add_button = QPushButton("添加绑定")
+        self.add_button = QPushButton(tr("添加绑定"))
         self.add_button.setObjectName("primaryButton")
         self.add_button.clicked.connect(self.add_current)
-        self.remove_button = QPushButton("移除选中绑定")
+        self.remove_button = QPushButton(tr("移除选中绑定"))
         self.remove_button.clicked.connect(self.remove_current)
         toolbar.addWidget(self.add_button)
         toolbar.addWidget(self.remove_button)
@@ -337,7 +342,7 @@ class BindingEditor(QWidget):
                 if device == "gamepad":
                     from picer.gamepad import GAMEPAD_LABELS
 
-                    value = "+".join(GAMEPAD_LABELS[p] for p in value.split("+"))
+                    value = "+".join(tr(GAMEPAD_LABELS[p]) for p in value.split("+"))
                 item = QListWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, binding)
                 self.bindings.addItem(item)
@@ -375,7 +380,7 @@ class BindingEditor(QWidget):
         owner = conflicts[0][0] if conflicts else None
         if owner is not None:
             label = "、".join(dict.fromkeys(self.labels.get(k, k) for k, _ in conflicts))
-            message = f"{value} 与「{label}」的现有绑定冲突。"
+            message = tr("{0} 与「{1}」的现有绑定冲突。").format(value, label)
             if device == "gamepad":
                 from picer.gamepad import SHOULDERS, modifier_shoulders
 
@@ -386,11 +391,11 @@ class BindingEditor(QWidget):
                     and b["value"] in modifier_shoulders(value)
                     for _, b in conflicts
                 ):
-                    message += "肩键不能同时作为组合修饰键和单独绑定。"
+                    message += tr("肩键不能同时作为组合修饰键和单独绑定。")
             reply = QMessageBox.question(
                 self,
-                "快捷键冲突",
-                message + "是否覆盖全部冲突绑定？",
+                tr("快捷键冲突"),
+                message + tr("是否覆盖全部冲突绑定？"),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -399,7 +404,7 @@ class BindingEditor(QWidget):
             for conflict_owner, conflict in conflicts:
                 profile[conflict_owner].remove(conflict)
         if len(profile.setdefault(key, [])) >= 32:
-            QMessageBox.warning(self, "绑定数量", "每个操作最多保存 32 个输入绑定。")
+            QMessageBox.warning(self, tr("绑定数量"), tr("每个操作最多保存 32 个输入绑定。"))
             return False
         profile[key].append(binding)
         self.set_profile(profile)
@@ -447,14 +452,14 @@ class BindingEditor(QWidget):
                             bindings.remove(binding)
                             continue
                         QMessageBox.warning(
-                            self, "快捷键冲突", "同一操作中的输入互相冲突，请修改后保存。"
+                            self, tr("快捷键冲突"), tr("同一操作中的输入互相冲突，请修改后保存。")
                         )
                         return None
                     label = ", ".join(self.labels.get(owner, owner) for owner, _ in conflicts)
                     answer = QMessageBox.question(
                         self,
-                        "快捷键冲突",
-                        f"{binding['value']} 与「{label}」冲突。是否覆盖原绑定？",
+                        tr("快捷键冲突"),
+                        tr("{0} 与「{1}」冲突。是否覆盖原绑定？").format(binding["value"], label),
                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                         QMessageBox.StandardButton.No,
                     )

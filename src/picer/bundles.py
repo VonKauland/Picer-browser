@@ -5,6 +5,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+from picer.i18n import tr
 from picer.plugins.api import PluginError
 from picer.plugins.manifest import Manifest
 
@@ -56,7 +57,7 @@ def seed_examples(manager):
                     metadata.write_bytes(package.read("manifest.json"))
                     manifest = Manifest.read(metadata)
                 if manifest.id != plugin_id:
-                    raise PluginError("随应用分发的示例 id 与目录不匹配")
+                    raise PluginError(tr("随应用分发的示例 id 与目录不匹配"))
                 previous = manager.records.get(plugin_id)
                 if previous is None and plugin_id in markers:
                     continue  # An explicit uninstall is not undone on restart.
@@ -72,4 +73,4 @@ def seed_examples(manager):
                 manager.preferences["enabled"][plugin_id] = wanted
                 markers[plugin_id] = manifest.version
             except (OSError, KeyError, zipfile.BadZipFile, PluginError) as error:
-                manager.diagnostics.append(f"默认示例 {plugin_id}：{error}")
+                manager.diagnostics.append(tr("默认示例 {0}：{1}").format(plugin_id, error))

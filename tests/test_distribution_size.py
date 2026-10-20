@@ -49,7 +49,6 @@ def test_compaction_preserves_all_other_files_and_is_idempotent(tmp_path):
         "_internal/PySide6/opengl32sw.dll",
         "_internal/PySide6/plugins/platforms/qdirect2d.dll",
         "_internal/PySide6/translations/qtbase_de.qm",
-        "_internal/PySide6/translations/qt_help_ja.qm",
         "_internal/PySide6/translations/qt_fr.qm",
     }
     assert report["saved_bytes"] == sum(file["bytes"] for file in report["removed"]) > 0

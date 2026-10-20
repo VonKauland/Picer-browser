@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image
 from PySide6.QtGui import QImage
 
+from picer.i18n import tr
 from picer.imaging import MAX_PIXELS, read_image
 
 DEFAULTS = {
@@ -61,12 +62,12 @@ def defaults(size=(1920, 1280)):
 def validate(state):
     """Reject malformed presets before changing controls or allocating pixels."""
     if not isinstance(state, dict) or set(state) != set(DEFAULTS):
-        raise ValueError("预设修改器不完整")
+        raise ValueError(tr("预设修改器不完整"))
     result = copy.deepcopy(state)
     for key, spec in DEFAULTS.items():
         row = result[key]
         if not isinstance(row, dict) or set(row) != set(spec) or type(row["enabled"]) is not bool:
-            raise ValueError("预设参数无效")
+            raise ValueError(tr("预设参数无效"))
     limits = {
         "crop": {"x": (0, 1), "y": (0, 1), "w": (0.000001, 1), "h": (0.000001, 1)},
         "resize": {"width": (1, 30000), "height": (1, 30000)},
@@ -86,41 +87,41 @@ def validate(state):
         for field, (low, high) in bounds.items():
             value = result[key][field]
             if type(value) not in (int, float) or not low <= value <= high:
-                raise ValueError("预设数值超出范围")
+                raise ValueError(tr("预设数值超出范围"))
             if field not in {"x", "y", "w", "h", "angle", "mid"} and int(value) != value:
-                raise ValueError("预设须使用整数像素或参数")
+                raise ValueError(tr("预设须使用整数像素或参数"))
             if field not in {"x", "y", "w", "h", "angle", "mid"}:
                 result[key][field] = int(value)
     if result["crop"]["x"] + result["crop"]["w"] > 1.000001 or (
         result["crop"]["y"] + result["crop"]["h"] > 1.000001
     ):
-        raise ValueError("裁剪范围超出图片")
+        raise ValueError(tr("裁剪范围超出图片"))
     resize = result["resize"]
     if resize["width"] * resize["height"] > MAX_PIXELS:
-        raise ValueError("输出超过 1.2 亿像素上限")
+        raise ValueError(tr("输出超过 1.2 亿像素上限"))
     if resize["method"] not in {"lanczos", "bicubic", "nearest"}:
-        raise ValueError("未知插值算法")
+        raise ValueError(tr("未知插值算法"))
     for value in (resize["linked"], result["mirror"]["horizontal"], result["mirror"]["vertical"]):
         if type(value) is not bool:
-            raise ValueError("预设开关无效")
+            raise ValueError(tr("预设开关无效"))
     if result["levels"]["black"] >= result["levels"]["white"]:
-        raise ValueError("黑场必须小于白场")
+        raise ValueError(tr("黑场必须小于白场"))
     for key in ("levels", "curves"):
         if result[key]["channel"] not in {"RGB", "R", "G", "B"}:
-            raise ValueError("未知颜色通道")
+            raise ValueError(tr("未知颜色通道"))
     points = result["curves"]["points"]
     if not isinstance(points, dict) or set(points) != {"RGB", "R", "G", "B"}:
-        raise ValueError("曲线通道无效")
+        raise ValueError(tr("曲线通道无效"))
     for nodes in points.values():
         if not isinstance(nodes, list) or not 2 <= len(nodes) <= 16:
-            raise ValueError("曲线须包含 2 至 16 个节点")
+            raise ValueError(tr("曲线须包含 2 至 16 个节点"))
         previous = -1
         for node in nodes:
             if not isinstance(node, list) or len(node) != 2:
-                raise ValueError("曲线节点无效")
+                raise ValueError(tr("曲线节点无效"))
             x, y = node
             if any(type(v) not in (int, float) or not 0 <= v <= 255 for v in node) or x <= previous:
-                raise ValueError("曲线节点须按输入值递增")
+                raise ValueError(tr("曲线节点须按输入值递增"))
             previous = x
     return result
 
@@ -159,7 +160,7 @@ def render(source, state, *, native=None, edge=0, token=None):
     native = native or source.size
     target = output_size(native, state)
     if target[0] * target[1] > MAX_PIXELS:
-        raise ValueError("旋转后的输出超过 1.2 亿像素上限")
+        raise ValueError(tr("旋转后的输出超过 1.2 亿像素上限"))
     check = token.checkpoint if token else lambda: None
     check()
     image = source.convert("RGBA")
@@ -323,12 +324,12 @@ def save_image(path, state, expected, *, overwrite=False, token=None, camera_pre
     """Decode original resolution, render once, then atomically commit beside source."""
     path = Path(path)
     if fingerprint(path) != expected:
-        raise ValueError("原文件已被其他程序修改，请重新打开后编辑")
+        raise ValueError(tr("原文件已被其他程序修改，请重新打开后编辑"))
     check = token.checkpoint if token else lambda: None
     check()
     fmt = SAVE_FORMATS.get(path.suffix.lower()) if overwrite else "PNG"
     if fmt is None:
-        raise ValueError("此格式仅支持保存 PNG 副本")
+        raise ValueError(tr("此格式仅支持保存 PNG 副本"))
     image = read_image(path, token=token, camera_preview=camera_preview)
     output, _ = render(to_pillow(image), state, token=token)
     kwargs = {}
@@ -360,11 +361,11 @@ def save_image(path, state, expected, *, overwrite=False, token=None, camera_pre
             os.fsync(stream.fileno())
         check()
         if fingerprint(path) != expected:
-            raise ValueError("原文件已改变，未保存修改")
+            raise ValueError(tr("原文件已改变，未保存修改"))
         if not overwrite:
             for n in range(1, 10000):
                 target = path.with_name(
-                    path.stem + (" - 编辑" if n == 1 else f" - 编辑 {n}") + ".png"
+                    path.stem + (tr(" - 编辑") if n == 1 else tr(" - 编辑 {0}").format(n)) + ".png"
                 )
                 try:
                     descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -374,12 +375,12 @@ def save_image(path, state, expected, *, overwrite=False, token=None, camera_pre
                 except FileExistsError:
                     continue
             else:
-                raise ValueError("无法分配副本名称")
+                raise ValueError(tr("无法分配副本名称"))
         else:
             os.chmod(name, path.stat().st_mode & 0o777)
         check()
         if reserved and fingerprint(target) != reserved:
-            raise ValueError("副本位置已被其他程序修改")
+            raise ValueError(tr("副本位置已被其他程序修改"))
         os.replace(name, target)
         return target
     except BaseException:

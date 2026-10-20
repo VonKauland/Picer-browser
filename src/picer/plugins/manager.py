@@ -23,6 +23,7 @@ from PySide6.QtWidgets import QDockWidget, QWidget
 
 from picer.annotations import AnnotationStore
 from picer.host_style import PLUGIN_STYLE
+from picer.i18n import plugin_text, tr
 from picer.panels import DOCK_AREAS, DockTitleSpacer, ProgressDock, dock_surface, saved_layout
 from picer.plugins.api import API_VERSION, ImageEvent, PluginContext, PluginError
 from picer.plugins.builtin.transforms import Plugin as Transforms
@@ -86,16 +87,16 @@ class PluginManager(QObject):
                 if not isinstance(data, dict) or any(
                     not isinstance(data.get(key, {}), dict) for key in ("enabled", "settings", "ui")
                 ):
-                    raise ValueError("配置结构无效")
+                    raise ValueError(tr("配置结构无效"))
                 self.preferences = {key: data.get(key, {}) for key in ("enabled", "settings", "ui")}
         except (OSError, ValueError, UnicodeError) as error:
-            self.diagnostics.append(f"配置读取失败：{error}")
+            self.diagnostics.append(tr("配置读取失败：{0}").format(error))
         self.annotations = AnnotationStore(
             self.paths.config / "annotations.sqlite3",
             self.preferences["settings"].get("example.info", {}),
         )
         if self.annotations.error:
-            self.diagnostics.append("图片标注库：" + self.annotations.error)
+            self.diagnostics.append(tr("图片标注库：") + self.annotations.error)
         # Restore core bindings before loading plugins that may use a freed shortcut.
         self.host.restore_shortcuts(
             self.preferences["ui"].get("shortcuts", {}),
@@ -107,16 +108,16 @@ class PluginManager(QObject):
             )
             self.logger.addHandler(self.log_handler)
         except OSError as error:
-            self.diagnostics.append(f"插件日志无法写入：{error}")
+            self.diagnostics.append(tr("插件日志无法写入：{0}").format(error))
         # Preserve the old multi-function built-in's enable preference during migration.
         for plugin_id in ("picer.mirror", "picer.grayscale"):
             self.preferences["enabled"].setdefault(
                 plugin_id, self.preferences["enabled"].get("picer.transforms", True) is True
             )
         for plugin_id, label in (
-            ("picer.transforms", "顺时针旋转"),
-            ("picer.mirror", "水平翻转"),
-            ("picer.grayscale", "灰度预览"),
+            ("picer.transforms", tr("顺时针旋转")),
+            ("picer.mirror", tr("水平翻转")),
+            ("picer.grayscale", tr("灰度预览")),
         ):
             builtin = Manifest(
                 id=plugin_id,
@@ -124,7 +125,7 @@ class PluginManager(QObject):
                 version="1.1.0",
                 api_version=API_VERSION,
                 entrypoint="transforms:Plugin",
-                description="仅修改当前预览，不修改原文件。",
+                description=tr("仅修改当前预览，不修改原文件。"),
                 author="Picer",
                 permissions=("ui.commands", "image.read", "image.modify"),
             )
@@ -169,13 +170,15 @@ class PluginManager(QObject):
                 try:
                     manifest = Manifest.read(directory / "manifest.json")
                     if (manifest.type == "skin") != (base == self.paths.skins):
-                        raise PluginError("组件存储目录与类型不匹配，请重新安装")
+                        raise PluginError(tr("组件存储目录与类型不匹配，请重新安装"))
                     if manifest.id in self.records:
-                        raise PluginError(f"重复插件 id：{manifest.id}")
+                        raise PluginError(tr("重复插件 id：{0}").format(manifest.id))
                     record = PluginRecord(manifest, directory=directory)
                     if manifest.api_version != API_VERSION:
                         record.state = "incompatible"
-                        record.error = f"需要 API {manifest.api_version}，当前为 {API_VERSION}"
+                        record.error = tr("需要 API {0}，当前为 {1}").format(
+                            manifest.api_version, API_VERSION
+                        )
                     self.records[manifest.id] = record
                 except PluginError as error:
                     self.diagnostics.append(f"{directory.name}：{error}")
@@ -196,7 +199,7 @@ class PluginManager(QObject):
                 json.dump(self.preferences, file, ensure_ascii=False, indent=2, allow_nan=False)
             temporary.replace(self.state_file)
         except (OSError, ValueError, TypeError) as error:
-            self.diagnostics.append(f"插件配置保存失败：{error}")
+            self.diagnostics.append(tr("插件配置保存失败：{0}").format(error))
         finally:
             if temporary is not None:
                 try:
@@ -229,20 +232,24 @@ class PluginManager(QObject):
         self.changed.emit()
 
         if plugin_id in activated and self.records[plugin_id].manifest.type == "function":
-            self.host.notify(f"{self.records[plugin_id].manifest.name}已启用")
+            self.host.notify(
+                tr("{0}已启用").format(
+                    plugin_text(self, plugin_id, self.records[plugin_id].manifest.name)
+                )
+            )
 
     def _enable(self, plugin_id: str, visiting: set[str], activated: list[str]) -> None:
         if self._closed:
-            raise PluginError("插件管理器已关闭")
+            raise PluginError(tr("插件管理器已关闭"))
         if plugin_id not in self.records:
-            raise PluginError(f"缺少依赖插件：{plugin_id}")
+            raise PluginError(tr("缺少依赖插件：{0}").format(plugin_id))
         record = self.records[plugin_id]
         if record.state == "enabled":
             return
         if record.manifest.api_version != API_VERSION:
-            raise PluginError(record.error or "插件 API 不兼容")
+            raise PluginError(record.error or tr("插件 API 不兼容"))
         if plugin_id in visiting:
-            raise PluginError(f"插件依赖循环：{plugin_id}")
+            raise PluginError(tr("插件依赖循环：{0}").format(plugin_id))
         visiting.add(plugin_id)
         for dependency in record.manifest.requires:
             self._enable(dependency, visiting, activated)
@@ -256,7 +263,7 @@ class PluginManager(QObject):
                 for old in list(self.records.values()):
                     if old is not record and old.manifest.type == "skin" and old.state == "enabled":
                         if self._dependents(old.manifest.id):
-                            raise PluginError("当前皮肤被其他组件依赖，不能切换")
+                            raise PluginError(tr("当前皮肤被其他组件依赖，不能切换"))
                         self._cleanup(old)
                         self.preferences["enabled"][old.manifest.id] = False
                 self.host.apply_skin(skin.style, skin.colors, chrome=skin.chrome)
@@ -288,9 +295,9 @@ class PluginManager(QObject):
                     action.property("plugin_id") == plugin_id for action in self.commands.values()
                 )
                 if record.manifest.type == "function" and count != 1:
-                    raise PluginError("功能组件必须且只能注册一个功能按钮")
+                    raise PluginError(tr("功能组件必须且只能注册一个功能按钮"))
                 if record.manifest.type == "panel" and plugin_id not in self.panels:
-                    raise PluginError("面板组件必须注册一个面板")
+                    raise PluginError(tr("面板组件必须注册一个面板"))
             record.state = "enabled"
             self.preferences["enabled"][plugin_id] = True
             activated.append(plugin_id)
@@ -312,7 +319,7 @@ class PluginManager(QObject):
     def disable(self, plugin_id: str) -> None:
         dependents = self._dependents(plugin_id)
         if dependents:
-            raise PluginError(f"请先停用依赖此插件的插件：{', '.join(dependents)}")
+            raise PluginError(tr("请先停用依赖此插件的插件：{0}").format(", ".join(dependents)))
         record = self.records[plugin_id]
         was_enabled = record.state == "enabled"
         self._cleanup(record)
@@ -320,7 +327,9 @@ class PluginManager(QObject):
         self._save()
         self.changed.emit()
         if was_enabled and record.manifest.type == "function":
-            self.host.notify(f"{record.manifest.name}已停用")
+            self.host.notify(
+                tr("{0}已停用").format(plugin_text(self, plugin_id, record.manifest.name))
+            )
 
     def reload(self, plugin_id: str) -> None:
         record = self.records[plugin_id]
@@ -328,16 +337,16 @@ class PluginManager(QObject):
         if record.directory is not None:
             manifest = Manifest.read(record.directory / "manifest.json")
             if manifest.id != plugin_id:
-                raise PluginError("重载时不能修改插件 id")
+                raise PluginError(tr("重载时不能修改插件 id"))
             if manifest.type != record.manifest.type:
-                raise PluginError("重载时不能修改组件类型")
+                raise PluginError(tr("重载时不能修改组件类型"))
             record.manifest = manifest
             try:
                 for cache in record.directory.rglob("__pycache__"):
                     if cache.is_dir() and not cache.is_symlink():
                         shutil.rmtree(cache)
             except OSError as error:
-                raise PluginError(f"重载无法清理旧字节码：{error}") from error
+                raise PluginError(tr("重载无法清理旧字节码：{0}").format(error)) from error
             importlib.invalidate_caches()
         self.enable(plugin_id)
 
@@ -380,7 +389,7 @@ class PluginManager(QObject):
                 if deactivate:
                     deactivate()
             except Exception as error:
-                record.error = f"停用失败：{error}"
+                record.error = tr("停用失败：{0}").format(error)
                 self.logger.exception("Plugin deactivation failed: %s", plugin_id)
         for key in list(self.commands):
             action = self.commands[key]
@@ -411,7 +420,7 @@ class PluginManager(QObject):
         )
         # Disable dependents first; a broken dependency must not leave them active.
         for dependent in self._dependents(plugin_id):
-            self._fail(dependent, PluginError(f"依赖 {plugin_id} 已出错"))
+            self._fail(dependent, PluginError(tr("依赖 {0} 已出错").format(plugin_id)))
         record = self.records[plugin_id]
         self._cleanup(record)
         record.state = "error"
@@ -432,7 +441,11 @@ class PluginManager(QObject):
         self._invoke(plugin_id, callback)
         action = self.commands.get(key)
         if action is not None and self.records[plugin_id].state == "enabled":
-            suffix = ("已开启" if action.isChecked() else "已关闭") if action.isCheckable() else ""
+            suffix = (
+                (tr("已开启") if action.isChecked() else tr("已关闭"))
+                if action.isCheckable()
+                else ""
+            )
             self.host.notify(action.text() + suffix)
 
     def add_command(
@@ -440,18 +453,18 @@ class PluginManager(QObject):
     ):
         manifest = self.records[plugin_id].manifest
         if manifest.type != "function":
-            raise PluginError("只有功能组件可以注册功能按钮")
+            raise PluginError(tr("只有功能组件可以注册功能按钮"))
         if not manifest.legacy and any(
             action.property("plugin_id") == plugin_id for action in self.commands.values()
         ):
-            raise PluginError("功能组件只能注册一个功能按钮")
+            raise PluginError(tr("功能组件只能注册一个功能按钮"))
         if not re.fullmatch(r"[a-z][a-z0-9_]*", command_id):
-            raise PluginError("命令 id 无效")
+            raise PluginError(tr("命令 id 无效"))
         key = f"{plugin_id}:{command_id}"
         if key in self.commands:
-            raise PluginError(f"重复命令：{key}")
+            raise PluginError(tr("重复命令：{0}").format(key))
         if menu not in self.host.plugin_menus or not label or not callable(callback):
-            raise PluginError("菜单、标签或回调无效")
+            raise PluginError(tr("菜单、标签或回调无效"))
         default_shortcut = shortcut
         saved = self.preferences["ui"].get("input_bindings", {})
         bindings = saved.get(key) if isinstance(saved, dict) else None
@@ -477,10 +490,10 @@ class PluginManager(QObject):
                 for previous in existing.shortcuts()
             )
         ):
-            raise PluginError(f"快捷键无效或冲突：{shortcut}")
+            raise PluginError(tr("快捷键无效或冲突：{0}").format(shortcut))
         if icon is not None and not isinstance(icon, QIcon):
-            raise PluginError("功能图标必须为 QIcon")
-        action = QAction(label, self.host)
+            raise PluginError(tr("功能图标必须为 QIcon"))
+        action = QAction(plugin_text(self, plugin_id, label), self.host)
         default_icon = icon is None or icon.isNull()
         if default_icon:
             from picer.components import function_icon
@@ -503,7 +516,7 @@ class PluginManager(QObject):
 
     def bind_panel_operation(self, plugin_id, name, callback):
         if self.records[plugin_id].manifest.type != "panel":
-            raise PluginError("只有面板组件可以接入面板操作")
+            raise PluginError(tr("只有面板组件可以接入面板操作"))
         if name not in {
             "browser.parent",
             "browser.selected",
@@ -511,9 +524,9 @@ class PluginManager(QObject):
             "slideshow.play",
             "slideshow.stop",
         } or not callable(callback):
-            raise PluginError("未知面板操作或无效回调")
+            raise PluginError(tr("未知面板操作或无效回调"))
         if name in self.panel_operations:
-            raise PluginError("该面板操作已经由其他面板提供")
+            raise PluginError(tr("该面板操作已经由其他面板提供"))
         self.panel_operations[name] = (plugin_id, callback)
         label = {
             "browser.parent": "打开父级文件夹",
@@ -536,31 +549,31 @@ class PluginManager(QObject):
 
     def add_panel(self, plugin_id: str, widget: QWidget, area: str) -> None:
         if self.records[plugin_id].manifest.type != "panel":
-            raise PluginError("只有面板组件可以注册面板")
+            raise PluginError(tr("只有面板组件可以注册面板"))
         if plugin_id in self.panels:
-            raise PluginError("面板组件只能注册一个面板")
+            raise PluginError(tr("面板组件只能注册一个面板"))
         if (
             not isinstance(widget, QWidget)
             or widget is self.host
             or widget is self.host.view
             or widget.parent() is not None
         ):
-            raise PluginError("面板必须为无父级的新 QWidget")
+            raise PluginError(tr("面板必须为无父级的新 QWidget"))
         if area not in DOCK_AREAS:
-            raise PluginError("面板位置必须为 left、right 或 bottom")
+            raise PluginError(tr("面板位置必须为 left、right 或 bottom"))
         progress = self.records[plugin_id].manifest.panel_role == "progress"
         allowed = ("bottom",) if progress else ("left", "right")
         if area not in allowed:
             if progress:
-                raise PluginError("进度面板只能停靠底部")
-            raise PluginError("底部仅用于进度面板，其他面板只能停靠左侧或右侧")
+                raise PluginError(tr("进度面板只能停靠底部"))
+            raise PluginError(tr("底部仅用于进度面板，其他面板只能停靠左侧或右侧"))
         if progress and any(dock.property("progressPanel") for dock in self.panels.values()):
-            raise PluginError("底部只能启用一个进度面板，请先停用当前进度面板")
+            raise PluginError(tr("底部只能启用一个进度面板，请先停用当前进度面板"))
         preferred = saved_layout(self, plugin_id).get("area")
         if isinstance(preferred, str) and preferred in allowed:
             area = preferred
         dock = (ProgressDock if progress else QDockWidget)(
-            self.records[plugin_id].manifest.name, self.host
+            plugin_text(self, plugin_id, self.records[plugin_id].manifest.name), self.host
         )
         dock.setObjectName("panel:" + plugin_id)
         dock.setAllowedAreas(
@@ -629,7 +642,7 @@ class PluginManager(QObject):
 
     def subscribe(self, plugin_id: str, event: str, callback: Callable) -> None:
         if not callable(callback):
-            raise PluginError("事件回调必须可调用")
+            raise PluginError(tr("事件回调必须可调用"))
         self.subscribers.setdefault(event, []).append((plugin_id, callback))
 
     def emit_image(self, reason: str) -> None:
@@ -690,9 +703,9 @@ class PluginManager(QObject):
 
     def run_task(self, context, work, on_result, image_bound):
         if not callable(work) or not callable(on_result):
-            raise PluginError("后台任务与结果回调必须可调用")
+            raise PluginError(tr("后台任务与结果回调必须可调用"))
         if len(self.jobs) >= 16:
-            raise PluginError("后台任务队列已满，请等待现有任务完成")
+            raise PluginError(tr("后台任务队列已满，请等待现有任务完成"))
         worker = Worker(work)
         worker.plugin_id = context.plugin_id
         revision = self.host.image_revision
@@ -728,7 +741,7 @@ class PluginManager(QObject):
             token for token in tuple(tokens) if token.finished or token.cancelled
         )
         if len(tokens) >= 512:
-            raise PluginError("缩略图请求队列已满")
+            raise PluginError(tr("缩略图请求队列已满"))
 
         def deliver(image):
             tokens.discard(token)
@@ -746,32 +759,32 @@ class PluginManager(QObject):
 
     def add_settings(self, plugin_id, fields, callback):
         if plugin_id in self.settings_forms or not callable(callback):
-            raise PluginError("设置只能注册一次，且须提供应用回调")
+            raise PluginError(tr("设置只能注册一次，且须提供应用回调"))
         fields = tuple(fields)
         if (
             not fields
             or len(fields) > 32
             or any(not isinstance(field, SettingField) for field in fields)
         ):
-            raise PluginError("设置须包含 1 至 32 个 SettingField")
+            raise PluginError(tr("设置须包含 1 至 32 个 SettingField"))
         keys = set()
         for field in fields:
             if not re.fullmatch(r"[a-z][a-z0-9_]*", field.key) or field.key in keys:
-                raise PluginError("设置键无效或重复")
+                raise PluginError(tr("设置键无效或重复"))
             keys.add(field.key)
             if field.kind not in {"bool", "int", "choice", "path", "text"}:
-                raise PluginError("未知设置控件类型")
+                raise PluginError(tr("未知设置控件类型"))
             if not isinstance(field.label, str) or not field.label:
-                raise PluginError("设置标签必须为非空字符串")
+                raise PluginError(tr("设置标签必须为非空字符串"))
             if field.kind == "bool" and type(field.default) is not bool:
-                raise PluginError("布尔设置默认值必须为 bool")
+                raise PluginError(tr("布尔设置默认值必须为 bool"))
             if field.kind == "int" and (
                 any(type(v) is not int for v in (field.minimum, field.maximum, field.default))
                 or not -(2**31) <= field.minimum <= field.default <= field.maximum < 2**31
             ):
-                raise PluginError("整数设置默认值或范围无效")
+                raise PluginError(tr("整数设置默认值或范围无效"))
             if field.kind in {"path", "text"} and not isinstance(field.default, str):
-                raise PluginError("文本设置默认值必须为字符串")
+                raise PluginError(tr("文本设置默认值必须为字符串"))
             if field.kind == "choice":
                 if (
                     not field.choices
@@ -784,14 +797,14 @@ class PluginManager(QObject):
                     or len({key for key, _ in field.choices}) != len(field.choices)
                     or field.default not in tuple(key for key, _ in field.choices)
                 ):
-                    raise PluginError("选择设置默认值或选项无效")
+                    raise PluginError(tr("选择设置默认值或选项无效"))
         self.settings_forms[plugin_id] = (fields, callback)
 
     def show_settings(self, plugin_id):
         from picer.plugins.dialog import PluginDialog
 
         if plugin_id not in self.settings_forms:
-            raise PluginError("请先启用提供设置的组件")
+            raise PluginError(tr("请先启用提供设置的组件"))
         dialog = PluginDialog(self, self.host, selected_id=plugin_id, open_settings=True)
         dialog.exec()
         dialog.deleteLater()
@@ -800,9 +813,9 @@ class PluginManager(QObject):
         try:
             encoded = json.dumps(values, allow_nan=False)
             if len(encoded) > 64 * 1024:
-                raise ValueError("设置不能超过 64 KiB")
+                raise ValueError(tr("设置不能超过 64 KiB"))
         except (ValueError, TypeError) as error:
-            raise PluginError(f"设置必须为有限的 JSON 值：{error}") from error
+            raise PluginError(tr("设置必须为有限的 JSON 值：{0}").format(error)) from error
         settings = self.preferences["settings"]
         if not isinstance(settings.get(plugin_id), dict):
             settings[plugin_id] = {}
@@ -811,13 +824,13 @@ class PluginManager(QObject):
 
     def set_setting(self, plugin_id: str, key: str, value: Any) -> None:
         if not isinstance(key, str) or not key:
-            raise PluginError("设置键必须为非空字符串")
+            raise PluginError(tr("设置键必须为非空字符串"))
         try:
             encoded = json.dumps(value, allow_nan=False)
             if len(encoded) > 64 * 1024:
-                raise ValueError("单个设置不能超过 64 KiB")
+                raise ValueError(tr("单个设置不能超过 64 KiB"))
         except (ValueError, TypeError) as error:
-            raise PluginError(f"设置必须为有限的 JSON 值：{error}") from error
+            raise PluginError(tr("设置必须为有限的 JSON 值：{0}").format(error)) from error
         settings = self.preferences["settings"]
         if not isinstance(settings.get(plugin_id), dict):
             settings[plugin_id] = {}
@@ -839,7 +852,7 @@ class PluginManager(QObject):
                         len(entries) > 500
                         or sum(info.file_size for info in entries) > 20 * 1024 * 1024
                     ):
-                        raise PluginError("插件包最多包含 500 个文件，解压后不超过 20 MiB")
+                        raise PluginError(tr("插件包最多包含 500 个文件，解压后不超过 20 MiB"))
                     seen = set()
                     for info in entries:
                         # ZipInfo normalizes separators on Windows when reading too.
@@ -864,35 +877,35 @@ class PluginManager(QObject):
                                 for part in path.parts
                             )
                         ):
-                            raise PluginError("插件包含非法路径或符号链接")
+                            raise PluginError(tr("插件包含非法路径或符号链接"))
                         normalized = str(path).casefold()
                         if normalized in seen:
-                            raise PluginError("插件包含重复或大小写冲突的路径")
+                            raise PluginError(tr("插件包含重复或大小写冲突的路径"))
                         seen.add(normalized)
                     file.extractall(staging)
                 manifest = Manifest.read(staging / "manifest.json")
                 previous = self.records.get(manifest.id)
                 if previous:
                     if not replace_existing or previous.directory is None:
-                        raise PluginError("该插件已存在，不能覆盖内置插件")
+                        raise PluginError(tr("该插件已存在，不能覆盖内置插件"))
                     if previous.state == "enabled" or self._dependents(manifest.id):
-                        raise PluginError("更新前请先停用插件及其依赖者")
+                        raise PluginError(tr("更新前请先停用插件及其依赖者"))
                 base = self.paths.skins if manifest.type == "skin" else self.directory
                 if manifest.type == "skin":
                     load_skin(staging, manifest.theme)
                 if previous and previous.manifest.type != manifest.type:
-                    raise PluginError("更新不能更改组件类型，请先卸载旧组件")
+                    raise PluginError(tr("更新不能更改组件类型，请先卸载旧组件"))
                 base.mkdir(parents=True, exist_ok=True)
                 destination = previous.directory if previous else base / manifest.id
                 if destination.exists() and previous is None:
-                    raise PluginError("插件目录已存在")
+                    raise PluginError(tr("插件目录已存在"))
                 module_name = manifest.entrypoint.split(":")[0]
                 module_path = staging.joinpath(*module_name.split("."))
                 if manifest.type != "skin" and (
                     not module_path.with_suffix(".py").is_file()
                     and not (module_path / "__init__.py").is_file()
                 ):
-                    raise PluginError("插件入口文件不存在")
+                    raise PluginError(tr("插件入口文件不存在"))
                 backup = temporary_root / "previous"
                 if previous:
                     destination.rename(backup)
@@ -905,26 +918,28 @@ class PluginManager(QObject):
             record = PluginRecord(manifest, directory=destination)
             if manifest.api_version != API_VERSION:
                 record.state = "incompatible"
-                record.error = f"需要 API {manifest.api_version}，当前为 {API_VERSION}"
+                record.error = tr("需要 API {0}，当前为 {1}").format(
+                    manifest.api_version, API_VERSION
+                )
             self.records[manifest.id] = record
             self.preferences["enabled"][manifest.id] = False
             self._save()
             self.changed.emit()
-            self.host.notify(f"{manifest.name}已安装")
+            self.host.notify(tr("{0}已安装").format(plugin_text(self, manifest.id, manifest.name)))
             return manifest.id
         except (OSError, zipfile.BadZipFile, RuntimeError) as error:
-            raise PluginError(f"安装失败：{error}") from error
+            raise PluginError(tr("安装失败：{0}").format(error)) from error
 
     def uninstall(self, plugin_id: str) -> None:
         record = self.records[plugin_id]
         if record.directory is None:
-            raise PluginError("不能卸载内置插件")
+            raise PluginError(tr("不能卸载内置插件"))
         if record.state == "enabled" or self._dependents(plugin_id):
-            raise PluginError("请先停用插件及其依赖者")
+            raise PluginError(tr("请先停用插件及其依赖者"))
         try:
             shutil.rmtree(record.directory)
         except OSError as error:
-            raise PluginError(f"卸载失败：{error}") from error
+            raise PluginError(tr("卸载失败：{0}").format(error)) from error
         del self.records[plugin_id]
         self.preferences["enabled"].pop(plugin_id, None)
         self.preferences["settings"].pop(plugin_id, None)

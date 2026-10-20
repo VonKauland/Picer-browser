@@ -6,6 +6,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QPushButton, QWidget
 
 from picer.color_picker import ColorPicker
+from picer.i18n import tr
 from picer.theme import COLORS
 from picer.ui import colors_for
 
@@ -22,9 +23,9 @@ class ColorEditor(QWidget):
         self.text = QLineEdit()
         self.text.setMaxLength(7)
         self.text.setFixedWidth(150)
-        self.text.setPlaceholderText("跟随皮肤")
-        self.text.setAccessibleName("强调色十六进制色值")
-        self.button = QPushButton("选择颜色")
+        self.text.setPlaceholderText(tr("跟随皮肤"))
+        self.text.setAccessibleName(tr("强调色十六进制色值"))
+        self.button = QPushButton(tr("选择颜色"))
         self.button.clicked.connect(self.choose)
         self.text.textChanged.connect(self.refresh)
         row.addWidget(self.text)
@@ -38,7 +39,7 @@ class ColorEditor(QWidget):
     def value(self):
         value = self.text.text().strip()
         if not valid_accent(value):
-            raise ValueError("强调色请输入 #RRGGBB 色值，或留空跟随皮肤。")
+            raise ValueError(tr("强调色请输入 #RRGGBB 色值，或留空跟随皮肤。"))
         return value.upper()
 
     def refresh(self):
