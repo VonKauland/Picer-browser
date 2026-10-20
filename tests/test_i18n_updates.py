@@ -34,7 +34,7 @@ def fields(text):
 
 def test_catalogs_have_matching_coverage_and_format_fields():
     catalogs = [
-        json.loads((ROOT / "src/picer/locales" / f"{code}.json").read_text())
+        json.loads((ROOT / "src/picer/locales" / f"{code}.json").read_text(encoding="utf-8"))
         for code in LANGUAGES
         if code != "zh_CN"
     ]
@@ -46,7 +46,7 @@ def test_catalogs_have_matching_coverage_and_format_fields():
             assert isinstance(text, str) and text
             assert fields(key) == fields(text), (key, text)
     for path in [*(ROOT / "src/picer").rglob("*.py"), *(ROOT / "examples").rglob("*.py")]:
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
@@ -110,7 +110,7 @@ def test_language_change_is_saved_but_staged_until_restart(qtbot, tmp_path):
         assert host.app_preferences["language"] == "en"
         assert language() == "zh_CN"
         assert host.open_action.text() == "打开图片…"
-        preferences = json.loads((tmp_path / "config/plugins.json").read_text())
+        preferences = json.loads((tmp_path / "config/plugins.json").read_text(encoding="utf-8"))
         assert preferences["ui"]["application"]["language"] == "en"
     finally:
         settings.close()

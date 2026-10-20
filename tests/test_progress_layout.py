@@ -93,7 +93,9 @@ def test_old_progress_upgrade_preserves_settings_and_migrates_side_location(tmp_
     manager = upgraded.plugins
     record = manager.records["example.progress"]
     shipped = json.loads(
-        (Path(__file__).resolve().parents[1] / "examples/progress_panel/manifest.json").read_text()
+        (Path(__file__).resolve().parents[1] / "examples/progress_panel/manifest.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert record.state == "enabled" and record.manifest.version == shipped["version"]
     assert manager.get_setting("example.progress", "thumbnail_size", 0) == 144

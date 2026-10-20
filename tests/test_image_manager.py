@@ -31,14 +31,14 @@ def test_annotation_migration_and_durable_history(tmp_path):
 
 
 @pytest.fixture
-def host(qtbot, tmp_path):
+def host(qtbot, tmp_path, request):
     window = MainWindow(plugin_root=tmp_path / "state")
     qtbot.addWidget(window)
     window.resize(1200, 800)
     window.show()
     folder = tmp_path / "album"
     folder.mkdir()
-    for n in range(8):
+    for n in range(getattr(request, "param", 8)):
         Image.new("RGB", (40, 30), (n * 20, 40, 80)).save(folder / f"{n}.png")
     (folder / "folder.png").mkdir()
     (folder / "ignored.txt").write_text("not an image")
@@ -187,10 +187,9 @@ def test_popup_corners_and_cleanup(host, qtbot):
     window.plugins.disable("example.images")
 
 
+@pytest.mark.parametrize("host", [6], indirect=True)
 def test_two_columns_when_no_vertical_scrollbar_is_needed(host, qtbot):
     window, folder = host
-    (folder / "6.png").unlink()
-    (folder / "7.png").unlink()
     window.plugins.enable("example.images")
     panel = window.plugins.records["example.images"].instance
     window.panel_hovers.controllers["example.images"].resize_extent(310)
