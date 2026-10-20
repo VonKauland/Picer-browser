@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from picer.editing.engine import validate
 from picer.host_style import mark_host
+from picer.i18n import tr
 from picer.ui import StyledDialog
 
 
@@ -35,23 +36,23 @@ def read_presets(context):
 
 class PresetDialog(StyledDialog):
     def __init__(self, names, parent):
-        super().__init__("新增预设", parent=parent)
+        super().__init__(tr("新增预设"), parent=parent)
         self.resize(400, 220)
         self.names = names
-        self.body.addWidget(QLabel("将当前修改参数保存为预设"))
+        self.body.addWidget(QLabel(tr("将当前修改参数保存为预设")))
         self.name = QLineEdit()
         self.name.setMaxLength(48)
-        self.name.setPlaceholderText("预设名称")
+        self.name.setPlaceholderText(tr("预设名称"))
         self.body.addWidget(self.name)
         self.error = QLabel()
         self.error.setWordWrap(True)
         self.body.addWidget(self.error)
         row = QHBoxLayout()
         row.addStretch()
-        cancel = QPushButton("取消")
+        cancel = QPushButton(tr("取消"))
         cancel.clicked.connect(self.reject)
         row.addWidget(cancel)
-        self.confirm = QPushButton("确认新增")
+        self.confirm = QPushButton(tr("确认新增"))
         self.confirm.setObjectName("primaryButton")
         self.confirm.clicked.connect(self.accept)
         row.addWidget(self.confirm)
@@ -65,9 +66,9 @@ class PresetDialog(StyledDialog):
         text = self.name.text().strip()
         self.confirm.setEnabled(bool(text) and text not in self.names and len(self.names) < 64)
         self.error.setText(
-            "预设名称已存在"
+            tr("预设名称已存在")
             if text in self.names
-            else "最多保存 64 个预设"
+            else tr("最多保存 64 个预设")
             if len(self.names) >= 64
             else ""
         )
@@ -91,8 +92,8 @@ class PresetSettings(QWidget):
         self.entries = read_presets(panel.context)
         layout = QVBoxLayout(self)
         row = QHBoxLayout()
-        row.addWidget(QLabel("预设管理"), 1)
-        add = QPushButton("新增")
+        row.addWidget(QLabel(tr("预设管理")), 1)
+        add = QPushButton(tr("新增"))
         add.clicked.connect(self.add)
         row.addWidget(add)
         layout.addLayout(row)

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.i18n import tr
 from picer.plugins import RoundedSlider, SettingField, ui_icon
 
 from .preview import PreviewStrip
@@ -20,8 +21,8 @@ class Plugin:
     def activate(self, context):
         self.context = context
         self.fields = (
-            SettingField("thumbnail_size", "预览图片大小（像素）", "int", 80, 48, 200),
-            SettingField("interval", "幻灯片间隔（秒）", "int", 3, 1, 30),
+            SettingField("thumbnail_size", tr("预览图片大小（像素）"), "int", 80, 48, 200),
+            SettingField("interval", tr("幻灯片间隔（秒）"), "int", 3, 1, 30),
         )
         context.add_settings(self.fields, self.apply_settings)
         self.panel = QWidget()
@@ -39,11 +40,11 @@ class Plugin:
         self.buttons.addStretch(1)
         self.controls = {}
         for key, icon, tip, callback in (
-            ("previous", "left", "上一张", lambda: context.navigate(-1)),
-            ("next", "right", "下一张", lambda: context.navigate(1)),
-            ("preview", "grid", "弹出缩略预览", self.show_preview),
-            ("rotate", "rotate", "旋转", self.rotate),
-            ("slideshow", "play", "幻灯片", self.toggle_slideshow),
+            ("previous", "left", tr("上一张"), lambda: context.navigate(-1)),
+            ("next", "right", tr("下一张"), lambda: context.navigate(1)),
+            ("preview", "grid", tr("弹出缩略预览"), self.show_preview),
+            ("rotate", "rotate", tr("旋转"), self.rotate),
+            ("slideshow", "play", tr("幻灯片"), self.toggle_slideshow),
         ):
             button = QPushButton()
             button.setIcon(ui_icon(icon))
@@ -190,7 +191,7 @@ class Plugin:
         self.playback_slider.setEnabled(state.active)
         self.playback_button.setEnabled(state.active)
         self.playback_button.setIcon(ui_icon("pause" if state.playing else "play"))
-        tip = "暂停动画" if state.playing else "播放动画"
+        tip = tr("暂停动画") if state.playing else tr("播放动画")
         self.playback_button.setToolTip(tip)
         self.playback_button.setAccessibleName(tip)
         self.playback_count.setText(f"{state.frame + 1 if state.active else 0}/{state.count}")
@@ -273,13 +274,13 @@ class Plugin:
         if not self.timer.isActive() and len(self.context.image_paths()) > 1:
             self.timer.start()
             self.controls["slideshow"].setIcon(ui_icon("pause"))
-            self.context.notify("已开始播放幻灯片")
+            self.context.notify(tr("已开始播放幻灯片"))
 
     def stop_slideshow(self):
         if self.timer.isActive():
             self.timer.stop()
             self.controls["slideshow"].setIcon(ui_icon("play"))
-            self.context.notify("已停止幻灯片")
+            self.context.notify(tr("已停止幻灯片"))
 
     def show_preview(self):
         if self.preview_open:

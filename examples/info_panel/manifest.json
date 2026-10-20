@@ -1,7 +1,7 @@
 {
   "id": "example.info",
   "name": "图片信息",
-  "version": "2.9.1",
+  "version": "2.9.2",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",

@@ -23,6 +23,7 @@ from picer.editing.controls import CurveEditor, Navigator
 from picer.editing.engine import SAVE_FORMATS, defaults
 from picer.editing.presets import PresetSettings, add_preset, read_presets
 from picer.host_style import mark_host
+from picer.i18n import tr
 from picer.plugins.api import PluginError
 from picer.ui import RoundedSlider, StyledDialog, Toggle
 
@@ -41,13 +42,13 @@ TITLES = (
 
 class SaveDialog(StyledDialog):
     def __init__(self, parent, can_overwrite):
-        super().__init__("保存修改", parent=parent)
+        super().__init__(tr("保存修改"), parent=parent)
         self.choice = None
         self.resize(430, 200)
-        self.body.addWidget(QLabel("是否保存当前图片的修改？"))
-        self.body.addWidget(QLabel("保存副本将保留原文件，副本使用 PNG 格式。"))
+        self.body.addWidget(QLabel(tr("是否保存当前图片的修改？")))
+        self.body.addWidget(QLabel(tr("保存副本将保留原文件，副本使用 PNG 格式。")))
         row = QHBoxLayout()
-        for label, choice in (("取消", None), ("保存覆盖", True), ("保存副本", False)):
+        for label, choice in ((tr("取消"), None), (tr("保存覆盖"), True), (tr("保存副本"), False)):
             button = QPushButton(label)
             if choice is False:
                 button.setObjectName("primaryButton")
@@ -56,7 +57,7 @@ class SaveDialog(StyledDialog):
             if choice is True:
                 button.setEnabled(can_overwrite)
                 if not can_overwrite:
-                    button.setToolTip("此格式仅支持保存 PNG 副本")
+                    button.setToolTip(tr("此格式仅支持保存 PNG 副本"))
             button.clicked.connect(lambda _, value=choice: self.choose(value))
             row.addWidget(button)
         self.body.addLayout(row)
@@ -85,21 +86,21 @@ class EditingPanel(QWidget):
         self.zoom = RoundedSlider()
         self.zoom.setRange(-30, 40)
         self.zoom.setValue(0)
-        self.zoom.setAccessibleName("导航器缩放")
+        self.zoom.setAccessibleName(tr("导航器缩放"))
         self.zoom.valueChanged.connect(self.set_zoom)
         zoom.addWidget(self.zoom, 1)
-        self.button(zoom, "适应", self.session.host.view.fit_image)
+        self.button(zoom, tr("适应"), self.session.host.view.fit_image)
         self.button(zoom, "100%", self.session.host.view.actual_size)
         layout.addLayout(zoom)
         presets = QHBoxLayout()
         self.presets = QComboBox()
         self.presets.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        self.presets.setAccessibleName("编辑预设")
+        self.presets.setAccessibleName(tr("编辑预设"))
         self.presets.activated.connect(self.use_preset)
         presets.addWidget(self.presets, 1)
         self.add_preset_button = self.button(presets, "+", self.new_preset)
         self.add_preset_button.setFixedWidth(30)
-        self.add_preset_button.setToolTip("新增预设")
+        self.add_preset_button.setToolTip(tr("新增预设"))
         layout.addLayout(presets)
         self.scroll = QScrollArea()
         self.scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -112,15 +113,15 @@ class EditingPanel(QWidget):
         self.scroll.setWidget(content)
         layout.addWidget(self.scroll, 1)
         for key, title in TITLES:
-            self.section(key, title)
+            self.section(key, tr(title))
         self.stack.addStretch()
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 0, 8, 8)
-        self.status = QLabel("临时预览")
+        self.status = QLabel(tr("临时预览"))
         self.status.setWordWrap(True)
         self.status.setObjectName("muted")
         footer.addWidget(self.status, 1)
-        self.save_button = self.button(footer, "保存", self.confirm_save)
+        self.save_button = self.button(footer, tr("保存"), self.confirm_save)
         self.save_button.setObjectName("primaryButton")
         layout.addLayout(footer)
         self.session.changed.connect(self.sync)
@@ -153,7 +154,7 @@ class EditingPanel(QWidget):
         self.headers[key] = header
         row.addWidget(header, 1)
         switch = Toggle()
-        switch.setAccessibleName("启用" + title)
+        switch.setAccessibleName(tr("启用") + title)
         switch.toggled.connect(lambda enabled: self.modify(key, "enabled", enabled))
         self.switches[key] = switch
         row.addWidget(switch)
@@ -167,7 +168,7 @@ class EditingPanel(QWidget):
         getattr(self, "build_" + key)(body)
         reset = QHBoxLayout()
         reset.addStretch()
-        self.button(reset, "重置", lambda: self.reset(key))
+        self.button(reset, tr("重置"), lambda: self.reset(key))
         body.addLayout(reset)
         self.stack.addWidget(box)
 
@@ -222,81 +223,87 @@ class EditingPanel(QWidget):
 
     def build_crop(self, body):
         self.aspect = QComboBox()
-        for label in ("自由", "原始", "1:1", "4:3", "16:9"):
-            self.aspect.addItem(label)
+        for value, label in (
+            ("free", tr("自由")),
+            ("original", tr("原始")),
+            ("1:1", "1:1"),
+            ("4:3", "4:3"),
+            ("16:9", "16:9"),
+        ):
+            self.aspect.addItem(label, value)
         self.aspect.currentIndexChanged.connect(self.apply_aspect)
         body.addWidget(self.aspect)
-        for field, title in (("x", "X"), ("y", "Y"), ("w", "宽"), ("h", "高")):
+        for field, title in (("x", "X"), ("y", "Y"), ("w", tr("宽")), ("h", tr("高"))):
             self.number(body, "crop", field, title, 0 if field in {"x", "y"} else 1, 30000)
         row = QHBoxLayout()
-        self.button(row, "画布框选", lambda: self.session.begin_tool("crop"))
+        self.button(row, tr("画布框选"), lambda: self.session.begin_tool("crop"))
         body.addLayout(row)
 
     def build_resize(self, body):
-        self.number(body, "resize", "width", "宽", 1, 30000, 1920)
-        self.number(body, "resize", "height", "高", 1, 30000, 1280)
-        self.check(body, "resize", "linked", "保持比例")
+        self.number(body, "resize", "width", tr("宽"), 1, 30000, 1920)
+        self.number(body, "resize", "height", tr("高"), 1, 30000, 1280)
+        self.check(body, "resize", "linked", tr("保持比例"))
         self.choice(
             body,
             "resize",
             "method",
-            "插值",
-            (("lanczos", "高质量"), ("bicubic", "双三次"), ("nearest", "邻近像素")),
+            tr("插值"),
+            (("lanczos", tr("高质量")), ("bicubic", tr("双三次")), ("nearest", tr("邻近像素"))),
         )
 
     def build_rotate(self, body):
-        self.number(body, "rotate", "angle", "角度", -180, 180, decimals=1, slider=True)
+        self.number(body, "rotate", "angle", tr("角度"), -180, 180, decimals=1, slider=True)
         row = QHBoxLayout()
         for label, angle in (("↶ 90°", -90), ("↷ 90°", 90), ("180°", 180)):
             self.button(row, label, lambda a=angle: self.modify("rotate", "angle", a))
         body.addLayout(row)
 
     def build_mirror(self, body):
-        self.check(body, "mirror", "horizontal", "水平镜像")
-        self.check(body, "mirror", "vertical", "垂直镜像")
+        self.check(body, "mirror", "horizontal", tr("水平镜像"))
+        self.check(body, "mirror", "vertical", tr("垂直镜像"))
 
     def build_levels(self, body):
         self.choice(
-            body, "levels", "channel", "通道", tuple((v, v) for v in ("RGB", "R", "G", "B"))
+            body, "levels", "channel", tr("通道"), tuple((v, v) for v in ("RGB", "R", "G", "B"))
         )
         self.histogram = CurveEditor(editable=False)
         body.addWidget(self.histogram)
         for field, label, low, high, value, decimals in (
-            ("black", "黑场", 0, 254, 0, 0),
-            ("mid", "中间调", 0.1, 10, 1, 2),
-            ("white", "白场", 1, 255, 255, 0),
-            ("out_black", "输出黑场", 0, 255, 0, 0),
-            ("out_white", "输出白场", 0, 255, 255, 0),
+            ("black", tr("黑场"), 0, 254, 0, 0),
+            ("mid", tr("中间调"), 0.1, 10, 1, 2),
+            ("white", tr("白场"), 1, 255, 255, 0),
+            ("out_black", tr("输出黑场"), 0, 255, 0, 0),
+            ("out_white", tr("输出白场"), 0, 255, 255, 0),
         ):
             self.number(
                 body, "levels", field, label, low, high, value, decimals, slider=not decimals
             )
         row = QHBoxLayout()
-        self.button(row, "自动", self.auto_levels)
+        self.button(row, tr("自动"), self.auto_levels)
         body.addLayout(row)
 
     def build_hsl(self, body):
         for field, label, limit in (
-            ("hue", "色相", 180),
-            ("saturation", "饱和度", 100),
-            ("lightness", "明度", 100),
+            ("hue", tr("色相"), 180),
+            ("saturation", tr("饱和度"), 100),
+            ("lightness", tr("明度"), 100),
         ):
             self.number(body, "hsl", field, label, -limit, limit, slider=True)
 
     def build_selective(self, body):
         row = QHBoxLayout()
-        row.addWidget(QLabel("保留颜色"), 1)
+        row.addWidget(QLabel(tr("保留颜色")), 1)
         self.color = self.button(row, "", self.choose_color)
         self.color.setFixedWidth(35)
-        self.color.setAccessibleName("选择保留颜色")
-        self.button(row, "取色", lambda: self.session.begin_tool("pick"))
+        self.color.setAccessibleName(tr("选择保留颜色"))
+        self.button(row, tr("取色"), lambda: self.session.begin_tool("pick"))
         body.addLayout(row)
-        self.number(body, "selective", "hue", "色相", 0, 359, 120, slider=True)
-        self.number(body, "selective", "range", "色域范围 ±°", 0, 180, 25, slider=True)
-        self.number(body, "selective", "softness", "过渡柔和度 %", 0, 100, 20, slider=True)
+        self.number(body, "selective", "hue", tr("色相"), 0, 359, 120, slider=True)
+        self.number(body, "selective", "range", tr("色域范围 ±°"), 0, 180, 25, slider=True)
+        self.number(body, "selective", "softness", tr("过渡柔和度 %"), 0, 100, 20, slider=True)
 
     def build_pixelate(self, body):
-        self.number(body, "pixelate", "size", "区块大小 px", 1, 512, 16, slider=True)
+        self.number(body, "pixelate", "size", tr("区块大小 px"), 1, 512, 16, slider=True)
         row = QHBoxLayout()
         for size in (4, 8, 16, 32):
             self.button(row, str(size), lambda value=size: self.modify("pixelate", "size", value))
@@ -304,26 +311,26 @@ class EditingPanel(QWidget):
 
     def build_curves(self, body):
         self.choice(
-            body, "curves", "channel", "通道", tuple((v, v) for v in ("RGB", "R", "G", "B"))
+            body, "curves", "channel", tr("通道"), tuple((v, v) for v in ("RGB", "R", "G", "B"))
         )
         self.curve = CurveEditor()
         self.curve.changed.connect(self.curve_changed)
         body.addWidget(self.curve)
         values = QHBoxLayout()
         self.curve_x, self.curve_y = QSpinBox(), QSpinBox()
-        for title, edit in (("输入", self.curve_x), ("输出", self.curve_y)):
+        for title, edit in ((tr("输入"), self.curve_x), (tr("输出"), self.curve_y)):
             values.addWidget(QLabel(title))
             edit.setRange(0, 255)
             edit.setFixedWidth(70)
-            edit.setAccessibleName("曲线" + title)
+            edit.setAccessibleName(tr("曲线") + title)
             edit.valueChanged.connect(self.edit_curve_value)
             values.addWidget(edit)
         body.addLayout(values)
-        self.curve_values = QLabel("单击添加节点 · Delete 删除节点")
+        self.curve_values = QLabel(tr("单击添加节点 · Delete 删除节点"))
         self.curve_values.setWordWrap(True)
         body.addWidget(self.curve_values)
         row = QHBoxLayout()
-        self.button(row, "线性", self.linear_curve)
+        self.button(row, tr("线性"), self.linear_curve)
         body.addLayout(row)
 
     def modify(self, key, field, value):
@@ -372,7 +379,7 @@ class EditingPanel(QWidget):
             with QSignalBlocker(self.switches[key]):
                 self.switches[key].setChecked(enabled)
             self.parameters[key].setVisible(enabled)
-            self.headers[key].setText(("⌄ " if enabled else "› ") + title)
+            self.headers[key].setText(("⌄ " if enabled else "› ") + tr(title))
         for (key, field, *extra), editor in self.editors.items():
             value = state[key][field]
             if key == "crop":
@@ -411,13 +418,13 @@ class EditingPanel(QWidget):
         self.status.setText(
             self.session.error
             or (
-                "正在保存…"
+                tr("正在保存…")
                 if self.session.saving
-                else "正在预览…"
+                else tr("正在预览…")
                 if self.session.busy
-                else "临时预览 · 尚未保存"
+                else tr("临时预览 · 尚未保存")
                 if self.session.applied
-                else "开启修改器开始编辑"
+                else tr("开启修改器开始编辑")
             )
         )
         self.navigator.update()
@@ -442,11 +449,13 @@ class EditingPanel(QWidget):
     def apply_aspect(self):
         if self.syncing or not all(self.session.native):
             return
-        value = self.aspect.currentText()
-        if value == "自由":
+        value = self.aspect.currentData()
+        if value == "free":
             return
         w, h = self.session.native
-        ratio = w / h if value == "原始" else int(value.split(":")[0]) / int(value.split(":")[1])
+        ratio = (
+            w / h if value == "original" else int(value.split(":")[0]) / int(value.split(":")[1])
+        )
         state = copy.deepcopy(self.session.state)
         c = state["crop"]
         width, height = c["w"] * w, c["h"] * h
@@ -466,7 +475,7 @@ class EditingPanel(QWidget):
     def choose_color(self):
         initial = QColor.fromHsv(self.session.state["selective"]["hue"], 255, 255)
         picker = ColorPicker(
-            initial.name(), self, title="选择保留颜色", subtitle="指定需要保留的色域"
+            initial.name(), self, title=tr("选择保留颜色"), subtitle=tr("指定需要保留的色域")
         )
         picker.follow.hide()
         try:
@@ -507,7 +516,7 @@ class EditingPanel(QWidget):
         self.entries = read_presets(self.context)
         with QSignalBlocker(self.presets):
             self.presets.clear()
-            self.presets.addItem("自定义")
+            self.presets.addItem(tr("自定义"))
             self.presets.addItems([row["name"] for row in self.entries])
 
     def use_preset(self, index):

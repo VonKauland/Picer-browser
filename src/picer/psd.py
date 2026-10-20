@@ -7,16 +7,18 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
+from picer.i18n import tr
+
 
 def header(handle):
     data = handle.read(26)
     if len(data) != 26 or data[:6] != b"8BPS\0\1":
-        raise ValueError("不是支持的 PSD 文件")
+        raise ValueError(tr("不是支持的 PSD 文件"))
     channels, height, width, depth, mode = struct.unpack(">HIIHH", data[12:])
     if not (1 <= channels <= 56 and 1 <= width <= 30000 and 1 <= height <= 30000):
-        raise ValueError("PSD 尺寸或通道无效")
+        raise ValueError(tr("PSD 尺寸或通道无效"))
     if depth not in (8, 16, 32) or mode not in (1, 2, 3, 4, 8, 9):
-        raise ValueError("此 PSD 的颜色模式或位深暂不支持合成预览")
+        raise ValueError(tr("此 PSD 的颜色模式或位深暂不支持合成预览"))
     return width, height, depth, mode, channels
 
 
@@ -27,11 +29,11 @@ def merged_offset(handle):
     for section in range(3):
         length = handle.read(4)
         if len(length) != 4:
-            raise ValueError("PSD 合成预览不完整")
+            raise ValueError(tr("PSD 合成预览不完整"))
         size = struct.unpack(">I", length)[0]
         start = handle.tell()
         if start + size > end:
-            raise ValueError("PSD 数据区超出文件边界")
+            raise ValueError(tr("PSD 数据区超出文件边界"))
         if section == 0 and size == 768:
             palette = handle.read(size)
         handle.seek(start + size)  # Never enumerate/decode layers or masks.
@@ -43,14 +45,21 @@ def psd_info(path):
         width, height, depth, mode, _ = header(handle)
         merged_offset(handle)
         if len(handle.read(2)) != 2:
-            raise ValueError("PSD 未保存可用合成预览，请启用最大兼容性后重新保存")
+            raise ValueError(tr("PSD 未保存可用合成预览，请启用最大兼容性后重新保存"))
     return {
         "宽度": str(width),
         "高度": str(height),
         "格式": "PSD",
-        "预览类型": "已保存的合成图",
+        "预览类型": tr("已保存的合成图"),
         "位深": str(depth),
-        "色彩模式": {1: "灰度", 2: "索引色", 3: "RGB", 4: "CMYK", 8: "双色调", 9: "Lab"}[mode],
+        "色彩模式": {
+            1: tr("灰度"),
+            2: tr("索引色"),
+            3: "RGB",
+            4: "CMYK",
+            8: tr("双色调"),
+            9: "Lab",
+        }[mode],
     }
 
 
@@ -66,11 +75,11 @@ def unpack_row(data, size):
             index += count
         elif count > 128:
             if index >= len(data):
-                raise ValueError("PSD RLE 数据损坏")
+                raise ValueError(tr("PSD RLE 数据损坏"))
             output.extend(data[index : index + 1] * (257 - count))
             index += 1
     if len(output) != size:
-        raise ValueError("PSD RLE 行长度无效")
+        raise ValueError(tr("PSD RLE 行长度无效"))
     return output
 
 
@@ -89,11 +98,11 @@ def read_psd(path, *, edge=0, token=None):
         row_size = width * (depth // 8)
         needed = required * height * row_size
         if channels < base or width * height > MAX_PIXELS or needed > 512 * 1048576:
-            raise ValueError("PSD 合成图超过读取上限或缺少颜色通道")
+            raise ValueError(tr("PSD 合成图超过读取上限或缺少颜色通道"))
         palette = merged_offset(handle)
         compression = handle.read(2)
         if len(compression) != 2:
-            raise ValueError("PSD 未保存可用合成预览")
+            raise ValueError(tr("PSD 未保存可用合成预览"))
         compression = struct.unpack(">H", compression)[0]
         if compression == 0:
             raw = bytearray()
@@ -106,7 +115,7 @@ def read_psd(path, *, edge=0, token=None):
         elif compression == 1:
             lengths = handle.read(channels * height * 2)
             if len(lengths) != channels * height * 2:
-                raise ValueError("PSD RLE 行表不完整")
+                raise ValueError(tr("PSD RLE 行表不完整"))
             rows = struct.iter_unpack(">H", lengths)
             raw = bytearray()
             for _ in range(required * height):
@@ -125,9 +134,9 @@ def read_psd(path, *, edge=0, token=None):
                 if decoder.eof:
                     break
         else:
-            raise ValueError("此 PSD 合成图的压缩方式暂不支持")
+            raise ValueError(tr("此 PSD 合成图的压缩方式暂不支持"))
     if len(raw) != needed:
-        raise ValueError("PSD 合成预览不完整，请使用最大兼容性保存")
+        raise ValueError(tr("PSD 合成预览不完整，请使用最大兼容性保存"))
     checkpoint()
     if compression == 3:
         if depth in (8, 16):
@@ -152,7 +161,7 @@ def read_psd(path, *, edge=0, token=None):
     data = pixels.reshape(required, height, width).transpose(1, 2, 0).copy()
     if mode == 2:
         if len(palette) != 768:
-            raise ValueError("PSD 缺少索引色调色板")
+            raise ValueError(tr("PSD 缺少索引色调色板"))
         image = Image.frombytes("P", (width, height), data.tobytes())
         colors = np.frombuffer(palette, dtype=np.uint8).reshape(3, 256).T
         image.putpalette(colors.tobytes())

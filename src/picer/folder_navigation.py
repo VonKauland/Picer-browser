@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtGui import QImageReader
 
+from picer.i18n import tr
 from picer.imaging import RAW_SUFFIXES
 
 
@@ -76,12 +77,14 @@ class FolderNavigation:
                 return
             self.pending = None
             if error:
-                host.notify("无法访问同级文件夹")
+                host.notify(tr("无法访问同级文件夹"))
             elif path is None:
-                host.notify("已是最后一个图片文件夹" if offset > 0 else "已是第一个图片文件夹")
+                host.notify(
+                    tr("已是最后一个图片文件夹") if offset > 0 else tr("已是第一个图片文件夹")
+                )
             else:
                 if not host.open_image(path):
-                    host.notify("图片文件夹中的首图无法读取")
+                    host.notify(tr("图片文件夹中的首图无法读取"))
 
         self.pending = host.loader.submit(
             "index",

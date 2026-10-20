@@ -7,6 +7,7 @@ from PySide6.QtGui import QColor, QKeySequence, QPainter, QPen, QShortcut
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPushButton, QStackedLayout, QWidget
 
 from picer.host_style import PLUGIN_STYLE
+from picer.i18n import tr
 from picer.plugins import ui_icon
 
 
@@ -59,7 +60,7 @@ class AddressBar(QWidget):
         self.virtual_label = None
         self.buttons = []
         self.hidden_parts = []
-        self.setAccessibleName("文件夹地址")
+        self.setAccessibleName(tr("文件夹地址"))
         self.setFixedHeight(36)
         self.setMinimumWidth(0)
         self.setStyleSheet("""
@@ -79,20 +80,20 @@ QPushButton#crumbButton:focus, QPushButton#addressButton:focus { border: none; }
         self.overflow = QPushButton("…")
         self.overflow.setObjectName("addressButton")
         self.overflow.setFixedSize(24, 28)
-        self.overflow.setAccessibleName("更多上级文件夹")
-        self.overflow.setToolTip("更多上级文件夹")
+        self.overflow.setAccessibleName(tr("更多上级文件夹"))
+        self.overflow.setToolTip(tr("更多上级文件夹"))
         self.overflow.clicked.connect(self.show_ancestors)
         self.edit = QPushButton()
         self.edit.setObjectName("addressButton")
         self.edit.setFixedSize(24, 28)
         self.edit.setIcon(ui_icon("edit"))
         self.edit.setIconSize(QSize(14, 14))
-        self.edit.setAccessibleName("编辑地址")
-        self.edit.setToolTip("编辑地址 · Ctrl+L")
+        self.edit.setAccessibleName(tr("编辑地址"))
+        self.edit.setToolTip(tr("编辑地址 · Ctrl+L"))
         self.edit.clicked.connect(self.start_edit)
         self.editor = QLineEdit()
         self.editor.installEventFilter(self)
-        self.editor.setAccessibleName("输入文件夹路径")
+        self.editor.setAccessibleName(tr("输入文件夹路径"))
         self.editor.returnPressed.connect(lambda: self.pathRequested.emit(self.editor.text()))
         self.stack.addWidget(self.row)
         self.stack.addWidget(self.editor)
@@ -132,7 +133,7 @@ QPushButton#crumbButton:focus, QPushButton#addressButton:focus { border: none; }
             if self.virtual_label
             else path_parts(Path(path))
             if path
-            else (("此电脑", ""),)
+            else ((tr("此电脑"), ""),)
         )
         for index, (label, target) in enumerate(parts):
             button = CrumbButton(label, target, index < len(parts) - 1, self.row)

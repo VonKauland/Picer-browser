@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, Qt
 
+from picer.i18n import tr
 from picer.messages import MessageBox as QMessageBox
 
 
@@ -41,7 +42,7 @@ class ImageDropTarget(QObject):
                     break
             else:
                 event.ignore()
-                QMessageBox.warning(self.host, "无法打开图片", self.host.last_error)
+                QMessageBox.warning(self.host, tr("无法打开图片"), self.host.last_error)
                 return True
         # Opening an image must never advertise moving the Explorer source file.
         event.setDropAction(Qt.DropAction.CopyAction)

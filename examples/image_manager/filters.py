@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 
 from picer.annotations import CATEGORIES
 from picer.host_style import PLUGIN_STYLE
+from picer.i18n import tr
 from picer.ui import Toggle, colors_for
 
 
@@ -52,8 +53,10 @@ class RatingRow(QAbstractButton):
         self.popup, self.value = popup, value
         self.setFixedHeight(27)
         self.clicked.connect(lambda: self.select(self.value))
-        self.setAccessibleName("尚未评分" if value == 0 else f"{value} 星；末颗星左半侧可选半星")
-        self.setToolTip("点击最后一颗星的左半侧选择半星" if value else "尚未评分")
+        self.setAccessibleName(
+            tr("尚未评分") if value == 0 else tr("{0} 星；末颗星左半侧可选半星").format(value)
+        )
+        self.setToolTip(tr("点击最后一颗星的左半侧选择半星") if value else tr("尚未评分"))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def actual_value(self):
@@ -75,7 +78,7 @@ class RatingRow(QAbstractButton):
             painter.drawText(QRectF(3, 0, 17, 27), Qt.AlignmentFlag.AlignCenter, "✓")
         painter.setPen(QColor(colors["text"]))
         if not self.value:
-            painter.drawText(QRectF(25, 0, 120, 27), Qt.AlignmentFlag.AlignVCenter, "尚未评分")
+            painter.drawText(QRectF(25, 0, 120, 27), Qt.AlignmentFlag.AlignVCenter, tr("尚未评分"))
         else:
             for i in range(5):
                 x = 29 + i * 19
@@ -118,7 +121,7 @@ class ColorChoice(QAbstractButton):
         super().__init__(popup)
         self.popup, self.category = popup, category
         self.setFixedSize(33, 49)
-        self.setAccessibleName(category[1])
+        self.setAccessibleName(tr(category[1]))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.clicked.connect(self.choose)
 
@@ -160,24 +163,24 @@ class FilterPopup(QWidget):
         layout.setContentsMargins(12, 10, 12, 12)
         layout.setSpacing(7)
         scope = QHBoxLayout()
-        scope.addWidget(QLabel("仅本文件夹"), 1)
+        scope.addWidget(QLabel(tr("仅本文件夹")), 1)
         self.scope = Toggle()
         self.scope.setChecked(self.state["local"])
         scope.addWidget(self.scope)
         layout.addLayout(scope)
         self.scope.toggled.connect(self.change_scope)
-        layout.addWidget(QLabel("星级评分"))
+        layout.addWidget(QLabel(tr("星级评分")))
         self.ratings = [RatingRow(self, n) for n in range(6)]
         for row in self.ratings:
             layout.addWidget(row)
         self.comparators = []
-        for key, label in (("ge", "大于等于"), ("le", "小于等于"), ("eq", "等于")):
+        for key, label in (("ge", tr("大于等于")), ("le", tr("小于等于")), ("eq", tr("等于"))):
             button = QPushButton(label)
             button.setCheckable(True)
             button.clicked.connect(lambda _, key=key: self.compare(key))
             self.comparators.append((key, button))
             layout.addWidget(button)
-        layout.addWidget(QLabel("颜色分类"))
+        layout.addWidget(QLabel(tr("颜色分类")))
         colors = QHBoxLayout()
         colors.setSpacing(3)
         self.colors = [ColorChoice(self, category) for category in CATEGORIES]
@@ -185,9 +188,9 @@ class FilterPopup(QWidget):
             colors.addWidget(button)
         layout.addLayout(colors)
         actions = QHBoxLayout()
-        clear = QPushButton("清除筛选")
+        clear = QPushButton(tr("清除筛选"))
         clear.clicked.connect(self.clear)
-        apply = QPushButton("应用")
+        apply = QPushButton(tr("应用"))
         apply.setObjectName("primaryButton")
         apply.clicked.connect(self.apply)
         actions.addWidget(clear)
@@ -232,7 +235,7 @@ class FilterPopup(QWidget):
                 self.color_counts[mark["color"]] += 1
         for key, button in self.comparators:
             button.setChecked(key == self.state["compare"])
-            label = {"eq": "等于", "ge": "大于等于", "le": "小于等于"}[key]
+            label = {"eq": tr("等于"), "ge": tr("大于等于"), "le": tr("小于等于")}[key]
             button.setText(("✓  " if button.isChecked() else "    ") + label)
             background = colors_for(self)["hover"] if button.isChecked() else "transparent"
             button.setStyleSheet(f"background: {background}; text-align: left; padding: 6px 10px;")

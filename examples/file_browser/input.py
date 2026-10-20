@@ -12,12 +12,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.i18n import tr
+
 
 class ParentEntry(QPushButton):
     activated = Signal()
 
     def __init__(self):
-        super().__init__("..  上层文件夹")
+        super().__init__(tr("..  上层文件夹"))
         self.setObjectName("parentEntry")
         self.setCheckable(True)
         self.setFixedHeight(38)

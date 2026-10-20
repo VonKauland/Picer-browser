@@ -1,7 +1,7 @@
 {
   "id": "example.macos",
   "name": "macOS · Frost",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "api_version": 1,
   "type": "skin",
   "theme": "theme.json",

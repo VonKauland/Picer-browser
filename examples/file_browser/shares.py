@@ -5,10 +5,12 @@ import os
 from ctypes import wintypes
 from pathlib import Path
 
+from picer.i18n import tr
+
 
 def list_shares(server, token):
     if os.name != "nt":
-        raise OSError("网络服务器根目录需要 Windows")
+        raise OSError(tr("网络服务器根目录需要 Windows"))
 
     class ShareInfo(ctypes.Structure):
         _fields_ = [
@@ -45,9 +47,9 @@ def list_shares(server, token):
                 ctypes.byref(resume),
             )
             if status not in (0, 234):
-                raise OSError(f"无法列出共享文件夹（Windows 错误 {status}）")
+                raise OSError(tr("无法列出共享文件夹（Windows 错误 {0}）").format(status))
             if count.value > 4096 or (count.value and not buffer.value):
-                raise OSError("服务器返回了无效的共享列表")
+                raise OSError(tr("服务器返回了无效的共享列表"))
             rows = ctypes.cast(buffer, ctypes.POINTER(ShareInfo))
             for i in range(count.value):
                 token.checkpoint()
@@ -61,4 +63,4 @@ def list_shares(server, token):
         finally:
             if buffer.value:
                 api.NetApiBufferFree(buffer)
-    raise OSError("共享列表过大，请直接添加需要的共享路径")
+    raise OSError(tr("共享列表过大，请直接添加需要的共享路径"))

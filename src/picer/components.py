@@ -4,6 +4,7 @@ from PySide6.QtGui import QActionGroup, QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QMenu
 
 from picer.host_style import mark_host
+from picer.i18n import plugin_text, source_text, tr
 from picer.messages import MessageBox as QMessageBox
 from picer.plugins.api import PluginError
 
@@ -19,6 +20,7 @@ DEFAULT_SLOTS = [
 
 def function_icon(label: str, color: str) -> QIcon:
     """Small, consistent outline icons; text stays in the tooltip and menu."""
+    label = source_text(label)
     pixmap = QPixmap(40, 40)
     pixmap.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pixmap)
@@ -73,8 +75,8 @@ class ComponentUI:
     def __init__(self, window, menu) -> None:
         self.window = window
         self.manager = window.plugins
-        self.menus = {key: menu.addMenu(value) for key, value in TYPES.items()}
-        self.slots_menu = menu.addMenu("快捷栏位")
+        self.menus = {key: menu.addMenu(tr(value)) for key, value in TYPES.items()}
+        self.slots_menu = menu.addMenu(tr("快捷栏位"))
         for child in (*self.menus.values(), self.slots_menu):
             mark_host(child)
         self.slot_submenus = []
@@ -91,7 +93,7 @@ class ComponentUI:
         try:
             callback()
         except PluginError as error:
-            QMessageBox.warning(self.window, "组件操作未完成", str(error))
+            QMessageBox.warning(self.window, tr("组件操作未完成"), str(error))
         self.refresh()
 
     def toggle(self, plugin_id: str, checked: bool) -> None:
@@ -107,7 +109,7 @@ class ComponentUI:
             menu.clear()
         self.skin_group = QActionGroup(self.menus["skin"])
         self.skin_group.setExclusive(True)
-        default = self.menus["skin"].addAction("默认暗黑")
+        default = self.menus["skin"].addAction(tr("默认暗黑"))
         default.setCheckable(True)
         self.skin_group.addAction(default)
         skins = [
@@ -119,7 +121,7 @@ class ComponentUI:
         default.triggered.connect(lambda: self.operation(self.default_skin))
         for plugin_id, record in self.manager.records.items():
             menu = self.menus[record.manifest.type]
-            action = menu.addAction(record.manifest.name)
+            action = menu.addAction(plugin_text(self.manager, plugin_id, record.manifest.name))
             action.setCheckable(True)
             action.setChecked(record.state == "enabled")
             action.setEnabled(record.state != "incompatible")
@@ -165,9 +167,9 @@ class ComponentUI:
             menu.deleteLater()
 
     def slot_menu(self, index: int, parent=None) -> QMenu:
-        menu = QMenu(f"栏位 {index + 1}", parent or self.window)
+        menu = QMenu(tr("栏位 {0}").format(index + 1), parent or self.window)
         current = self.assignments()[index]
-        clear = menu.addAction("清空栏位")
+        clear = menu.addAction(tr("清空栏位"))
         clear.triggered.connect(lambda: self.assign(index, ""))
         menu.addSeparator()
         for key, command in self.manager.commands.items():
@@ -195,14 +197,15 @@ class ComponentUI:
             action = self.manager.commands.get(key)
             if action is not None:
                 button.setDefaultAction(action)
-                button.setToolTip(f"{action.text()} · 右键配置栏位 {index + 1}")
+                button.setToolTip(tr("{0} · 右键配置栏位 {1}").format(action.text(), index + 1))
             else:
                 button.setDefaultAction(None)
                 button.setEnabled(True)
                 button.setIcon(QIcon())
                 button.setText("·")
                 button.setToolTip(
-                    f"栏位 {index + 1} · 右键选择功能" + ("（原功能已停用）" if key else "")
+                    tr("栏位 {0} · 右键选择功能").format(index + 1)
+                    + (tr("（原功能已停用）") if key else "")
                 )
         self.window.title_bar.arrange()
 

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.host_style import mark_host, scope_style
+from picer.i18n import source_text, tr
 from picer.theme import COLORS, STYLE, accent_style
 from picer.ui import StyledDialog, colors_for
 
@@ -94,7 +95,12 @@ class PromptIcon(QWidget):
         self.kind = kind
         self.setFixedSize(80, 80)
         self.setAccessibleName(
-            {"question": "询问", "warning": "提醒", "critical": "错误", "information": "成功"}[kind]
+            {
+                "question": tr("询问"),
+                "warning": tr("提醒"),
+                "critical": tr("错误"),
+                "information": tr("成功"),
+            }[kind]
         )
 
     def paintEvent(self, event):
@@ -105,7 +111,7 @@ class PromptIcon(QWidget):
 
 class MessageDialog(StyledDialog):
     def __init__(self, parent, title, message, *, kind="warning", action=None):
-        super().__init__(title, parent=parent)
+        super().__init__(tr(title), parent=parent)
         self.setWindowModality(Qt.WindowModality.WindowModal)
         if (
             parent is not None
@@ -132,11 +138,11 @@ class MessageDialog(StyledDialog):
         buttons.addStretch()
         self.cancel_button = None
         if action is not None:
-            self.cancel_button = QPushButton("取消")
+            self.cancel_button = QPushButton(tr("取消"))
             self.cancel_button.setDefault(True)
             self.cancel_button.clicked.connect(self.reject)
             buttons.addWidget(self.cancel_button)
-        self.confirm_button = QPushButton(action or "我知道了")
+        self.confirm_button = QPushButton(action or tr("我知道了"))
         self.confirm_button.setObjectName("primaryButton")
         self.confirm_button.setAutoDefault(action is None)
         self.confirm_button.setDefault(action is None)
@@ -167,7 +173,14 @@ class MessageBox:
 
     @staticmethod
     def question(parent, title, message, buttons=None, defaultButton=None):
-        action = "覆盖绑定" if title == "快捷键冲突" else "卸载" if title == "卸载组件" else "确认"
+        title = source_text(title)
+        action = (
+            tr("覆盖绑定")
+            if title == "快捷键冲突"
+            else tr("卸载")
+            if title == "卸载组件"
+            else tr("确认")
+        )
         return MessageBox._show(parent, title, message, "question", action)
 
     @staticmethod

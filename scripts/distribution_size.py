@@ -2,7 +2,7 @@
 
 Picer uses QWidget/QGraphicsView's raster viewport, including glass and SVG
 painting through qwindows. Keep the default Windows and offscreen backends,
-Chinese/English catalogs, Python, all image codecs and RAW/NumPy/FFmpeg libraries.
+Supported UI language catalogs, Python, all image codecs and RAW/NumPy/FFmpeg libraries.
 """
 
 from pathlib import Path
@@ -28,7 +28,7 @@ def compact_distribution(application: Path) -> dict:
         for prefix in ("qtbase_", "qt_help_", "qt_"):
             if catalog.stem.startswith(prefix):
                 language = catalog.stem[len(prefix) :].split("_")[0]
-                if language not in {"zh", "en"}:
+                if language not in {"zh", "en", "ru", "ja", "ko", "es"}:
                     unused.append(catalog)
                 break
     removed = []

@@ -6,6 +6,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
+from picer.i18n import tr
 from picer.ui import colors_for
 
 
@@ -15,7 +16,7 @@ class Navigator(QWidget):
         self.session = session
         self.setMinimumHeight(90)
         self.setMaximumHeight(110)
-        self.setAccessibleName("图像导航器")
+        self.setAccessibleName(tr("图像导航器"))
         self.target = QRectF()
         self.timer = QTimer(self)
         self.timer.setInterval(150)
@@ -74,7 +75,7 @@ class CurveEditor(QWidget):
         self.setMinimumHeight(145 if editable else 70)
         self.setMaximumHeight(200 if editable else 85)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setAccessibleName("曲线节点编辑器" if editable else "色阶直方图")
+        self.setAccessibleName(tr("曲线节点编辑器") if editable else tr("色阶直方图"))
         self.nodes, self.selected, self.histogram = [[0, 0], [255, 255]], None, []
         self.editable = editable
 

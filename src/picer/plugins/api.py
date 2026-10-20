@@ -10,6 +10,7 @@ from PySide6.QtCore import QEvent, Qt, QThread
 from PySide6.QtGui import QIcon, QImage, QKeySequence
 from PySide6.QtWidgets import QWidget
 
+from picer.i18n import tr
 from picer.media_types import AnimationState
 from picer.metadata import inspect_image
 
@@ -57,11 +58,11 @@ class PluginContext:
 
     def _check(self, permission: str) -> None:
         if QThread.currentThread() != self._manager.host.thread():
-            raise PluginError("插件上下文只能在 GUI 线程使用")
+            raise PluginError(tr("插件上下文只能在 GUI 线程使用"))
         if not self._active:
-            raise PluginError("插件上下文已停用")
+            raise PluginError(tr("插件上下文已停用"))
         if permission not in self._manager.records[self.plugin_id].manifest.permissions:
-            raise PluginError(f"插件未声明权限：{permission}")
+            raise PluginError(tr("插件未声明权限：{0}").format(permission))
 
     def add_command(
         self,
@@ -87,13 +88,13 @@ class PluginContext:
     def set_double_page(self, enabled: bool):
         self._check("image.layout")
         if type(enabled) is not bool:
-            raise PluginError("双页状态必须为布尔值")
+            raise PluginError(tr("双页状态必须为布尔值"))
         self._manager.host.double_page.set_enabled(self.plugin_id, enabled)
 
     def set_touch_enabled(self, enabled: bool):
         self._check("input.touch")
         if type(enabled) is not bool:
-            raise PluginError("触控状态必须为布尔值")
+            raise PluginError(tr("触控状态必须为布尔值"))
         owners = self._manager.host.touch_owners
         owners.add(self.plugin_id) if enabled else owners.discard(self.plugin_id)
         host = self._manager.host
@@ -152,7 +153,7 @@ class PluginContext:
         """Add a custom QWidget with save/reset methods to component settings."""
         self._check("settings")
         if not callable(factory) or self.plugin_id in self._manager.settings_forms:
-            raise PluginError("设置页面只能注册一次，且须提供控件工厂")
+            raise PluginError(tr("设置页面只能注册一次，且须提供控件工厂"))
         self._manager.settings_forms[self.plugin_id] = ((), lambda: None)
         self._manager.settings_widgets[self.plugin_id] = factory
 
@@ -161,7 +162,7 @@ class PluginContext:
         for permission in ("ui.panels", "image.read", "image.modify", "tasks"):
             self._check(permission)
         if self.plugin_id in self._manager.editing_sessions:
-            raise PluginError("每个组件只能创建一个简易编辑会话")
+            raise PluginError(tr("每个组件只能创建一个简易编辑会话"))
         from picer.editing.session import EditingSession
 
         session = EditingSession(self, self._manager.host)
@@ -183,7 +184,7 @@ class PluginContext:
         import os
 
         if not isinstance(path, (str, Path)):
-            raise PluginError("图片路径无效")
+            raise PluginError(tr("图片路径无效"))
         value = self._manager.annotations.values.get(os.path.abspath(str(path)), (None, ""))
         return {"rating": value[0], "color": value[1]}
 
@@ -192,7 +193,7 @@ class PluginContext:
         self._check("image.read")
         self._check("image.annotations")
         if not isinstance(path, (str, Path)):
-            raise PluginError("图片路径无效")
+            raise PluginError(tr("图片路径无效"))
         try:
             changed = self._manager.annotations.set(path, rating=rating, color=color)
         except (ValueError, OSError, sqlite3.Error) as error:
@@ -223,14 +224,14 @@ class PluginContext:
     def navigate(self, offset: int) -> None:
         self._check("image.navigate")
         if type(offset) is not int:
-            raise PluginError("导航偏移必须为整数")
+            raise PluginError(tr("导航偏移必须为整数"))
         self._manager.host.navigate(offset)
 
     def jump_to(self, index: int) -> None:
         self._check("image.navigate")
         paths = self._manager.host.paths
         if type(index) is not int or not 0 <= index < len(paths):
-            raise PluginError("图片位置超出范围")
+            raise PluginError(tr("图片位置超出范围"))
         self._manager.host.open_image(paths[index])
 
     def request_metadata(self, on_result: Callable):
@@ -252,9 +253,9 @@ class PluginContext:
     def replace_image(self, image: QImage) -> None:
         self._check("image.modify")
         if not isinstance(image, QImage) or image.isNull():
-            raise PluginError("必须提供有效的 QImage")
+            raise PluginError(tr("必须提供有效的 QImage"))
         if self._manager.host.current_path is None:
-            raise PluginError("尚未打开图片")
+            raise PluginError(tr("尚未打开图片"))
         self._manager.host.replace_image(image)
 
     def rotate_image(self) -> None:
@@ -273,7 +274,7 @@ class PluginContext:
             "appearance.changed",
             "annotations.changed",
         }:
-            raise PluginError(f"未知事件：{event}")
+            raise PluginError(tr("未知事件：{0}").format(event))
         self._manager.subscribe(self.plugin_id, event, callback)
 
     def animation_state(self) -> AnimationState:
@@ -286,7 +287,7 @@ class PluginContext:
         self._check("image.read")
         self._check("ui.panels")
         if data is not None and not isinstance(data, dict):
-            raise PluginError("对焦点数据无效")
+            raise PluginError(tr("对焦点数据无效"))
         try:
             self._manager.host.focus_points.set(self.plugin_id, data)
         except ValueError as error:
@@ -297,16 +298,16 @@ class PluginContext:
         self._check("image.read")
         self._check("ui.panels")
         if type(enabled) is not bool:
-            raise PluginError("机内直出开关无效")
+            raise PluginError(tr("机内直出开关无效"))
         if enabled and self._manager.host.image_edited:
-            raise PluginError("请先保存或取消当前编辑")
+            raise PluginError(tr("请先保存或取消当前编辑"))
         self._manager.host.loader.set_camera_preview(self.plugin_id, enabled)
 
     def seek_animation(self, frame: int) -> None:
         self._check("image.navigate")
         state = self._manager.host.animation.state
         if type(frame) is not int or not state.active or not 0 <= frame < state.count:
-            raise PluginError("动画帧位置超出范围")
+            raise PluginError(tr("动画帧位置超出范围"))
         self._manager.host.animation.seek(frame)
 
     def toggle_animation(self) -> None:
@@ -335,9 +336,9 @@ class PluginContext:
         self._check("image.read")
         self._check("tasks")
         if not isinstance(path, (str, Path)) or not callable(on_result):
-            raise PluginError("缩略图路径或回调无效")
+            raise PluginError(tr("缩略图路径或回调无效"))
         if type(edge) is not int or not 16 <= edge <= 256 or type(priority) is not bool:
-            raise PluginError("缩略图尺寸须为 16 至 256 像素")
+            raise PluginError(tr("缩略图尺寸须为 16 至 256 像素"))
         return self._manager.request_thumbnail(self, path, on_result, edge, priority)
 
     def cache_directory(self) -> Path:
@@ -354,7 +355,7 @@ class PluginContext:
 
     def notify(self, message: str) -> None:
         if QThread.currentThread() != self._manager.host.thread():
-            raise PluginError("通知只能在 GUI 线程使用")
+            raise PluginError(tr("通知只能在 GUI 线程使用"))
         if not self._active:
-            raise PluginError("插件上下文已停用")
+            raise PluginError(tr("插件上下文已停用"))
         self._manager.host.plugin_notification(message)

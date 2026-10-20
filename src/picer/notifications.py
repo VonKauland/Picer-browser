@@ -15,6 +15,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath
 from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect
 
+from picer.i18n import tr
 from picer.panels import GlassSurface
 
 
@@ -33,7 +34,7 @@ class NotificationBubble(GlassSurface):
         self.setFixedHeight(32)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setAccessibleName("操作通知")
+        self.setAccessibleName(tr("操作通知"))
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(14)
         shadow.setOffset(0, 3)

@@ -2,6 +2,7 @@
 
 import json
 import zipfile
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QPoint, Qt
@@ -91,7 +92,10 @@ def test_old_progress_upgrade_preserves_settings_and_migrates_side_location(tmp_
     qtbot.wait(30)
     manager = upgraded.plugins
     record = manager.records["example.progress"]
-    assert record.state == "enabled" and record.manifest.version == "1.9.0"
+    shipped = json.loads(
+        (Path(__file__).resolve().parents[1] / "examples/progress_panel/manifest.json").read_text()
+    )
+    assert record.state == "enabled" and record.manifest.version == shipped["version"]
     assert manager.get_setting("example.progress", "thumbnail_size", 0) == 144
     assert manager.panels["example.progress"].isHidden()
     assert upgraded.panel_hovers.controllers["example.progress"].area == DOCK_AREAS["bottom"]

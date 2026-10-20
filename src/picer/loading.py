@@ -8,6 +8,7 @@ from PySide6.QtCore import QFileSystemWatcher, QObject, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QImageReader
 
 from picer.animation import animation_source
+from picer.i18n import tr
 from picer.imaging import RAW_SUFFIXES, read_image
 from picer.plugins.tasks import TaskCancelled, Worker
 from picer.video import VIDEO_SUFFIXES
@@ -94,7 +95,7 @@ class ImageLoader(QObject):
                 if generation != self.generation or self.host.current_path != path:
                     return
                 if error:
-                    self.host.notify(f"RAW 效果切换失败：{error}")
+                    self.host.notify(tr("RAW 效果切换失败：{0}").format(error))
                     return
                 self.remember(key, image, generation=cache_generation)
                 size = (
@@ -282,9 +283,9 @@ class ImageLoader(QObject):
         path = Path(path).resolve()
         try:
             if path.suffix.lower() not in self.host.supported_suffixes:
-                raise ValueError("此图片格式未启用，请在选项 → 系统设置 → 格式设置中开启。")
+                raise ValueError(tr("此图片格式未启用，请在选项 → 系统设置 → 格式设置中开启。"))
             if not path.is_file():
-                raise ValueError("文件不存在")
+                raise ValueError(tr("文件不存在"))
             reader = QImageReader(str(path))
             raw = path.suffix.lower() in RAW_SUFFIXES
             video = path.suffix.lower() in VIDEO_SUFFIXES
@@ -313,7 +314,7 @@ class ImageLoader(QObject):
             if full is None and small:
                 full = read_image(path, auto_orient=options)
         except Exception as error:
-            self.host.last_error = f"无法打开 {path.name}：{error}"
+            self.host.last_error = tr("无法打开 {0}：{1}").format(path.name, error)
             return False
         self.generation += 1
         generation = self.generation
@@ -430,7 +431,7 @@ class ImageLoader(QObject):
             if generation != self.generation or isinstance(error, TaskCancelled) or self.rapid:
                 return
             if error:
-                self.host.last_error = f"原图无法读取 {path.name}：{error}"
+                self.host.last_error = tr("原图无法读取 {0}：{1}").format(path.name, error)
                 return
             self.remember(key, image, generation=cache_generation)
             self.host.refine_image(image)
@@ -522,7 +523,7 @@ class ImageLoader(QObject):
                     if self.host.current_path != path:
                         self.folder_candidates = deque(paths[index + 1 :])
                     return
-            self.host.loading_failed(directory, "该文件夹中没有可读取的图片")
+            self.host.loading_failed(directory, tr("该文件夹中没有可读取的图片"))
 
         self.submit("index", work, finish, foreground=True)
 

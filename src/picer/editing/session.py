@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QPen
 from PySide6.QtWidgets import QApplication, QGraphicsRectItem
 
 from picer.editing.engine import defaults, fingerprint, render, save_image, to_pillow
+from picer.i18n import tr
 from picer.imaging import pillow_image, read_image
 from picer.plugins.api import PluginError
 
@@ -87,12 +88,12 @@ class EditingSession(QObject):
                     from picer.video import VIDEO_SUFFIXES
 
                     if path.suffix.lower() in VIDEO_SUFFIXES | {".psd"}:
-                        return {"error": "视频和 PSD 仅支持预览，不支持简易编辑"}
+                        return {"error": tr("视频和 PSD 仅支持预览，不支持简易编辑")}
                     mark = fingerprint(path)
                     try:
                         with Image.open(path) as opened:
                             if getattr(opened, "n_frames", 1) > 1:
-                                return {"error": "动态图暂不支持简易编辑"}
+                                return {"error": tr("动态图暂不支持简易编辑")}
                     except OSError:
                         pass  # RAW and Qt-only formats use the shared decoder below.
                     image = read_image(path, edge=1600, token=token, camera_preview=camera_preview)
@@ -102,7 +103,7 @@ class EditingSession(QObject):
                         int(image.text("picer.native_height")),
                     )
                     if fingerprint(path) != mark:
-                        return {"error": "原文件已改变，请重新打开"}
+                        return {"error": tr("原文件已改变，请重新打开")}
                 output, dimensions = render(base, state, native=size, edge=1600, token=token)
                 return {
                     "source": base,
@@ -191,9 +192,9 @@ class EditingSession(QObject):
             self.saving = False
             if result.get("error"):
                 self.error = result["error"]
-                self.context.notify("未保存：" + self.error)
+                self.context.notify(tr("未保存：") + self.error)
             else:
-                self.context.notify("已保存覆盖" if overwrite else "已保存副本")
+                self.context.notify(tr("已保存覆盖") if overwrite else tr("已保存副本"))
                 self.saved.emit(result["path"])
                 if generation == self.generation and self.host.current_path == path:
                     self.host.loader.cache.clear()

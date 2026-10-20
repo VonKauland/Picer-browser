@@ -9,16 +9,17 @@ from pathlib import Path
 from PySide6.QtCore import QThreadPool, QTimer
 from PySide6.QtWidgets import QApplication
 
+from picer.i18n import tr
 from picer.messages import MessageBox as QMessageBox
 from picer.window import MainWindow
 
 
 def main() -> int:
     """Launch the image browser or exercise the packaged GUI in CI."""
-    parser = argparse.ArgumentParser(description="揽映 Picer 图片浏览器")
+    parser = argparse.ArgumentParser(description=tr("揽映 Picer 图片浏览器"))
     parser.add_argument("image", nargs="?")
-    parser.add_argument("--data-dir", type=Path, help="指定插件、缓存、配置与日志目录")
-    parser.add_argument("--safe-mode", action="store_true", help="本次启动不加载第三方插件")
+    parser.add_argument("--data-dir", type=Path, help=tr("指定插件、缓存、配置与日志目录"))
+    parser.add_argument("--safe-mode", action="store_true", help=tr("本次启动不加载第三方插件"))
     parser.add_argument("--smoke-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--plugin-archive", help=argparse.SUPPRESS)
     parser.add_argument("--skin-archive", help=argparse.SUPPRESS)
@@ -30,7 +31,7 @@ def main() -> int:
     smoke_test = args.smoke_test
     app = QApplication([sys.argv[0]])
     app.setApplicationName("Picer")
-    app.setApplicationDisplayName("揽映")
+    app.setApplicationDisplayName(tr("揽映"))
     app.setStyle("Fusion")
     temporary_plugins = (
         tempfile.TemporaryDirectory()
@@ -44,13 +45,16 @@ def main() -> int:
         )
     except OSError as error:
         if not smoke_test:
-            QMessageBox.critical(None, "无法创建应用数据目录", str(error))
+            QMessageBox.critical(None, tr("无法创建应用数据目录"), str(error))
         if temporary_plugins:
             temporary_plugins.cleanup()
         return 1
     if not smoke_test:
         window.restore_startup(restore_image=not bool(args.image))
     window.show()
+    app.setApplicationDisplayName(tr("揽映"))
+    if not smoke_test:
+        window.updates.start()
 
     temporary_images = (
         tempfile.TemporaryDirectory() if smoke_test and args.smoke_images is None else None

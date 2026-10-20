@@ -5,6 +5,7 @@ from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QListWidget, QListWidgetItem, QMenu, QTabBar
 
 from picer.host_style import PLUGIN_STYLE
+from picer.i18n import tr
 from picer.plugins import ui_icon
 
 from .thumbnails import configure_view
@@ -28,7 +29,7 @@ class PlacesList(QListWidget):
         self.itemDoubleClicked.connect(
             lambda item: owner.open_folder(item.data(Qt.ItemDataRole.UserRole))
         )
-        self.setAccessibleName("快速访问" if key == "favorites" else "历史记录")
+        self.setAccessibleName(tr("快速访问") if key == "favorites" else tr("历史记录"))
 
     def reload(self):
         from pathlib import Path
@@ -48,11 +49,11 @@ class PlacesList(QListWidget):
             return
         menu = QMenu(self)
         menu.setStyleSheet(PLUGIN_STYLE)
-        action = menu.addAction("移出快速访问" if self.key == "favorites" else "移除此记录")
+        action = menu.addAction(tr("移出快速访问") if self.key == "favorites" else tr("移除此记录"))
         path = item.data(Qt.ItemDataRole.UserRole)
         action.triggered.connect(lambda: self.remove_path(path))
         if self.key == "recent_folders":
-            menu.addAction("清空历史记录", self.clear_history)
+            menu.addAction(tr("清空历史记录"), self.clear_history)
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(self.viewport().mapToGlobal(position))
 
@@ -78,10 +79,10 @@ class NavigationTabs(QTabBar):
         self.setDrawBase(False)
         self.setUsesScrollButtons(False)
         self.setMouseTracking(True)
-        self.setAccessibleName("文件浏览位置选项卡")
+        self.setAccessibleName(tr("文件浏览位置选项卡"))
         self.symbols = ("folder", "star", "history", "network")
         for symbol, label in zip(
-            self.symbols, ("文件", "快速访问", "历史记录", "网络位置"), strict=False
+            self.symbols, (tr("文件"), tr("快速访问"), tr("历史记录"), tr("网络位置")), strict=False
         ):
             index = self.addTab("")
             icons = (ui_icon(symbol, "#A2A2A6"), ui_icon(symbol, "#E8FF59"))

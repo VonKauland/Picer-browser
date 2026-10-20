@@ -166,6 +166,8 @@ def main() -> None:
             "av",
             "--add-data",
             str(bundles) + ";picer/bundles",
+            "--add-data",
+            str(ROOT / "src" / "picer" / "locales") + ";picer/locales",
             "--paths",
             "src",
             "scripts/entrypoint.py",

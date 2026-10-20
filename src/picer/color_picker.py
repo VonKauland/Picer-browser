@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from picer.i18n import tr
 from picer.ui import StyledDialog, colors_for
 
 SWATCHES = ("#E8FF59", "#9BE870", "#66DAC9", "#79B8FF", "#BBA2FF", "#FF98BC", "#FFBC79", "#F3F3F0")
@@ -28,7 +29,7 @@ class ColorPlane(QWidget):
         self.hue, self.saturation, self.brightness = 0.0, 1.0, 1.0
         self.setMinimumSize(240, 160)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setAccessibleName("饱和度与亮度色板，方向键微调")
+        self.setAccessibleName(tr("饱和度与亮度色板，方向键微调"))
 
     def plane_rect(self):
         return QRectF(self.rect()).adjusted(8, 8, -8, -8)
@@ -118,7 +119,7 @@ class HueSlider(QSlider):
         self.setRange(0, 359)
         self.setFixedHeight(28)
         self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
-        self.setAccessibleName("色相")
+        self.setAccessibleName(tr("色相"))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -169,9 +170,14 @@ class HueSlider(QSlider):
 
 class ColorPicker(StyledDialog):
     def __init__(
-        self, initial, parent=None, *, title="选择强调色", subtitle="自定义色彩，让界面更合心意"
+        self,
+        initial,
+        parent=None,
+        *,
+        title="选择强调色",
+        subtitle="自定义色彩，让界面更合心意",
     ):
-        super().__init__(title, subtitle, parent)
+        super().__init__(tr(title), tr(subtitle), parent)
         self.setMinimumSize(440, 400)
         self.resize(500, 590)
         self.color = QColor(initial)
@@ -196,7 +202,7 @@ class ColorPicker(StyledDialog):
             button = QPushButton()
             button.setFixedSize(32, 32)
             button.setToolTip(value)
-            button.setAccessibleName("选择颜色 " + value)
+            button.setAccessibleName(tr("选择颜色 ") + value)
             button.setStyleSheet(
                 f"QPushButton {{ background: {value}; border: none;"
                 "border-radius: 16px; padding: 0; min-height: 32px; max-height: 32px; }"
@@ -208,8 +214,8 @@ class ColorPicker(StyledDialog):
         presets.addStretch()
         layout.addLayout(presets)
         preview = QHBoxLayout()
-        self.original = QLabel("当前颜色")
-        self.preview = QLabel("新颜色")
+        self.original = QLabel(tr("当前颜色"))
+        self.preview = QLabel(tr("新颜色"))
         self.paint_preview(self.original, QColor(initial))
         preview.addWidget(self.original)
         preview.addWidget(self.preview)
@@ -217,7 +223,7 @@ class ColorPicker(StyledDialog):
         fields = QHBoxLayout()
         self.hex = QLineEdit()
         self.hex.setMaxLength(7)
-        self.hex.setAccessibleName("HEX 颜色值")
+        self.hex.setAccessibleName(tr("HEX 颜色值"))
         self.hex.setMinimumWidth(115)
         fields.addWidget(self.field("HEX", self.hex), 2)
         self.rgb = []
@@ -225,7 +231,7 @@ class ColorPicker(StyledDialog):
             spin = QSpinBox()
             spin.setRange(0, 255)
             spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-            spin.setAccessibleName(label + " 颜色分量")
+            spin.setAccessibleName(label + tr(" 颜色分量"))
             fields.addWidget(self.field(label, spin), 1)
             spin.valueChanged.connect(self.rgb_changed)
             self.rgb.append(spin)
@@ -236,15 +242,15 @@ class ColorPicker(StyledDialog):
         self.error.setMinimumHeight(20)
         layout.addWidget(self.error)
         buttons = QHBoxLayout()
-        self.follow = QPushButton("跟随皮肤")
+        self.follow = QPushButton(tr("跟随皮肤"))
         self.follow.setObjectName("quietButton")
         self.follow.clicked.connect(self.follow_skin)
         buttons.addWidget(self.follow)
         buttons.addStretch()
-        self.cancel = QPushButton("取消")
+        self.cancel = QPushButton(tr("取消"))
         self.cancel.clicked.connect(self.reject)
         buttons.addWidget(self.cancel)
-        self.apply = QPushButton("使用颜色")
+        self.apply = QPushButton(tr("使用颜色"))
         self.apply.setObjectName("primaryButton")
         self.apply.clicked.connect(self.use_color)
         buttons.addWidget(self.apply)
@@ -310,7 +316,7 @@ class ColorPicker(StyledDialog):
         if value and valid_accent(value):
             self.set_color(QColor(value))
         else:
-            self.error.setText("请输入完整的 #RRGGBB 色值")
+            self.error.setText(tr("请输入完整的 #RRGGBB 色值"))
             self.apply.setEnabled(False)
 
     def use_color(self):

@@ -5,6 +5,7 @@ import sys
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPushButton, QWidget
 
+from picer.i18n import tr
 from picer.imaging import RAW_SUFFIXES, supported_suffixes
 from picer.ui import Card, Toggle
 from picer.video import VIDEO_SUFFIXES
@@ -19,15 +20,15 @@ class FormatSelection(QWidget):
         self.buttons = {}
         self.unknown = []
         for group, extensions in (
-            ("常用与其他图片", supported_suffixes() - RAW_SUFFIXES - VIDEO_SUFFIXES),
-            ("相机 RAW", RAW_SUFFIXES),
-            ("视频（仅静态预览）", VIDEO_SUFFIXES),
+            (tr("常用与其他图片"), supported_suffixes() - RAW_SUFFIXES - VIDEO_SUFFIXES),
+            (tr("相机 RAW"), RAW_SUFFIXES),
+            (tr("视频（仅静态预览）"), VIDEO_SUFFIXES),
         ):
             row = layout.rowCount()
             layout.addWidget(QLabel(group), row, 0, 1, 3)
             for index, suffix in enumerate(sorted(extensions)):
                 button = Toggle()
-                button.setAccessibleName("允许读取 " + suffix[1:].upper())
+                button.setAccessibleName(tr("允许读取 ") + suffix[1:].upper())
                 item = QWidget()
                 line = QHBoxLayout(item)
                 line.setContentsMargins(0, 4, 8, 4)
@@ -53,15 +54,17 @@ class FormatSelection(QWidget):
 
 
 def build_format_page(dialog, layout):
-    card = Card("可读取的图片格式")
-    note = QLabel("只显示当前解码器支持的格式。取消勾选后，打开、拖入和文件夹浏览将跳过该格式。")
+    card = Card(tr("可读取的图片格式"))
+    note = QLabel(
+        tr("只显示当前解码器支持的格式。取消勾选后，打开、拖入和文件夹浏览将跳过该格式。")
+    )
     note.setWordWrap(True)
     note.setObjectName("muted")
     card.body.addWidget(note)
     selection = FormatSelection(dialog.values["readable_formats"])
     dialog.editors["readable_formats"] = selection
     row = QHBoxLayout()
-    for label, value in (("全选", None), ("清空", [])):
+    for label, value in ((tr("全选"), None), (tr("清空"), [])):
         button = QPushButton(label)
         button.clicked.connect(lambda checked=False, value=value: selection.setValue(value))
         row.addWidget(button)
@@ -69,8 +72,10 @@ def build_format_page(dialog, layout):
     card.body.addLayout(row)
     card.body.addWidget(selection)
     layout.addWidget(card)
-    card = Card("Windows 系统集成")
-    status = QLabel("先应用格式选择，再使用下方按钮。注册仅影响当前 Windows 用户，无需管理员权限。")
+    card = Card(tr("Windows 系统集成"))
+    status = QLabel(
+        tr("先应用格式选择，再使用下方按钮。注册仅影响当前 Windows 用户，无需管理员权限。")
+    )
     status.setWordWrap(True)
     status.setObjectName("muted")
     card.body.addWidget(status)
@@ -84,32 +89,36 @@ def build_format_page(dialog, layout):
                 operation != "remove"
                 and selection.value() != read_preferences(dialog.manager)["readable_formats"]
             ):
-                raise ValueError("格式选择尚未应用，请先点击底部的「应用」。")
+                raise ValueError(tr("格式选择尚未应用，请先点击底部的「应用」。"))
             integration = WindowsIntegration()
             suffixes = enabled_formats(read_preferences(dialog.manager))
             if operation == "default":
                 integration.register_viewer(suffixes)
                 open_default_apps()
-                status.setText("已注册揽映。请在 Windows 默认应用设置中确认格式关联。")
+                status.setText(tr("已注册揽映。请在 Windows 默认应用设置中确认格式关联。"))
             elif operation == "register":
                 integration.register_context_menu(suffixes)
-                status.setText("已注册「使用揽映打开」。Windows 11 中可在「显示更多选项」里找到。")
+                status.setText(
+                    tr("已注册「使用揽映打开」。Windows 11 中可在「显示更多选项」里找到。")
+                )
             else:
                 integration.remove_context_menu()
-                status.setText("已移除「使用揽映打开」入口。")
+                status.setText(tr("已移除「使用揽映打开」入口。"))
         except (OSError, ValueError) as error:
             status.setText(str(error))
 
     for label, operation in (
-        ("设为 Windows 默认图片浏览器…", "default"),
-        ("注册 Windows 右键菜单", "register"),
-        ("移除 Windows 右键菜单", "remove"),
+        (tr("设为 Windows 默认图片浏览器…"), "default"),
+        (tr("注册 Windows 右键菜单"), "register"),
+        (tr("移除 Windows 右键菜单"), "remove"),
     ):
         button = QPushButton(label)
         button.setEnabled(sys.platform == "win32")
         button.clicked.connect(lambda checked=False, operation=operation: execute(operation))
         card.body.addWidget(button)
-    note = QLabel("Windows 保护默认应用关联，需要在系统设置中确认。移动应用文件夹后请重新注册。")
+    note = QLabel(
+        tr("Windows 保护默认应用关联，需要在系统设置中确认。移动应用文件夹后请重新注册。")
+    )
     note.setWordWrap(True)
     note.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     card.body.addWidget(note)

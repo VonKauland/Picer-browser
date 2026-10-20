@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from picer.host_style import PLUGIN_STYLE, mark_host
+from picer.i18n import tr
 from picer.plugins import PluginError, ui_icon
 from picer.ui import StyledDialog, colors_for
 
@@ -34,10 +35,10 @@ def is_network_path(path):
 
 def normalize_path(value):
     if not isinstance(value, str) or len(value) > 2048:
-        raise ValueError("请输入有效的网络共享路径")
+        raise ValueError(tr("请输入有效的网络共享路径"))
     value = value.strip().replace("/", "\\")
     if not is_network_path(value) or any(ord(c) < 32 or c in '<>:"|?*' for c in value):
-        raise ValueError("请输入网络共享路径，例如 \\\\NAS\\Photos")
+        raise ValueError(tr("请输入网络共享路径，例如 \\\\NAS\\Photos"))
     value = ntpath.normpath(value).rstrip("\\")
     parts = value[2:].split("\\")
     if len(parts) == 1 and parts[0] not in ("", ".", ".."):
@@ -45,7 +46,7 @@ def normalize_path(value):
     path = PureWindowsPath(value)
     parts = path.drive[2:].split("\\")
     if len(parts) != 2 or any(p in ("", ".", "..") for p in parts) or not path.is_absolute():
-        raise ValueError("请输入服务器或共享文件夹路径")
+        raise ValueError(tr("请输入服务器或共享文件夹路径"))
     return str(path)
 
 
@@ -70,16 +71,16 @@ def saved_locations(context):
 
 class LocationDialog(StyledDialog):
     def __init__(self, entries, parent):
-        super().__init__("添加网络位置", parent=parent)
+        super().__init__(tr("添加网络位置"), parent=parent)
         self.resize(440, 320)
         self.entries = entries
         self.result_entry = None
-        self.body.addWidget(QLabel("名称"))
+        self.body.addWidget(QLabel(tr("名称")))
         self.name = QLineEdit()
         self.name.setMaxLength(48)
-        self.name.setPlaceholderText("例如：家庭 NAS")
+        self.name.setPlaceholderText(tr("例如：家庭 NAS"))
         self.body.addWidget(self.name)
-        self.body.addWidget(QLabel("网络路径"))
+        self.body.addWidget(QLabel(tr("网络路径")))
         self.path = QLineEdit()
         self.path.setMaxLength(2048)
         self.path.setPlaceholderText(r"\\NAS\Photos")
@@ -89,10 +90,10 @@ class LocationDialog(StyledDialog):
         self.body.addWidget(self.error)
         row = QHBoxLayout()
         row.addStretch()
-        cancel = QPushButton("取消")
+        cancel = QPushButton(tr("取消"))
         cancel.clicked.connect(self.reject)
         row.addWidget(cancel)
-        self.confirm = QPushButton("添加")
+        self.confirm = QPushButton(tr("添加"))
         self.confirm.setObjectName("primaryButton")
         self.confirm.clicked.connect(self.accept)
         row.addWidget(self.confirm)
@@ -109,18 +110,18 @@ class LocationDialog(StyledDialog):
             parsed = PureWindowsPath(path)
             name = self.name.text().strip() or parsed.name or path.rstrip("\\").split("\\")[-1]
             if any(ord(c) < 32 for c in name) or len(name) > 48:
-                raise ValueError("名称最多 48 个字符")
+                raise ValueError(tr("名称最多 48 个字符"))
             if any(row["path"].casefold() == path.casefold() for row in self.entries):
-                raise ValueError("该网络位置已添加")
+                raise ValueError(tr("该网络位置已添加"))
             if len(self.entries) >= 64:
-                raise ValueError("最多保存 64 个网络位置")
+                raise ValueError(tr("最多保存 64 个网络位置"))
             entry = {"name": name, "path": path}
             if len(json.dumps(self.entries + [entry])) > 64 * 1024:
-                raise ValueError("网络位置列表已满，请先移除不再使用的位置")
+                raise ValueError(tr("网络位置列表已满，请先移除不再使用的位置"))
             self.result_entry = entry
             self.error.setText("")
         except ValueError as error:
-            self.error.setText(str(error) if self.path.text() else r"例如：\\NAS\Photos")
+            self.error.setText(str(error) if self.path.text() else tr(r"例如：\\NAS\Photos"))
         self.confirm.setEnabled(self.result_entry is not None)
 
 
@@ -170,7 +171,7 @@ class NetworkLocations(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
-        self.heading = QLabel("网络位置")
+        self.heading = QLabel(tr("网络位置"))
         row.addWidget(self.heading, 1)
         self.add_button = QPushButton()
         self.add_button.setObjectName("circleButton")
@@ -181,20 +182,20 @@ class NetworkLocations(QWidget):
             "QPushButton:hover { background: #454549; }"
         )
         self.add_button.setIcon(ui_icon("install"))
-        self.add_button.setToolTip("添加网络位置")
-        self.add_button.setAccessibleName("添加网络位置")
+        self.add_button.setToolTip(tr("添加网络位置"))
+        self.add_button.setAccessibleName(tr("添加网络位置"))
         self.add_button.clicked.connect(self.add_location)
         row.addWidget(self.add_button)
         layout.addLayout(row)
         self.list = QListWidget()
         configure_view(self.list)
         self.list.setItemDelegate(LocationDelegate(self.list))
-        self.list.setAccessibleName("已添加的网络位置")
+        self.list.setAccessibleName(tr("已添加的网络位置"))
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self.show_actions)
         self.list.itemDoubleClicked.connect(self.open_item)
         layout.addWidget(self.list, 1)
-        self.empty = QLabel("尚未添加网络位置，点击 ＋ 添加。")
+        self.empty = QLabel(tr("尚未添加网络位置，点击 ＋ 添加。"))
         self.empty.setWordWrap(True)
         layout.addWidget(self.empty)
         self.timeout = QTimer(self)
@@ -223,16 +224,16 @@ class NetworkLocations(QWidget):
                 self.list.setCurrentItem(item)
         self.list.setIconSize(self.owner.tree.iconSize())
         self.empty.setText(
-            "没有可见的共享文件夹。" if self.server else "尚未添加网络位置，点击 ＋ 添加。"
+            tr("没有可见的共享文件夹。") if self.server else tr("尚未添加网络位置，点击 ＋ 添加。")
         )
         self.empty.setVisible(self.list.count() == 0)
 
     def show_saved(self):
         self.cancel_navigation()
         self.server = self.server_rows = None
-        self.heading.setText("网络位置")
+        self.heading.setText(tr("网络位置"))
         self.add_button.show()
-        self.owner.location.set_virtual("网络位置")
+        self.owner.location.set_virtual(tr("网络位置"))
         self.owner.note.setText("")
         self.owner.search.clear()
         self.reload()
@@ -247,7 +248,7 @@ class NetworkLocations(QWidget):
                 self.owner.search.clear()
                 self.reload()
                 self.list.setCurrentRow(self.list.count() - 1)
-                self.owner.context.notify("已添加网络位置")
+                self.owner.context.notify(tr("已添加网络位置"))
         finally:
             dialog.deleteLater()
 
@@ -262,9 +263,9 @@ class NetworkLocations(QWidget):
         path = item.data(Qt.ItemDataRole.UserRole)
         menu = QMenu(self)
         menu.setStyleSheet(PLUGIN_STYLE)
-        menu.addAction("打开", lambda: self.owner.open_folder(path))
+        menu.addAction(tr("打开"), lambda: self.owner.open_folder(path))
         if self.server_rows is None:
-            menu.addAction("移除网络位置", lambda: self.remove(path))
+            menu.addAction(tr("移除网络位置"), lambda: self.remove(path))
         menu.aboutToHide.connect(menu.deleteLater)
         menu.popup(self.list.viewport().mapToGlobal(position))
 
@@ -281,12 +282,12 @@ class NetworkLocations(QWidget):
             self.owner.note.setText(str(error))
             return
         if self.busy:
-            self.owner.note.setText("正在等待网络响应，请稍后重试。")
+            self.owner.note.setText(tr("正在等待网络响应，请稍后重试。"))
             return
         self.generation += 1
         generation = self.generation
         self.busy = True
-        self.owner.note.setText("正在连接网络位置…")
+        self.owner.note.setText(tr("正在连接网络位置…"))
         self.timeout.start()
         previous = self.owner.location.text()
 
@@ -310,7 +311,7 @@ class NetworkLocations(QWidget):
                 self.owner.remember_location(path, remember)
                 self.owner.tabs.setCurrentIndex(3)
                 self.server, self.server_rows = path, readable
-                self.heading.setText("共享文件夹")
+                self.heading.setText(tr("共享文件夹"))
                 self.add_button.hide()
                 self.owner.location.set_virtual(path)
                 self.owner.search.clear()
@@ -332,14 +333,14 @@ class NetworkLocations(QWidget):
                     path, remember=remember, on_open=on_open, _network_ready=True
                 )
             else:
-                self.owner.note.setText("无法访问网络位置，请检查连接及 Windows 访问权限。")
+                self.owner.note.setText(tr("无法访问网络位置，请检查连接及 Windows 访问权限。"))
 
         try:
             self.token = self.owner.context.run_task(work, render, image_bound=False)
         except PluginError:
             self.busy = False
             self.timeout.stop()
-            self.owner.note.setText("后台繁忙，请稍后重试。")
+            self.owner.note.setText(tr("后台繁忙，请稍后重试。"))
 
     def cancel_navigation(self):
         self.generation += 1
@@ -347,7 +348,7 @@ class NetworkLocations(QWidget):
 
     def timed_out(self):
         self.cancel_navigation()
-        self.owner.note.setText("网络响应超时。你可以继续浏览本地文件，稍后再试。")
+        self.owner.note.setText(tr("网络响应超时。你可以继续浏览本地文件，稍后再试。"))
 
     def stop(self):
         self.cancel_navigation()

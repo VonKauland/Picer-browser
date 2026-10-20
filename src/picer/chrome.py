@@ -4,6 +4,7 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QMenuBar, QPushButton, QToolButton, QWidget
 
+from picer.i18n import tr
 from picer.theme import STYLE as STYLE
 
 
@@ -18,10 +19,10 @@ class WindowButton(QPushButton):
         self.setFixedSize(32, 32)
         self.setAccessibleName(
             {
-                "fullscreen": "全屏或退出全屏",
-                "minimize": "最小化",
-                "maximize": "最大化或还原",
-                "close": "关闭",
+                "fullscreen": tr("全屏或退出全屏"),
+                "minimize": tr("最小化"),
+                "maximize": tr("最大化或还原"),
+                "close": tr("关闭"),
             }[name]
         )
         self.setToolTip(self.accessibleName())
@@ -80,7 +81,7 @@ class TitleBar(QWidget):
         self.base_icon = window.windowIcon()
         icon_label.setPixmap(window.windowIcon().pixmap(20, 20))
         layout.addWidget(icon_label)
-        self.brand = QLabel("揽映", self.left)
+        self.brand = QLabel(tr("揽映"), self.left)
         self.brand.setObjectName("brand")
         self.brand.hide()
         self.menu = QMenuBar()
@@ -102,7 +103,7 @@ class TitleBar(QWidget):
             button.setFixedSize(28, 28)
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-            button.setAccessibleName(f"功能快捷栏位 {index + 1}")
+            button.setAccessibleName(tr("功能快捷栏位 {0}").format(index + 1))
             buttons.addWidget(button, 0, Qt.AlignmentFlag.AlignVCenter)
             self.quick_slots.append(button)
         buttons.addSpacing(8)
@@ -132,7 +133,7 @@ class TitleBar(QWidget):
         self.left.layout().setSpacing(12 if mac else 16)
         self.left.layout().activate()
         self.right.layout().activate()
-        minimum = 2 * (max(self.left.sizeHint().width(), self.right.sizeHint().width()) + 20) + 40
+        minimum = self.left.sizeHint().width() + self.right.sizeHint().width() + 80
         self.window.setMinimumWidth(max(800, minimum))
         self.arrange()
 
@@ -166,7 +167,7 @@ class TitleBar(QWidget):
 
     def sync_window_state(self):
         button = self.control_buttons["maximize"]
-        name = "还原" if self.window.isMaximized() else "最大化"
+        name = tr("还原") if self.window.isMaximized() else tr("最大化")
         button.setAccessibleName(name)
         button.setToolTip(name)
         button.update()

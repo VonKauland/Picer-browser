@@ -7,6 +7,7 @@ from PIL import Image
 from PySide6.QtCore import QObject, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QImageReader
 
+from picer.i18n import tr
 from picer.imaging import MAX_PIXELS, pillow_image
 from picer.media_types import AnimationState
 from picer.plugins.tasks import Worker
@@ -19,7 +20,7 @@ class FrameSource:
         self.reader = Image.open(path)
         if self.reader.width * self.reader.height > MAX_PIXELS:
             self.reader.close()
-            raise ValueError("动画超过 1.2 亿像素的读取上限")
+            raise ValueError(tr("动画超过 1.2 亿像素的读取上限"))
         self.transpose = (
             {
                 2: Image.Transpose.FLIP_LEFT_RIGHT,

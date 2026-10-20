@@ -1,10 +1,17 @@
 {
   "id": "example.editor",
   "name": "简易编辑",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "api_version": 1,
   "type": "panel",
   "entrypoint": "main:Plugin",
-  "permissions": ["ui.panels", "image.read", "image.modify", "events.subscribe", "tasks", "settings"],
+  "permissions": [
+    "ui.panels",
+    "image.read",
+    "image.modify",
+    "events.subscribe",
+    "tasks",
+    "settings"
+  ],
   "description": "临时裁剪、几何与色彩调整，支持预设和确认保存；默认关闭。"
 }

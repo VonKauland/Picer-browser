@@ -327,3 +327,10 @@ All saves check the original fingerprint, render full resolution, write/fsync a
 sibling temporary file, then atomically replace the target. Errors preserve the
 original; JPEG/BMP flatten transparency onto white. Readable EXIF/ICC metadata is
 preserved where the output supports it, with normalized orientation/dimensions.
+
+
+### 界面语言兼容
+
+宿主支持 `zh_CN`、`zh_TW`、`en`、`ru`、`ja`、`ko`、`es`，保存后重启生效。
+自带插件使用宿主离线翻译资源，并以原始操作 ID、配置键和元数据字段名保存数据；第三方组件的名称、说明、功能标签与用户输入不被自动翻译。
+本次保持 API v1，不要求外部组件修改清单或新增依赖。`focus_points`、EXIF 字典、路径与绑定结构保持兼容。
