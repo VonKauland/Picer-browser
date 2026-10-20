@@ -109,7 +109,28 @@ class WindowsIntegration:
         self.write(CAPABILITIES, "ApplicationIcon", f'"{self.executable}",0')
         self.write(CAPABILITIES, "Extensions", suffixes, self.registry.REG_MULTI_SZ)
         self.write(r"Software\RegisteredApplications", APP_NAME, CAPABILITIES)
+        self.register_thumbnail_provider()
         self.changed()
+
+    def register_thumbnail_provider(self):
+        from picer.shell_thumbnail import PROVIDER_CLSID, THUMBNAIL_IID
+
+        dll = self.executable.parent / "shell" / "PicerThumbnail.dll"
+        if not dll.is_file():
+            return  # Older portable folders can still register their open command.
+        classes = r"Software\Classes"
+        clsid = classes + "\\CLSID\\" + PROVIDER_CLSID
+        self.write(clsid, "", "Picer isolated image thumbnails")
+        self.write(clsid, "AppID", PROVIDER_CLSID)
+        self.write(clsid + r"\InprocServer32", "", str(dll))
+        self.write(clsid + r"\InprocServer32", "ThreadingModel", "Apartment")
+        self.write(classes + "\\AppID\\" + PROVIDER_CLSID, "DllSurrogate", "")
+        # Scope to our ProgID: never replace extension/SystemFileAssociations handlers.
+        for name in (PROG_ID, r"Applications\Picer.exe"):
+            key = classes + "\\" + name
+            self.write(key + "\\shellex\\" + THUMBNAIL_IID, "", PROVIDER_CLSID)
+            self.write(key, "Treatment", 0, self.registry.REG_DWORD)
+            self.write(key, "TypeOverlay", "")
 
     def remove_open_with(self, suffix):
         reg = self.registry

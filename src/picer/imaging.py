@@ -37,20 +37,23 @@ def pillow_image(image):
     ).copy()
 
 
-def read_image(path, *, edge=0, auto_orient=True, token=None, camera_preview=False):
-    """Return detached pixels; RAW previews prefer the embedded JPEG."""
+def read_image(
+    path, *, edge=0, auto_orient=True, token=None, camera_preview=False, format_hint=None
+):
+    """Return detached pixels; format_hint handles unnamed shell streams only."""
     if token:
         token.checkpoint()
     path = Path(path)
-    if path.suffix.lower() == ".psd":
+    suffix = format_hint or path.suffix.lower()
+    if suffix == ".psd":
         from picer.psd import read_psd
 
         return read_psd(path, edge=edge, token=token)
-    if path.suffix.lower() in VIDEO_SUFFIXES:
+    if suffix in VIDEO_SUFFIXES:
         from picer.video import read_video
 
         return read_video(path, edge=edge, token=token, auto_orient=auto_orient)
-    if path.suffix.lower() in RAW_SUFFIXES:
+    if suffix in RAW_SUFFIXES:
         import rawpy
 
         with rawpy.RawPy() as raw:
