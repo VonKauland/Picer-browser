@@ -3,7 +3,8 @@
 - Target Python 3.12 and Windows x64; use PySide6 for the GUI.
 - Keep application code in `src/picer`, tests in `tests`, and packaging entry points in `scripts`.
 - Install with `python -m pip install -r requirements-dev.txt -e .`.
-- Before committing, run `python -m ruff check .`, `python -m ruff format --check .`, and `python -m pytest`.
+- Before committing, run `python -m scripts.validate_changes --base HEAD --run` for uncommitted work. For committed changes choose the last validated base explicitly. This checks changed Python files and runs the related test files once; do not independently repeat the same window tests or full suite after they pass. Inspect `build/validation-plan.json` for selected tests and reasons. When the user explicitly requests no validation, skip it for that task.
+- Maintain impact scopes in `scripts/validate_changes.py` when adding dynamic plugin/resource consumers. Ordinary Python dependencies are followed transitively. Unknown impact, shared dependency/pytest configuration changes and explicit `--full` use the full suite; releases always run it once. Use `--artifacts portable` or `--artifacts all` when artifacts are requested. Build/installer/native changes automatically enable the relevant packaged validation. Ordinary UI/application edits do not automatically rebuild or reinstall the app.
 - In headless Linux, set `QT_QPA_PLATFORM=offscreen` for GUI tests. This does not validate a Windows EXE.
 - Build the Windows binary only on Windows with `python -m scripts.build_windows` (PyInstaller `--onedir --windowed`).
 - Preserve CI checks on main pushes and pull requests. Upload the complete dist/Picer folder only after tests and packaged folder/relocation checks succeed.

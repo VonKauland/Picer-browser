@@ -78,6 +78,8 @@ Picer/
 
 ## 构建与验证
 
+日常修改优先运行 `python -m scripts.validate_changes --base HEAD --run`，只检查改动及其关联范围；具体规则、CI 基线与手动请求产物的方法见 [按改动范围验证](validation.md)。以下完整分发命令仅在相关构建／安装改动、明确请求产物或发布时执行。
+
 在 Windows Python 3.12 x64 环境中执行：
 
 ```powershell
