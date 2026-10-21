@@ -31,6 +31,7 @@ UI_TESTS = {
 # Composition roots import almost everything. For UI-only/shared integration paths,
 # use explicit feature coverage instead of treating every import as a runtime call.
 SCOPES = {
+    "src/picer/app.py": {"test_app", "test_startup"},
     "src/picer/theme.py": UI_TESTS,
     "src/picer/host_style.py": UI_TESTS,
     "src/picer/ui.py": UI_TESTS | {"test_progress_layout", "test_editing"},

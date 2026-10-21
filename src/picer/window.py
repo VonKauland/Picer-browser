@@ -143,6 +143,7 @@ class MainWindow(QMainWindow):
         plugin_root: Path | None = None,
         load_external: bool = True,
         load_examples: bool = True,
+        defer_plugins: bool = False,
     ) -> None:
         super().__init__()
         self.paths_layout = AppPaths.resolve(plugin_root)
@@ -300,7 +301,11 @@ class MainWindow(QMainWindow):
         self.panel_hovers = PanelHovers(self)
         self.panel_scrollbars = PanelScrollbars(self)
         self.plugins = PluginManager(
-            self, self.paths_layout.root, load_external=load_external, load_examples=load_examples
+            self,
+            self.paths_layout.root,
+            load_external=load_external,
+            load_examples=load_examples,
+            defer_load=defer_plugins,
         )
         self.plugins.changed.connect(self.panel_hovers.layout_strips)
         self.components = ComponentUI(self, plugin_menu)
@@ -422,11 +427,12 @@ class MainWindow(QMainWindow):
             + tr("或将图片拖入窗口")
         )
 
-    def restore_startup(self, *, restore_image=True):
+    def restore_startup(self, *, restore_image=True, restore_geometry=True, asynchronous=False):
         ui = self.plugins.preferences["ui"]
         geometry = ui.get("window_geometry")
         if (
-            self.app_preferences["remember_window"]
+            restore_geometry
+            and self.app_preferences["remember_window"]
             and isinstance(geometry, str)
             and len(geometry) <= 16384
         ):
@@ -435,7 +441,7 @@ class MainWindow(QMainWindow):
         if restore_image and self.app_preferences["start"] == "last" and isinstance(last, str):
             path = Path(last)
             if path.is_file():
-                self.open_image(path)
+                self.open_image(path, asynchronous=asynchronous)
 
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
@@ -730,12 +736,12 @@ class MainWindow(QMainWindow):
             if not self.open_image(Path(filename)):
                 QMessageBox.warning(self, tr("无法打开图片"), self.last_error)
 
-    def open_image(self, path: Path) -> bool:
+    def open_image(self, path: Path, *, asynchronous=False) -> bool:
         """Accept a request; large images/RAW/animation finish in the background."""
         self.navigation_request = None
         self.navigation_feedback = 0
         self.loader.folder_candidates.clear()
-        return self.loader.open(path)
+        return self.loader.open(path, asynchronous=asynchronous)
 
     def set_image_paths(self, paths):
         self.path_source = paths

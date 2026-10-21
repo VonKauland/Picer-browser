@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 
 from picer.i18n import tr
 from picer.messages import MessageBox as QMessageBox
+from picer.startup import AfterFirstPaint, finish_startup
 from picer.window import MainWindow
 
 
@@ -42,6 +43,7 @@ def main() -> int:
         window = MainWindow(
             plugin_root=Path(temporary_plugins.name) if temporary_plugins else args.data_dir,
             load_external=not args.safe_mode,
+            defer_plugins=not smoke_test,
         )
     except OSError as error:
         if not smoke_test:
@@ -50,11 +52,12 @@ def main() -> int:
             temporary_plugins.cleanup()
         return 1
     if not smoke_test:
-        window.restore_startup(restore_image=not bool(args.image))
+        window.restore_startup(restore_image=False)
+        AfterFirstPaint(
+            window, lambda: finish_startup(window, Path(args.image) if args.image else None)
+        )
     window.show()
     app.setApplicationDisplayName(tr("揽映"))
-    if not smoke_test:
-        window.updates.start()
 
     temporary_images = (
         tempfile.TemporaryDirectory() if smoke_test and args.smoke_images is None else None
@@ -65,8 +68,6 @@ def main() -> int:
         folder = Path(temporary_images.name) if temporary_images else args.smoke_images
         QTimer.singleShot(0, lambda: run_smoke(window, args, folder, app.exit))
         QTimer.singleShot(60_000, lambda: app.exit(2))
-    elif args.image:
-        window.open_image(Path(args.image))
 
     if smoke_test and getattr(sys, "frozen", False):
         # A --windowed EXE has no stdout/stderr. Keep actual smoke diagnostics
