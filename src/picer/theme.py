@@ -45,7 +45,8 @@ QComboBox QAbstractItemView { background: #303032; border: none;
 border-radius: 12px; padding: 6px; outline: none;
 selection-background-color: #414145; selection-color: #F3F3F0; }
 QComboBox QAbstractItemView QWidget { background: transparent; }
-QComboBox QAbstractItemView::item { min-height: 22px; padding: 6px 12px; border-radius: 6px; }
+QComboBox QAbstractItemView::item { min-height: 22px; padding: 6px 12px;
+margin: 3px; border-radius: 6px; }
 QComboBox QAbstractItemView::item:selected { background: #414145; color: #F3F3F0; }
 QTreeView::item, QListWidget::item { padding: 6px; border-radius: 8px; }
 QTreeView::item:selected, QListWidget::item:selected {
