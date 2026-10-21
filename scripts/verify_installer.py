@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+from picer.shell_thumbnail import PROVIDER_CLSID, THUMBNAIL_IID
 from picer.windows_integration import CAPABILITIES, PROG_ID, WindowsIntegration
 from scripts.build_installer import ROOT, TEST_PREFIX, build
 from scripts.verify_distribution import run_smoke
@@ -143,6 +145,18 @@ def verify(application, setup):
                     for suffix in suffixes:
                         if service.read(CAPABILITIES + r"\FileAssociations", suffix) != PROG_ID:
                             raise RuntimeError("Installer missed a supported format")
+                    provider_key = (
+                        "Software\\Classes\\CLSID\\" + PROVIDER_CLSID + "\\InprocServer32"
+                    )
+                    if service.read(provider_key, "") != str(target / "shell/PicerThumbnail.dll"):
+                        raise RuntimeError("Installer missed thumbnail COM registration")
+                    if (
+                        service.read(
+                            "Software\\Classes\\Picer.Image\\shellex\\" + THUMBNAIL_IID, ""
+                        )
+                        != PROVIDER_CLSID
+                    ):
+                        raise RuntimeError("Installer missed ProgID thumbnail association")
                 if (
                     service.read(r"Software\Classes\.png", "") != "OtherViewer.Image"
                     or service.read(choice, "ProgId") != "OtherViewer.Image"
@@ -150,13 +164,23 @@ def verify(application, setup):
                     raise RuntimeError("Installer overwrote another default viewer")
                 if number == 3:
                     # A newer portable registration must survive uninstalling this copy.
-                    other = root / "another-copy.exe"
+                    other = root / "another-copy" / "Picer.exe"
+                    other.parent.mkdir()
                     other.touch()
+                    (other.parent / "shell").mkdir()
+                    shutil.copy2(
+                        application / "shell/PicerThumbnail.dll",
+                        other.parent / "shell/PicerThumbnail.dll",
+                    )
                     alternate = WindowsIntegration(other, root=prefix)
                     alternate.register_viewer([".png"])
                     alternate.register_context_menu([".png"])
                 uninstall(target, root / f"options-{number}-uninstall.log")
                 if number == 3:
+                    if service.read(provider_key, "") != str(
+                        other.parent / "shell/PicerThumbnail.dll"
+                    ):
+                        raise RuntimeError("Uninstall removed another copy's thumbnail handler")
                     if (
                         service.read(r"Software\Classes\Picer.Image\shell\open\command", "")
                         != alternate.command
@@ -172,6 +196,7 @@ def verify(application, setup):
                 elif (
                     service.read(service.menu_key(".png"), "") is not None
                     or service.read(CAPABILITIES, "ApplicationName") is not None
+                    or service.read("Software\\Classes\\CLSID\\" + PROVIDER_CLSID, "") is not None
                 ):
                     raise RuntimeError("Uninstall left owned integration keys")
                 if service.read(choice, "ProgId") != "OtherViewer.Image":

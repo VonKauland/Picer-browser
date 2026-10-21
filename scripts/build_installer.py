@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from picer.formats import valid_formats
+from picer.shell_thumbnail import PROVIDER_CLSID, THUMBNAIL_IID
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_PREFIX = "Software\\PicerInstallerTests\\"
@@ -24,6 +25,9 @@ def registry_lines(suffixes, prefix=""):
 
     def write(key, name, value, task, kind="string"):
         key = prefix + ("\\" if prefix else "") + key
+        # Inno treats {..} as constants; COM GUIDs need literal opening braces.
+        key = re.sub(r"\{[0-9a-fA-F-]{36}\}", lambda match: "{" + match[0], key)
+        value = re.sub(r"\{[0-9a-fA-F-]{36}\}", lambda match: "{" + match[0], value)
         value = value.replace('"', '""')
         result.append(
             f'Root: HKCU; Subkey: "{key}"; ValueType: {kind}; '
@@ -41,6 +45,16 @@ def registry_lines(suffixes, prefix=""):
         write(key + "\\shell\\open\\command", "", command, "defaultviewer")
     write(progid, "", "揽映图片", "defaultviewer")
     write(application, "FriendlyAppName", "揽映 Picer", "defaultviewer")
+    clsid = classes + "\\CLSID\\" + PROVIDER_CLSID
+    write(clsid, "", "Picer isolated image thumbnails", "defaultviewer")
+    write(clsid, "AppID", PROVIDER_CLSID, "defaultviewer")
+    write(clsid + "\\InprocServer32", "", "{app}\\shell\\PicerThumbnail.dll", "defaultviewer")
+    write(clsid + "\\InprocServer32", "ThreadingModel", "Apartment", "defaultviewer")
+    write(classes + "\\AppID\\" + PROVIDER_CLSID, "DllSurrogate", "", "defaultviewer")
+    for key in (progid, application):
+        write(key + "\\shellex\\" + THUMBNAIL_IID, "", PROVIDER_CLSID, "defaultviewer")
+        write(key, "Treatment", "0", "defaultviewer", "dword")
+        write(key, "TypeOverlay", "", "defaultviewer")
     for suffix in sorted(set(suffixes)):
         write(application + "\\SupportedTypes", suffix, "", "defaultviewer")
         write(capabilities + "\\FileAssociations", suffix, "Picer.Image", "defaultviewer")

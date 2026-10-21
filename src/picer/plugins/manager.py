@@ -51,7 +51,13 @@ class PluginManager(QObject):
     changed = Signal()
 
     def __init__(
-        self, host, root: Path, *, load_external: bool = True, load_examples: bool = True
+        self,
+        host,
+        root: Path,
+        *,
+        load_external: bool = True,
+        load_examples: bool = True,
+        defer_load: bool = False,
     ) -> None:
         super().__init__(host)
         self.host = host
@@ -73,6 +79,8 @@ class PluginManager(QObject):
         self.diagnostics: list[str] = [self.paths.notice] if self.paths.notice else []
         self._dispatching = False
         self._closed = False
+        self._startup_loaded = False
+        self._startup_options = (load_external, load_examples)
         self.jobs: dict[int, Worker] = {}
         self._next_job = 0
         self.thumbnail_requests = {}
@@ -130,6 +138,15 @@ class PluginManager(QObject):
                 permissions=("ui.commands", "image.read", "image.modify"),
             )
             self.records[builtin.id] = PluginRecord(builtin)
+        if not defer_load:
+            self.load_startup_plugins()
+
+    def load_startup_plugins(self):
+        """Activate saved plugins on the GUI thread, optionally after first paint."""
+        if self._startup_loaded or self._closed:
+            return
+        self._startup_loaded = True
+        load_external, load_examples = self._startup_options
         if load_external:
             self.discover()
             if load_examples:

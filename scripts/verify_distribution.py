@@ -48,6 +48,7 @@ def run_smoke(application: Path, working_directory: Path, images: Path) -> None:
 def verify(application: Path) -> None:
     for relative in (
         "Picer.exe",
+        "shell/PicerThumbnail.dll",
         "_internal",
         "assets/icons/picer.ico",
         "assets/icons/picer.png",
@@ -83,6 +84,9 @@ def verify(application: Path) -> None:
         unrelated = root / "unrelated-cwd"
         unrelated.mkdir()
         shutil.copytree(application, first)
+        from scripts.verify_thumbnail_provider import verify as verify_thumbnail_provider
+
+        verify_thumbnail_provider(first)
         images = root / "测试图片"
         images.mkdir()
         run_smoke(first, unrelated, images)
@@ -112,6 +116,7 @@ def verify(application: Path) -> None:
                     raise
                 time.sleep(0.1)
         run_smoke(moved, unrelated, images)
+        verify_thumbnail_provider(moved)
         preferences = json.loads((moved / "config" / "plugins.json").read_text(encoding="utf-8"))
         if preferences["settings"]["example.negative"]["opened_count"] != 8:
             raise RuntimeError("Plugin configuration did not survive relocation and restart")

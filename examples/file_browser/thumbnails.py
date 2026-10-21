@@ -34,11 +34,18 @@ def paint_item(painter, rect, state, accent):
 
 class PhotoModel(QFileSystemModel):
     folderClassified = Signal(str)
+    # Small display icons should not compete with the host's larger masters at
+    # the same 256-entry limit. Keep more visited items, bounded by pixel cost.
+    CACHE_BYTE_LIMIT = 64 * 1048576
+    CACHE_ENTRY_LIMIT = 4096
 
     def __init__(self, context, parent):
         super().__init__(parent)
         self.context = context
         self.cache = OrderedDict()
+        self.cache_sizes = {}
+        self.cache_paths = {}
+        self.cache_bytes = 0
         self.pending = {}
         self.tokens = {}
         self.busy = False
@@ -84,6 +91,28 @@ class PhotoModel(QFileSystemModel):
             return self.placeholder
         return super().data(index, role)
 
+    def forget(self, key):
+        self.cache.pop(key)
+        self.cache_bytes -= self.cache_sizes.pop(key)
+        self.cache_paths.pop(key[0], None)
+
+    def remember(self, key, image):
+        # Retain one version per file, so edits do not accumulate stale icons.
+        previous = self.cache_paths.get(key[0])
+        if previous is not None:
+            self.forget(previous)
+        pixmap = QPixmap.fromImage(image)
+        self.cache[key] = self.placeholder if pixmap.isNull() else QIcon(pixmap)
+        # Include bookkeeping/empty icons in the budget as well as pixel storage.
+        size = 512 + pixmap.width() * pixmap.height() * max(1, pixmap.depth() // 8)
+        self.cache_sizes[key] = size
+        self.cache_paths[key[0]] = key
+        self.cache_bytes += size
+        while self.cache and (
+            len(self.cache) > self.CACHE_ENTRY_LIMIT or self.cache_bytes > self.CACHE_BYTE_LIMIT
+        ):
+            self.forget(next(iter(self.cache)))
+
     def load_batch(self):
         if self.stopped or not self.pending:
             return
@@ -97,12 +126,7 @@ class PhotoModel(QFileSystemModel):
                 self.busy = bool(self.tokens)
                 if self.stopped:
                     return
-                self.cache[key] = (
-                    self.placeholder if image.isNull() else QIcon(QPixmap.fromImage(image))
-                )
-                self.cache.move_to_end(key)
-                while len(self.cache) > 256:
-                    self.cache.popitem(last=False)
+                self.remember(key, image)
                 index = self.index(key[0])
                 if index.isValid():
                     self.dataChanged.emit(index, index, [Qt.ItemDataRole.DecorationRole])
@@ -120,6 +144,10 @@ class PhotoModel(QFileSystemModel):
         for token in self.tokens.values():
             token.cancel()
         self.tokens.clear()
+        self.cache.clear()
+        self.cache_sizes.clear()
+        self.cache_paths.clear()
+        self.cache_bytes = 0
 
 
 class PhotoDelegate(QStyledItemDelegate):

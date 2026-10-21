@@ -279,7 +279,7 @@ class ImageLoader(QObject):
         worker.directory = directory
         return None
 
-    def open(self, path):
+    def open(self, path, *, asynchronous=False):
         path = Path(path).resolve()
         try:
             if path.suffix.lower() not in self.host.supported_suffixes:
@@ -311,7 +311,7 @@ class ImageLoader(QObject):
             )
             if self.rapid and not small:
                 full = None  # Avoid uploading a cached full-resolution image on every repeat.
-            if full is None and small:
+            if full is None and small and not asynchronous:
                 full = read_image(path, auto_orient=options)
         except Exception as error:
             self.host.last_error = tr("无法打开 {0}：{1}").format(path.name, error)
@@ -352,7 +352,7 @@ class ImageLoader(QObject):
                     if source
                     else read_image(
                         path,
-                        edge=edge,
+                        edge=0 if small else edge,
                         auto_orient=options,
                         token=token,
                         camera_preview=camera_preview,
@@ -380,12 +380,19 @@ class ImageLoader(QObject):
             self.folder_candidates.clear()
             self.store_thumbnail(path, image)
             if source is None:
-                self.remember(preview_key, image, generation=cache_generation)
+                self.remember(
+                    full_key if small else preview_key, image, generation=cache_generation
+                )
             self.host.present_image(
-                path, image, paths=self.directories.get(path.parent), preview=source is None
+                path,
+                image,
+                paths=self.directories.get(path.parent),
+                preview=source is None and not small,
             )
             if source:
                 self.host.animation.start(source)
+            elif small:
+                self.prefetch_timer.start()
             else:
                 self.settle()
 

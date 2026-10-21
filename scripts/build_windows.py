@@ -176,6 +176,9 @@ def main() -> None:
         check=True,
     )
     prepare_distribution(ROOT / "dist" / "Picer", assets, version=version)
+    from scripts.build_thumbnail_provider import build as build_thumbnail_provider
+
+    build_thumbnail_provider(ROOT / "dist" / "Picer")
     report = compact_distribution(ROOT / "dist" / "Picer")
     (assets.parent / "distribution-size.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

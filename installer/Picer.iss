@@ -131,6 +131,11 @@ end;
 procedure CleanupViewer;
 var Suffixes: TArrayOfString; I: Integer; Value: String;
 begin
+  if RegQueryStringValue(HKCU, RegistryPrefix + 'Software\Classes\CLSID\{7759159A-5A69-4BA7-9C87-2144E743C8DD}\InprocServer32', '', Value) and
+    (CompareText(Value, ExpandConstant('{app}\shell\PicerThumbnail.dll')) = 0) then begin
+    RegDeleteKeyIncludingSubkeys(HKCU, RegistryPrefix + 'Software\Classes\CLSID\{7759159A-5A69-4BA7-9C87-2144E743C8DD}');
+    RegDeleteKeyIncludingSubkeys(HKCU, RegistryPrefix + 'Software\Classes\AppID\{7759159A-5A69-4BA7-9C87-2144E743C8DD}');
+  end;
   if OwnCommand('Software\Classes\Picer.Image\shell\open\command') then begin
     Suffixes := FormatSuffixes;
     for I := 0 to GetArrayLength(Suffixes) - 1 do
