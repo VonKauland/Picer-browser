@@ -58,6 +58,7 @@ SCOPES = {
 EXAMPLES = {
     "file_browser": {
         "test_example_panels",
+        "test_browser_thumbnail_cache",
         "test_browser_commands",
         "test_image_drops",
         "test_psd_and_export",
