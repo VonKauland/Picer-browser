@@ -88,9 +88,21 @@ def verify(application):
             folder = Path(temporary)
             image = folder / "照片 with spaces.png"
             Image.new("RGB", (180, 120), (180, 70, 20)).save(image)
+            icon = folder / "WindowsApps/Fixture/Assets/inifile.png"
+            icon.parent.mkdir(parents=True)
+            Image.new("RGB", (180, 120), (180, 70, 20)).save(icon)
+            ini, script = folder / "modinfo.ini", folder / "check.ps1"
+            ini.write_text("name=ItemEditor\nscreenshot=Cover.png\n")
+            script.write_text("Write-Output 'diagnostic'\n")
             digest = hashlib.sha256(image.read_bytes()).digest()
-            for source, success in ((image, True), (folder / "broken.png", False)):
-                if not success:
+            for source, success, decorated in (
+                (image, True, True),
+                (icon, True, False),
+                (folder / "broken.png", False, False),
+                (ini, False, False),
+                (script, False, False),
+            ):
+                if source.name == "broken.png":
                     source.write_bytes(b"not an image")
                 initializer, provider, stream = (ctypes.c_void_p() for _ in range(3))
                 bitmap = ctypes.c_void_p()
@@ -154,6 +166,11 @@ def verify(application):
                         pixels = ctypes.string_at(data.pixels, data.stride * data.height)
                         center = data.stride * (data.height // 2) + (data.width // 2) * 4
                         assert pixels[center : center + 4] == bytes((20, 70, 180, 255))
+                        if decorated:
+                            strap = data.stride * 5 + 10 * 4
+                            assert pixels[strap : strap + 4] != bytes((20, 70, 180, 255))
+                        else:
+                            assert pixels == bytes((20, 70, 180, 255)) * (128 * 85)
                     else:
                         assert result < 0 and not bitmap.value
                 finally:

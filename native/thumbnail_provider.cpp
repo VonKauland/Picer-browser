@@ -43,10 +43,11 @@ struct Handle {
 };
 
 struct Workspace {
-    std::wstring directory, source, output;
+    std::wstring directory, source, output, origin;
     ~Workspace() {
         if (!source.empty()) DeleteFileW(source.c_str());
         if (!output.empty()) DeleteFileW(output.c_str());
+        if (!origin.empty()) DeleteFileW(origin.c_str());
         if (!directory.empty()) {
             DeleteFileW((directory + L"\\thumbnail.tmp").c_str());
             RemoveDirectoryW(directory.c_str());
@@ -77,6 +78,18 @@ static HRESULT MakeWorkspace(Workspace& work, IStream* stream) {
         if (stat.pwcsName) {
             std::wstring name(stat.pwcsName);
             CoTaskMemFree(stat.pwcsName);
+            // Preserve provenance: an icon resource can itself be a PNG. Its
+            // extension alone must not opt that resource into photo decoration.
+            if (!name.empty() && name.size() < 32768) {
+                work.origin = work.directory + L"\\origin.name";
+                Handle origin(CreateFileW(work.origin.c_str(), GENERIC_WRITE, 0, nullptr,
+                                          CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY, nullptr));
+                DWORD written = 0;
+                DWORD bytes = static_cast<DWORD>(name.size() * sizeof(wchar_t));
+                if (origin.value == INVALID_HANDLE_VALUE ||
+                    !WriteFile(origin.value, name.data(), bytes, &written, nullptr) ||
+                    written != bytes) return E_FAIL;
+            }
             size_t dot = name.find_last_of(L'.');
             if (dot != std::wstring::npos && name.size() - dot <= 13) {
                 std::wstring candidate = name.substr(dot);

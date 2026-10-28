@@ -15,6 +15,7 @@ from picer.shell_thumbnail import (
     PROVIDER_CLSID,
     THUMBNAIL_IID,
     corner_polygon,
+    decoration_allowed,
     render_thumbnail,
     write_bitmap,
 )
@@ -88,6 +89,7 @@ def test_packaged_entry_dispatches_without_viewer_state_and_rejects_invalid_size
     work = tmp_path / "含空格 thumbnail"
     work.mkdir()
     source = work / "source.jpg"
+    (work / "origin.name").write_text(r"C:\Photos\oriented.jpg", encoding="utf-16-le")
     image = Image.new("RGB", (120, 80), "red")
     exif = Image.Exif()
     exif[274] = 6
@@ -98,10 +100,90 @@ def test_packaged_entry_dispatches_without_viewer_state_and_rejects_invalid_size
     assert result.returncode == 0, result.stderr
     with Image.open(work / "thumbnail.bmp") as output:
         assert output.size == (85, 128)  # EXIF orientation, complete aspect ratio.
+        red, green, blue = output.convert("RGB").getpixel((10, 5))
+        assert red == green == blue
     assert source.read_bytes() == before
     assert set(p.name for p in tmp_path.iterdir()) == {work.name}
-    assert set(p.name for p in work.iterdir()) == {"source.jpg", "thumbnail.bmp"}
+    assert set(p.name for p in work.iterdir()) == {"source.jpg", "origin.name", "thumbnail.bmp"}
     assert subprocess.run(command + ["4096"], timeout=20).returncode == 2
+
+
+@pytest.mark.parametrize(
+    ("name", "allowed"),
+    [
+        (r"C:\Photos\photo.png", True),
+        (r"\\?\C:\Photos\photo.png", True),
+        (r"\\?\UNC\nas\Photos\photo.png", True),
+        (r"\\?\C:\Windows\System32\icon.png", False),
+        (r"\\nas\Photos\photo.PNG", True),
+        (r"C:\Photos\photo.jpg", False),
+        ("inifile.png", False),
+        ("", False),
+        ("file:///C:/Photos/photo.png", False),
+        ("@{Microsoft.Notepad?ms-resource://Notepad/Files/Assets/inifile.png}", False),
+        (r"C:\Program Files\WindowsApps\Microsoft.Notepad\Assets\inifile.png", False),
+        (r"D:\WindowsApps\Notepad\Assets\inifile.png", False),
+        (r"C:\Windows\SystemResources\icon.png", False),
+        (r"C:\Program Files\SomeApplication\icon.png", False),
+        (r"D:\Profile\Local\Packages\Notepad\Assets\inifile.png", False),
+        ("C:\\Photos\\photo.png\x00", False),
+    ],
+)
+def test_only_named_document_previews_receive_straps(tmp_path, monkeypatch, name, allowed):
+    monkeypatch.setenv("LOCALAPPDATA", r"D:\Profile\Local")
+    monkeypatch.setenv("SystemRoot", r"C:\Windows")
+    monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+    monkeypatch.setenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
+    monkeypatch.setenv("ProgramW6432", r"C:\Program Files")
+    (tmp_path / "origin.name").write_text(name, encoding="utf-16-le")
+    assert decoration_allowed(tmp_path, ".png") is allowed
+    assert not decoration_allowed(tmp_path, ".img")
+
+
+@pytest.mark.parametrize("metadata", [None, b"\x00", b"x" * 65536])
+def test_missing_or_invalid_origin_falls_back_to_unmodified_preview(tmp_path, metadata):
+    if metadata is not None:
+        (tmp_path / "origin.name").write_bytes(metadata)
+    assert not decoration_allowed(tmp_path, ".png")
+
+
+@pytest.mark.parametrize(
+    ("filename", "origin"),
+    [
+        ("source.png", r"C:\Program Files\WindowsApps\Notepad\Assets\inifile.png"),
+        ("source.png", None),
+        ("source.img", None),
+    ],
+)
+def test_icon_resource_or_anonymous_stream_keeps_exact_original_pixels(tmp_path, filename, origin):
+    source = tmp_path / filename
+    Image.new("RGBA", (90, 60), (40, 80, 120, 255)).save(source, format="PNG")
+    if origin is not None:
+        (tmp_path / "origin.name").write_text(origin, encoding="utf-16-le")
+    entry = Path(__file__).resolve().parents[1] / "scripts/entrypoint.py"
+    result = subprocess.run(
+        [sys.executable, str(entry), "--shell-thumbnail", str(tmp_path), "128"],
+        timeout=20,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    with Image.open(tmp_path / "thumbnail.bmp") as image:
+        assert image.size == (90, 60)
+        assert set(image.convert("RGBA").getdata()) == {(40, 80, 120, 255)}
+
+
+@pytest.mark.parametrize("extension", ["ini", "ps1"])
+def test_configuration_and_script_inputs_never_become_thumbnails(tmp_path, extension):
+    (tmp_path / ("source." + extension)).write_text("name=Example\nscreenshot=Cover.png\n")
+    Image.new("RGB", (90, 60), "blue").save(tmp_path / "Cover.png")
+    entry = Path(__file__).resolve().parents[1] / "scripts/entrypoint.py"
+    result = subprocess.run(
+        [sys.executable, str(entry), "--shell-thumbnail", str(tmp_path), "128"],
+        timeout=20,
+        capture_output=True,
+    )
+    assert result.returncode == 2
+    assert not (tmp_path / "thumbnail.bmp").exists()
 
 
 def test_registration_does_not_override_other_viewers_thumbnail_handlers():

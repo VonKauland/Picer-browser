@@ -3,7 +3,7 @@
 import argparse
 import os
 import struct
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPolygonF
@@ -163,6 +163,47 @@ def decode_stream_image(source, edge):
     return read_image(source, edge=edge), detected or "IMG"
 
 
+def decoration_allowed(directory, suffix):
+    """A PNG used as an application's icon is not a document thumbnail.
+
+    Stream bytes alone cannot tell these uses apart. Anonymous streams still
+    get their complete preview, but only named documents get our corner straps.
+    """
+    import ntpath
+
+    try:
+        origin = directory / "origin.name"
+        if not 0 < origin.stat().st_size < 65536:
+            return False
+        name = origin.read_text(encoding="utf-16-le")
+    except (OSError, UnicodeError):
+        return False
+    if "\x00" in name or suffix == ".img":
+        return False
+    if name.casefold().startswith("\\\\?\\unc\\"):
+        name = "\\\\" + name[8:]
+    elif name.startswith("\\\\?\\"):
+        name = name[4:]
+    path = PureWindowsPath(ntpath.normpath(name))
+    if not path.is_absolute() or path.suffix.lower() != suffix:
+        return False
+    # AppX file-type icons are PNG assets (e.g. Notepad/Assets/inifile.png).
+    # Windows resolves them through the selected PNG thumbnail provider too.
+    parts = {part.casefold() for part in path.parts}
+    if parts.intersection({"windowsapps", "systemresources"}):
+        return False
+    roots = (
+        os.environ.get("SystemRoot", r"C:\Windows"),
+        os.environ.get("ProgramFiles", r"C:\Program Files"),
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        os.environ.get("ProgramW6432", r"C:\Program Files"),
+    )
+    if any(path.is_relative_to(PureWindowsPath(root)) for root in roots):
+        return False
+    local = os.environ.get("LOCALAPPDATA")
+    return not (local and path.is_relative_to(PureWindowsPath(local) / "Packages"))
+
+
 def main(argv=None):
     # Called before importing app/window; never load plugins or touch application data.
     parser = argparse.ArgumentParser()
@@ -187,7 +228,11 @@ def main(argv=None):
         return 2
     try:
         image, suffix = decode_stream_image(source, args.edge)
-        result = render_thumbnail(image, suffix, args.edge)
+        result = (
+            render_thumbnail(image, suffix, args.edge)
+            if decoration_allowed(directory, source.suffix.lower())
+            else image
+        )
         write_bitmap(result, directory / "thumbnail.bmp")
         return 0
     except Exception:
