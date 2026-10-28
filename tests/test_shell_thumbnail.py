@@ -89,7 +89,6 @@ def test_packaged_entry_dispatches_without_viewer_state_and_rejects_invalid_size
     work = tmp_path / "含空格 thumbnail"
     work.mkdir()
     source = work / "source.jpg"
-    (work / "origin.name").write_text(r"C:\Photos\oriented.jpg", encoding="utf-16-le")
     image = Image.new("RGB", (120, 80), "red")
     exif = Image.Exif()
     exif[274] = 6
@@ -104,64 +103,38 @@ def test_packaged_entry_dispatches_without_viewer_state_and_rejects_invalid_size
         assert red == green == blue
     assert source.read_bytes() == before
     assert set(p.name for p in tmp_path.iterdir()) == {work.name}
-    assert set(p.name for p in work.iterdir()) == {"source.jpg", "origin.name", "thumbnail.bmp"}
+    assert set(p.name for p in work.iterdir()) == {"source.jpg", "thumbnail.bmp"}
     assert subprocess.run(command + ["4096"], timeout=20).returncode == 2
 
 
-@pytest.mark.parametrize(
-    ("name", "allowed"),
-    [
-        (r"C:\Photos\photo.png", True),
-        (r"\\?\C:\Photos\photo.png", True),
-        (r"\\?\UNC\nas\Photos\photo.png", True),
-        (r"\\?\C:\Windows\System32\icon.png", False),
-        (r"\\nas\Photos\photo.PNG", True),
-        (r"C:\Photos\photo.jpg", False),
-        ("inifile.png", False),
-        ("", False),
-        ("file:///C:/Photos/photo.png", False),
-        ("@{Microsoft.Notepad?ms-resource://Notepad/Files/Assets/inifile.png}", False),
-        (r"C:\Program Files\WindowsApps\Microsoft.Notepad\Assets\inifile.png", False),
-        (r"D:\WindowsApps\Notepad\Assets\inifile.png", False),
-        (r"C:\Windows\SystemResources\icon.png", False),
-        (r"C:\Program Files\SomeApplication\icon.png", False),
-        (r"D:\Profile\Local\Packages\Notepad\Assets\inifile.png", False),
-        ("C:\\Photos\\photo.png\x00", False),
-    ],
-)
-def test_only_named_document_previews_receive_straps(tmp_path, monkeypatch, name, allowed):
-    monkeypatch.setenv("LOCALAPPDATA", r"D:\Profile\Local")
-    monkeypatch.setenv("SystemRoot", r"C:\Windows")
-    monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
-    monkeypatch.setenv("ProgramFiles(x86)", r"C:\Program Files (x86)")
-    monkeypatch.setenv("ProgramW6432", r"C:\Program Files")
-    (tmp_path / "origin.name").write_text(name, encoding="utf-16-le")
-    assert decoration_allowed(tmp_path, ".png") is allowed
-    assert not decoration_allowed(tmp_path, ".img")
+@pytest.mark.parametrize("label", ["png", ".PNG", "ico", "cur", "icns", "svg", "svgz"])
+def test_icon_resource_formats_are_never_decorated(tmp_path, label):
+    source = tmp_path / "source.img"
+    source.write_bytes(b"resource")
+    assert not decoration_allowed(source, label)
 
 
 @pytest.mark.parametrize(
-    "metadata", [None, b"\x00", b"x" * 65536], ids=["missing", "invalid-utf16", "oversized"]
+    "signature",
+    [b"\x89PNG\r\n\x1a\n", b"\x00\x00\x01\x00", b"\x00\x00\x02\x00", b"icns"],
 )
-def test_missing_or_invalid_origin_falls_back_to_unmodified_preview(tmp_path, metadata):
-    if metadata is not None:
-        (tmp_path / "origin.name").write_bytes(metadata)
-    assert not decoration_allowed(tmp_path, ".png")
+def test_icon_payload_is_not_decorated_even_with_wrong_extension(tmp_path, signature):
+    source = tmp_path / "source.jpg"
+    source.write_bytes(signature)
+    assert not decoration_allowed(source, ".jpg")
 
 
-@pytest.mark.parametrize(
-    ("filename", "origin"),
-    [
-        ("source.png", r"C:\Program Files\WindowsApps\Notepad\Assets\inifile.png"),
-        ("source.png", None),
-        ("source.img", None),
-    ],
-)
-def test_icon_resource_or_anonymous_stream_keeps_exact_original_pixels(tmp_path, filename, origin):
+@pytest.mark.parametrize("label", ["jpeg", ".jpg", "RAW", ".dng", "PSD", ".mp4"])
+def test_photo_and_raw_formats_retain_straps_without_a_source_filename(tmp_path, label):
+    source = tmp_path / "source.img"
+    source.write_bytes(b"photo content")
+    assert decoration_allowed(source, label)
+
+
+@pytest.mark.parametrize("filename", ["source.png", "source.img", "source.jpg"])
+def test_png_icon_resource_or_anonymous_stream_keeps_exact_original_pixels(tmp_path, filename):
     source = tmp_path / filename
     Image.new("RGBA", (90, 60), (40, 80, 120, 255)).save(source, format="PNG")
-    if origin is not None:
-        (tmp_path / "origin.name").write_text(origin, encoding="utf-16-le")
     entry = Path(__file__).resolve().parents[1] / "scripts/entrypoint.py"
     result = subprocess.run(
         [sys.executable, str(entry), "--shell-thumbnail", str(tmp_path), "128"],

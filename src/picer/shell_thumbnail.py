@@ -3,7 +3,7 @@
 import argparse
 import os
 import struct
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QImage, QPainter, QPolygonF
@@ -163,45 +163,25 @@ def decode_stream_image(source, edge):
     return read_image(source, edge=edge), detected or "IMG"
 
 
-def decoration_allowed(directory, suffix):
-    """A PNG used as an application's icon is not a document thumbnail.
+def decoration_allowed(source, label):
+    """Preserve formats used by Windows for indirect DefaultIcon resources.
 
-    Stream bytes alone cannot tell these uses apart. Anonymous streams still
-    get their complete preview, but only named documents get our corner straps.
+    IStream often has no source path or usage context, even for ordinary photos.
+    A PNG photo and a PNG application icon therefore cannot be distinguished
+    reliably. Keep PNG/icon formats unmodified, while photo/RAW formats retain
+    the corner design. Preview decoding and file associations stay unchanged.
     """
-    import ntpath
-
+    if label.lower().lstrip(".") in {"png", "ico", "cur", "icns", "svg", "svgz"}:
+        return False
     try:
-        origin = directory / "origin.name"
-        if not 0 < origin.stat().st_size < 65536:
-            return False
-        name = origin.read_text(encoding="utf-16-le")
-    except (OSError, UnicodeError):
+        with source.open("rb") as handle:
+            signature = handle.read(8)
+    except OSError:
         return False
-    if "\x00" in name or suffix == ".img":
-        return False
-    if name.casefold().startswith("\\\\?\\unc\\"):
-        name = "\\\\" + name[8:]
-    elif name.startswith("\\\\?\\"):
-        name = name[4:]
-    path = PureWindowsPath(ntpath.normpath(name))
-    if not path.is_absolute() or path.suffix.lower() != suffix:
-        return False
-    # AppX file-type icons are PNG assets (e.g. Notepad/Assets/inifile.png).
-    # Windows resolves them through the selected PNG thumbnail provider too.
-    parts = {part.casefold() for part in path.parts}
-    if parts.intersection({"windowsapps", "systemresources"}):
-        return False
-    roots = (
-        os.environ.get("SystemRoot", r"C:\Windows"),
-        os.environ.get("ProgramFiles", r"C:\Program Files"),
-        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
-        os.environ.get("ProgramW6432", r"C:\Program Files"),
+    # A named stream can have an extension that differs from its actual bytes.
+    return not signature.startswith(
+        (b"\x89PNG\r\n\x1a\n", b"\x00\x00\x01\x00", b"\x00\x00\x02\x00", b"icns")
     )
-    if any(path.is_relative_to(PureWindowsPath(root)) for root in roots):
-        return False
-    local = os.environ.get("LOCALAPPDATA")
-    return not (local and path.is_relative_to(PureWindowsPath(local) / "Packages"))
 
 
 def main(argv=None):
@@ -230,7 +210,7 @@ def main(argv=None):
         image, suffix = decode_stream_image(source, args.edge)
         result = (
             render_thumbnail(image, suffix, args.edge)
-            if decoration_allowed(directory, source.suffix.lower())
+            if decoration_allowed(source, suffix)
             else image
         )
         write_bitmap(result, directory / "thumbnail.bmp")
