@@ -140,7 +140,9 @@ def test_only_named_document_previews_receive_straps(tmp_path, monkeypatch, name
     assert not decoration_allowed(tmp_path, ".img")
 
 
-@pytest.mark.parametrize("metadata", [None, b"\x00", b"x" * 65536])
+@pytest.mark.parametrize(
+    "metadata", [None, b"\x00", b"x" * 65536], ids=["missing", "invalid-utf16", "oversized"]
+)
 def test_missing_or_invalid_origin_falls_back_to_unmodified_preview(tmp_path, metadata):
     if metadata is not None:
         (tmp_path / "origin.name").write_bytes(metadata)
