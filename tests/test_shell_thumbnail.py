@@ -15,6 +15,7 @@ from picer.shell_thumbnail import (
     PROVIDER_CLSID,
     THUMBNAIL_IID,
     corner_polygon,
+    decoration_allowed,
     render_thumbnail,
     write_bitmap,
 )
@@ -98,10 +99,66 @@ def test_packaged_entry_dispatches_without_viewer_state_and_rejects_invalid_size
     assert result.returncode == 0, result.stderr
     with Image.open(work / "thumbnail.bmp") as output:
         assert output.size == (85, 128)  # EXIF orientation, complete aspect ratio.
+        red, green, blue = output.convert("RGB").getpixel((10, 5))
+        assert red == green == blue
     assert source.read_bytes() == before
     assert set(p.name for p in tmp_path.iterdir()) == {work.name}
     assert set(p.name for p in work.iterdir()) == {"source.jpg", "thumbnail.bmp"}
     assert subprocess.run(command + ["4096"], timeout=20).returncode == 2
+
+
+@pytest.mark.parametrize("label", ["png", ".PNG", "ico", "cur", "icns", "svg", "svgz"])
+def test_icon_resource_formats_are_never_decorated(tmp_path, label):
+    source = tmp_path / "source.img"
+    source.write_bytes(b"resource")
+    assert not decoration_allowed(source, label)
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [b"\x89PNG\r\n\x1a\n", b"\x00\x00\x01\x00", b"\x00\x00\x02\x00", b"icns"],
+)
+def test_icon_payload_is_not_decorated_even_with_wrong_extension(tmp_path, signature):
+    source = tmp_path / "source.jpg"
+    source.write_bytes(signature)
+    assert not decoration_allowed(source, ".jpg")
+
+
+@pytest.mark.parametrize("label", ["jpeg", ".jpg", "RAW", ".dng", "PSD", ".mp4"])
+def test_photo_and_raw_formats_retain_straps_without_a_source_filename(tmp_path, label):
+    source = tmp_path / "source.img"
+    source.write_bytes(b"photo content")
+    assert decoration_allowed(source, label)
+
+
+@pytest.mark.parametrize("filename", ["source.png", "source.img", "source.jpg"])
+def test_png_icon_resource_or_anonymous_stream_keeps_exact_original_pixels(tmp_path, filename):
+    source = tmp_path / filename
+    Image.new("RGBA", (90, 60), (40, 80, 120, 255)).save(source, format="PNG")
+    entry = Path(__file__).resolve().parents[1] / "scripts/entrypoint.py"
+    result = subprocess.run(
+        [sys.executable, str(entry), "--shell-thumbnail", str(tmp_path), "128"],
+        timeout=20,
+        capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    with Image.open(tmp_path / "thumbnail.bmp") as image:
+        assert image.size == (90, 60)
+        assert set(image.convert("RGBA").getdata()) == {(40, 80, 120, 255)}
+
+
+@pytest.mark.parametrize("extension", ["ini", "ps1"])
+def test_configuration_and_script_inputs_never_become_thumbnails(tmp_path, extension):
+    (tmp_path / ("source." + extension)).write_text("name=Example\nscreenshot=Cover.png\n")
+    Image.new("RGB", (90, 60), "blue").save(tmp_path / "Cover.png")
+    entry = Path(__file__).resolve().parents[1] / "scripts/entrypoint.py"
+    result = subprocess.run(
+        [sys.executable, str(entry), "--shell-thumbnail", str(tmp_path), "128"],
+        timeout=20,
+        capture_output=True,
+    )
+    assert result.returncode == 2
+    assert not (tmp_path / "thumbnail.bmp").exists()
 
 
 def test_registration_does_not_override_other_viewers_thumbnail_handlers():
