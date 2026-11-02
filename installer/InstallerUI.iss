@@ -9,39 +9,40 @@ const
   SkinMuted = $AAAAAA;
   SkinValidateMessage = $8051;
 
+// Inno Setup 6 runs a 32-bit setup host, including x64 application installs.
 type
   TSkinPoint = record X, Y: Integer; end;
   TSkinRect = record Left, Top, Right, Bottom: Integer; end;
 
-function SkinSubclass(Wnd: HWND; Callback: NativeInt; Id, Data: NativeUInt): Boolean;
+function SkinSubclass(Wnd: HWND; Callback: LongInt; Id, Data: LongWord): Boolean;
   external 'SetWindowSubclass@comctl32.dll stdcall';
-function SkinUnsubclass(Wnd: HWND; Callback: NativeInt; Id: NativeUInt): Boolean;
+function SkinUnsubclass(Wnd: HWND; Callback: LongInt; Id: LongWord): Boolean;
   external 'RemoveWindowSubclass@comctl32.dll stdcall';
-function SkinDefault(Wnd: HWND; Msg: Cardinal; WParam: NativeUInt; LParam: NativeInt): NativeInt;
+function SkinDefault(Wnd: HWND; Msg: Cardinal; WParam: LongWord; LParam: LongInt): LongInt;
   external 'DefSubclassProc@comctl32.dll stdcall';
-function SkinGetDC(Wnd: HWND): NativeUInt; external 'GetDC@user32.dll stdcall';
-function SkinReleaseDC(Wnd: HWND; DC: NativeUInt): Integer; external 'ReleaseDC@user32.dll stdcall';
+function SkinGetDC(Wnd: HWND): LongWord; external 'GetDC@user32.dll stdcall';
+function SkinReleaseDC(Wnd: HWND; DC: LongWord): Integer; external 'ReleaseDC@user32.dll stdcall';
 function SkinClientRect(Wnd: HWND; var R: TSkinRect): Boolean; external 'GetClientRect@user32.dll stdcall';
 function SkinWindowRect(Wnd: HWND; var R: TSkinRect): Boolean; external 'GetWindowRect@user32.dll stdcall';
 function SkinCursor(var P: TSkinPoint): Boolean; external 'GetCursorPos@user32.dll stdcall';
 function SkinToClient(Wnd: HWND; var P: TSkinPoint): Boolean; external 'ScreenToClient@user32.dll stdcall';
-function SkinValidate(Wnd: HWND; R: NativeUInt): Boolean; external 'ValidateRect@user32.dll stdcall';
-function SkinInvalidate(Wnd: HWND; R: NativeUInt; Erase: Boolean): Boolean;
+function SkinValidate(Wnd: HWND; R: LongWord): Boolean; external 'ValidateRect@user32.dll stdcall';
+function SkinInvalidate(Wnd: HWND; R: LongWord; Erase: Boolean): Boolean;
   external 'InvalidateRect@user32.dll stdcall';
 function SkinIsWindow(Wnd: HWND): Boolean; external 'IsWindow@user32.dll stdcall';
 function SkinIsEnabled(Wnd: HWND): Boolean; external 'IsWindowEnabled@user32.dll stdcall';
-function SkinRoundRegion(L, T, R, B, X, Y: Integer): NativeUInt;
+function SkinRoundRegion(L, T, R, B, X, Y: Integer): LongWord;
   external 'CreateRoundRectRgn@gdi32.dll stdcall';
-function SkinWindowRegion(Wnd: HWND; Region: NativeUInt; Redraw: Boolean): Integer;
+function SkinWindowRegion(Wnd: HWND; Region: LongWord; Redraw: Boolean): Integer;
   external 'SetWindowRgn@user32.dll stdcall';
-function SkinDeleteObject(Obj: NativeUInt): Boolean; external 'DeleteObject@gdi32.dll stdcall';
-function SkinTimer(Wnd: HWND; Id: NativeUInt; Interval: Cardinal; Callback: NativeInt): NativeUInt;
+function SkinDeleteObject(Obj: LongWord): Boolean; external 'DeleteObject@gdi32.dll stdcall';
+function SkinTimer(Wnd: HWND; Id: LongWord; Interval: Cardinal; Callback: LongInt): LongWord;
   external 'SetTimer@user32.dll stdcall';
-function SkinKillTimer(Wnd: HWND; Id: NativeUInt): Boolean; external 'KillTimer@user32.dll stdcall';
+function SkinKillTimer(Wnd: HWND; Id: LongWord): Boolean; external 'KillTimer@user32.dll stdcall';
 
 var
   SkinActive, SkinChoicesReady, SkinInstallPending, SkinPathValidated: Boolean;
-  SkinCallback: NativeInt;
+  SkinCallback: LongInt;
   SkinControls: array of TWinControl;
   SkinHandles: array of HWND;
   SkinKinds, SkinColors: array of Integer;
@@ -69,7 +70,7 @@ begin
   Result.Color := Back;
 end;
 
-procedure SkinPaint(Index: Integer; DC: NativeUInt);
+procedure SkinPaint(Index: Integer; DC: LongWord);
 var C: TCanvas; R: TSkinRect; Caption: String;
     W, H, BoxSize, Y, X, Ink, Fill, Edge: Integer; Hover, Checked: Boolean;
 begin
@@ -135,7 +136,7 @@ begin
 end;
 
 procedure SkinRoundWindow;
-var Region: NativeUInt;
+var Region: LongWord;
 begin
   if (SkinRegionWidth = WizardForm.Width) and (SkinRegionHeight = WizardForm.Height) then Exit;
   SkinRegionWidth := WizardForm.Width; SkinRegionHeight := WizardForm.Height;
@@ -143,9 +144,9 @@ begin
   if SkinWindowRegion(WizardForm.Handle, Region, True) = 0 then SkinDeleteObject(Region);
 end;
 
-function SkinWindowProc(Wnd: HWND; Msg: Cardinal; WParam: NativeUInt;
-  LParam: NativeInt; Id, Data: NativeUInt): NativeInt;
-var DC: NativeUInt; P: TSkinPoint; R: TSkinRect; I, Hover: Integer;
+function SkinWindowProc(Wnd: HWND; Msg: Cardinal; WParam: LongWord;
+  LParam: LongInt; Id, Data: LongWord): LongInt;
+var DC: LongWord; P: TSkinPoint; R: TSkinRect; I, Hover: Integer;
 begin
   if Msg = $0082 then begin
     SkinUnsubclass(Wnd, SkinCallback, 1);
