@@ -165,8 +165,6 @@ def test_artwork_is_valid_rgb_and_preserves_transparent_brand(tmp_path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Inno Setup compiler requires Windows")
-def test_real_installer_script_compiles_before_packaging():
-    # Compile-only fixture: no installation or system registration is performed.
-    subprocess.run(
-        [sys.executable, "-m", "scripts.build_installer", "--compiler-preflight"], check=True
-    )
+def test_real_installer_compiles_and_interacts_before_packaging():
+    # Non-executable fixture installed only into a temporary folder and isolated HKCU.
+    subprocess.run([sys.executable, "-m", "scripts.build_installer", "--ui-preflight"], check=True)

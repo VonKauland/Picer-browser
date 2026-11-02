@@ -7,7 +7,7 @@ import time
 from ctypes import wintypes as W
 
 
-def verify_ui(setup, root, service):
+def verify_ui(setup, root, service, *, application=None):
     """Native input, edited path, progress and finish; never touch live associations."""
     from PIL import Image
 
@@ -144,6 +144,12 @@ def verify_ui(setup, root, service):
     try:
         hwnd = wait_for(lambda: find(None, "揽映 Picer 安装程序"), "main window")
         wait_for(lambda: find(hwnd, "安装") and find(hwnd, "创建桌面快捷方式"), "setup controls")
+        snapshot(hwnd, "setup")
+        print(
+            "Installer initial controls:",
+            [(caption(h, class_name=True), caption(h), h) for h in windows(hwnd)],
+            flush=True,
+        )
         # Let the native directory -> task initialization complete before interacting.
         time.sleep(0.3)
         for text in ("创建桌面快捷方式", "加入 Windows 右键菜单", "设为默认图片浏览器"):
@@ -187,7 +193,7 @@ def verify_ui(setup, root, service):
             raise RuntimeError("Interactive context-menu checkbox was ignored")
         if service.read(r"Software\Classes\Picer.Image\shell\open\command", "") != command:
             raise RuntimeError("Interactive default-viewer checkbox was ignored")
-        verify_payload(ROOT / "dist/Picer", target)
+        verify_payload(application or ROOT / "dist/Picer", target)
         uninstall(target, root / "ui-uninstall.log")
         (output / "result.json").write_text(
             json.dumps(
@@ -205,6 +211,24 @@ def verify_ui(setup, root, service):
             flush=True,
         )
     except BaseException:
+        print(
+            "Installer launcher result:",
+            process.poll(),
+            "top windows:",
+            [(h, caption(h, class_name=True), caption(h)) for h in windows()],
+            flush=True,
+        )
+        preview = output / "setup.png"
+        if preview.exists():
+            import base64
+            from io import BytesIO
+
+            encoded = BytesIO()
+            Image.open(preview).resize((800, 512)).save(encoded, format="JPEG", quality=65)
+            print(
+                "INSTALLER_UI_PREVIEW_BASE64:" + base64.b64encode(encoded.getvalue()).decode(),
+                flush=True,
+            )
         if hwnd:
             print(
                 "Installer visible controls:",
