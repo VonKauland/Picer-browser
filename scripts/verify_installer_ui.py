@@ -177,9 +177,10 @@ def verify_ui(setup, root, service, *, application=None):
         click(find(hwnd, "安装"))
         wait_for(lambda: find(hwnd, "正在安装揽映"), "actual installation started")
         snapshot(hwnd, "installing")
-        wait_for(lambda: find(hwnd, "安装完成"), "finished page")
-        if not find(hwnd, str(target)):
-            raise RuntimeError("Completed path does not match edited path")
+        wait_for(
+            lambda: find(hwnd, "安装完成") and find(hwnd, str(target)) and find(hwnd, "完成"),
+            "finished page and edited path",
+        )
         if user.SendMessageW(find(hwnd, "立即启动揽映"), 0xF0, 0, 0) != 0:
             raise RuntimeError("Launch checkbox changed between setup and finish")
         if not find(hwnd, "打开安装目录"):

@@ -36,6 +36,9 @@ function SkinRoundRegion(L, T, R, B, X, Y: Integer): LongWord;
 function SkinWindowRegion(Wnd: HWND; Region: LongWord; Redraw: Boolean): Integer;
   external 'SetWindowRgn@user32.dll stdcall';
 function SkinDeleteObject(Obj: LongWord): Boolean; external 'DeleteObject@gdi32.dll stdcall';
+function SkinBlit(Dest: LongWord; X, Y, W, H: Integer; Source: LongWord;
+  SX, SY: Integer; Operation: LongWord): Boolean;
+  external 'BitBlt@gdi32.dll stdcall';
 function SkinTimer(Wnd: HWND; Id: LongWord; Interval: Cardinal; Callback: LongInt): LongWord;
   external 'SetTimer@user32.dll stdcall';
 function SkinKillTimer(Wnd: HWND; Id: LongWord): Boolean; external 'KillTimer@user32.dll stdcall';
@@ -73,15 +76,16 @@ begin
 end;
 
 procedure SkinPaint(Index: Integer; DC: LongWord);
-var C: TCanvas; R: TSkinRect; Caption: String;
+var C: TCanvas; Surface: TBitmap; R: TSkinRect; Caption: String;
     W, H, BoxSize, Y, X, Ink, Fill, Edge: Integer; Hover, Checked: Boolean;
 begin
   if (Index < 0) or (Index >= GetArrayLength(SkinHandles)) then Exit;
   SkinClientRect(SkinHandles[Index], R);
   W := R.Right; H := R.Bottom;
-  C := TCanvas.Create;
+  Surface := TBitmap.Create;
   try
-    C.Handle := DC;
+    Surface.Width := W; Surface.Height := H;
+    C := Surface.Canvas;
     C.Brush.Color := SkinColors[Index];
     C.Pen.Style := psClear;
     C.Rectangle(0, 0, W, H);
@@ -133,9 +137,9 @@ begin
       end else
         C.TextOut((W - C.TextWidth(Caption)) div 2, (H - C.TextHeight(Caption)) div 2, Caption);
     end;
+    SkinBlit(DC, 0, 0, W, H, C.Handle, 0, 0, $00CC0020);
   finally
-    C.Handle := 0;
-    C.Free;
+    Surface.Free;
   end;
 end;
 
@@ -291,6 +295,7 @@ begin
     SkinLastState := State;
   end;
   SkinHead.Left := ScaleX(330); SkinSubtitle.Left := ScaleX(330);
+  SkinHead.Width := ScaleX(610); SkinSubtitle.Width := ScaleX(610);
   if Setup then begin
     SkinHead.Caption := '安装揽映'; SkinSubtitle.Caption := '选择安装位置与附加选项';
     WizardForm.NextButton.Caption := '安装';
@@ -301,6 +306,7 @@ begin
   end else begin
     SkinHead.Caption := '安装完成'; SkinSubtitle.Caption := '揽映已成功安装到此电脑。';
     SkinHead.Left := ScaleX(394); SkinSubtitle.Left := ScaleX(394);
+    SkinHead.Width := ScaleX(550); SkinSubtitle.Width := ScaleX(550);
     WizardForm.NextButton.Caption := '完成';
     SkinCompletePath.Caption := WizardDirValue;
     SkinCompletePath.Hint := WizardDirValue; SkinCompletePath.ShowHint := True;
@@ -352,7 +358,7 @@ begin
   Hotspot.Transparent := True; Hotspot.Caption := ''; Hotspot.Cursor := crHandPoint;
   Hotspot.Hint := '关于安装程序'; Hotspot.ShowHint := True; Hotspot.OnClick := @SkinAbout;
   LabelControl := SkinLabel(WizardForm, '揽映 Picer', 42, 362, 235, 58, 26, SkinWhite, SkinBackgroundColor);
-  LabelControl.Alignment := taCenter;
+  LabelControl.Alignment := taCenter; LabelControl.Font.Style := [fsBold];
   LabelControl := SkinLabel(WizardForm, '揽景入方寸' + #13#10 + '映眸见万象', 52, 435, 214, 62, 14, SkinMuted, SkinBackgroundColor);
   LabelControl.Alignment := taCenter;
   LabelControl := SkinLabel(WizardForm, 'Windows x64', 34, 594, 94, 20, 9, SkinMuted, $2F2C2C);
