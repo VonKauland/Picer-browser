@@ -18,7 +18,7 @@ function SkinSubclass(Wnd: HWND; Callback: LongInt; Id, Data: LongWord): Boolean
   external 'SetWindowSubclass@comctl32.dll stdcall';
 function SkinUnsubclass(Wnd: HWND; Callback: LongInt; Id: LongWord): Boolean;
   external 'RemoveWindowSubclass@comctl32.dll stdcall';
-function SkinDefault(Wnd: HWND; Msg: Cardinal; WParam: LongWord; LParam: LongInt): LongInt;
+function SkinDefSubclassProc(Wnd: HWND; Msg: Cardinal; WParam: LongWord; LParam: LongInt): LongInt;
   external 'DefSubclassProc@comctl32.dll stdcall';
 function SkinGetDC(Wnd: HWND): LongWord; external 'GetDC@user32.dll stdcall';
 function SkinReleaseDC(Wnd: HWND; DC: LongWord): Integer; external 'ReleaseDC@user32.dll stdcall';
@@ -150,7 +150,7 @@ var DC: LongWord; P: TSkinPoint; R: TSkinRect; I, Hover: Integer;
 begin
   if Msg = $0082 then begin
     SkinUnsubclass(Wnd, SkinCallback, 1);
-    Result := SkinDefault(Wnd, Msg, WParam, LParam);
+    Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
     Exit;
   end;
   if Data > 0 then begin
@@ -161,7 +161,7 @@ begin
       Result := 0; Exit;
     end;
     if Msg = $0014 then begin Result := 1; Exit; end;
-    Result := SkinDefault(Wnd, Msg, WParam, LParam);
+    Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
     if (Msg = $00F1) or (Msg = $0007) or (Msg = $0008) or (Msg = $000A) then
       SkinInvalidate(Wnd, 0, False);
     Exit;
@@ -189,7 +189,7 @@ begin
     end;
     Result := 0; Exit;
   end;
-  Result := SkinDefault(Wnd, Msg, WParam, LParam);
+  Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
   if Msg = $0005 then SkinRoundWindow;
 end;
 
