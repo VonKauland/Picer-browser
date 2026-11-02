@@ -147,7 +147,7 @@ def verify_ui(setup, root, service, *, application=None):
         snapshot(hwnd, "setup")
         print(
             "Installer initial controls:",
-            [(caption(h, class_name=True), caption(h), h) for h in windows(hwnd)],
+            json.dumps([(caption(h, class_name=True), caption(h), h) for h in windows(hwnd)]),
             flush=True,
         )
         # Let the native directory -> task initialization complete before interacting.
@@ -220,7 +220,7 @@ def verify_ui(setup, root, service, *, application=None):
             "Installer launcher result:",
             process.poll(),
             "top windows:",
-            [(h, caption(h, class_name=True), caption(h)) for h in windows()],
+            json.dumps([(h, caption(h, class_name=True), caption(h)) for h in windows()]),
             flush=True,
         )
         preview = output / "setup.png"
@@ -237,7 +237,9 @@ def verify_ui(setup, root, service, *, application=None):
         if hwnd:
             print(
                 "Installer visible controls:",
-                [(caption(h, class_name=True), caption(h), rect(h)) for h in windows(hwnd)],
+                json.dumps(
+                    [(caption(h, class_name=True), caption(h), rect(h)) for h in windows(hwnd)]
+                ),
                 flush=True,
             )
             (output / "controls.json").write_text(
@@ -250,7 +252,12 @@ def verify_ui(setup, root, service, *, application=None):
             )
         log = root / "ui.log"
         if log.exists():
-            print(log.read_text(encoding="utf-8-sig", errors="replace")[-12000:], flush=True)
+            print(
+                log.read_text(encoding="utf-8-sig", errors="replace")[-12000:]
+                .encode("ascii", "backslashreplace")
+                .decode(),
+                flush=True,
+            )
         raise
     finally:
         if process.poll() is None:
