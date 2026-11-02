@@ -42,6 +42,7 @@ function SkinKillTimer(Wnd: HWND; Id: LongWord): Boolean; external 'KillTimer@us
 
 var
   SkinActive, SkinChoicesReady, SkinInstallPending, SkinPathValidated: Boolean;
+  SkinInCallback: Boolean;
   SkinCallback: LongInt;
   SkinControls: array of TWinControl;
   SkinHandles: array of HWND;
@@ -151,6 +152,14 @@ function SkinWindowProc(Wnd: HWND; Msg: Cardinal; WParam: LongWord;
   LParam: LongInt; Id, Data: LongWord): LongInt;
 var DC: LongWord; P: TSkinPoint; R: TSkinRect; I, Hover: Integer;
 begin
+  { Native button input can synchronously send more window messages. Avoid
+    re-entering the script painter while VCL is already dispatching input. }
+  if SkinInCallback then begin
+    Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam); Exit;
+  end;
+  SkinInCallback := True;
+  try
+    try
   if Msg = $0082 then begin
     SkinUnsubclass(Wnd, SkinCallback, 1);
     Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
@@ -194,6 +203,13 @@ begin
   end;
   Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
   if Msg = $0005 then SkinRoundWindow;
+    except
+      Log('Installer UI callback failed, message ' + IntToStr(Msg) + ': ' + GetExceptionMessage);
+      Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
+    end;
+  finally
+    SkinInCallback := False;
+  end;
 end;
 
 procedure SkinControl(Control: TWinControl; Kind, Back: Integer);

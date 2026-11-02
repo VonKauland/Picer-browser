@@ -193,6 +193,10 @@ def verify_ui(setup, root, service, *, application=None):
             raise RuntimeError("Interactive context-menu checkbox was ignored")
         if service.read(r"Software\Classes\Picer.Image\shell\open\command", "") != command:
             raise RuntimeError("Interactive default-viewer checkbox was ignored")
+        if "Installer UI callback failed" in (root / "ui.log").read_text(
+            encoding="utf-8-sig", errors="replace"
+        ):
+            raise RuntimeError("Installer renderer reported a callback failure")
         verify_payload(application or ROOT / "dist/Picer", target)
         uninstall(target, root / "ui-uninstall.log")
         (output / "result.json").write_text(
@@ -211,6 +215,7 @@ def verify_ui(setup, root, service, *, application=None):
             flush=True,
         )
     except BaseException:
+        time.sleep(0.5)
         print(
             "Installer launcher result:",
             process.poll(),
