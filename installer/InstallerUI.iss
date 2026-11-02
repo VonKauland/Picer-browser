@@ -152,6 +152,10 @@ function SkinWindowProc(Wnd: HWND; Msg: Cardinal; WParam: LongWord;
   LParam: LongInt; Id, Data: LongWord): LongInt;
 var DC: LongWord; P: TSkinPoint; R: TSkinRect; I, Hover: Integer;
 begin
+  { Let a printed parent dispatch to each independently painted native child. }
+  if (Data = 0) and ((Msg = $0317) or (Msg = $0318)) then begin
+    Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam); Exit;
+  end;
   { Native button input can synchronously send more window messages. Avoid
     re-entering the script painter while VCL is already dispatching input. }
   if SkinInCallback then begin
@@ -166,7 +170,7 @@ begin
     Exit;
   end;
   if Data > 0 then begin
-    if (Msg = $000F) or (Msg = $0318) then begin
+    if (Msg = $000F) or (Msg = $0317) or (Msg = $0318) then begin
       if Msg = $000F then DC := SkinGetDC(Wnd) else DC := WParam;
       SkinPaint(Data - 1, DC);
       if Msg = $000F then begin SkinReleaseDC(Wnd, DC); SkinValidate(Wnd, 0); end;
