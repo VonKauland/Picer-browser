@@ -129,6 +129,9 @@ def verify(application, setup):
         choice = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.png\UserChoice"
         service.write(choice, "ProgId", "OtherViewer.Image")
         try:
+            from scripts.verify_installer_ui import verify_ui
+
+            verify_ui(test_setup, root, service)
             for number, tasks in enumerate(
                 ("", "contextmenu", "defaultviewer", "contextmenu,defaultviewer")
             ):

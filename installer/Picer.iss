@@ -24,6 +24,9 @@ CloseApplications=yes
 RestartApplications=no
 DisableProgramGroupPage=yes
 UsePreviousTasks=yes
+DisableWelcomePage=yes
+DisableDirPage=no
+DisableReadyPage=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -63,6 +66,9 @@ Name: "contextmenu"; Description: "加入 Windows 右键菜单（使用揽映打
 Name: "defaultviewer"; Description: "设为默认图片浏览器"; GroupDescription: "Windows 集成："; Flags: unchecked
 
 [Files]
+Source: "{#IncludeDir}\installer-setup.bmp"; Flags: dontcopy
+Source: "{#IncludeDir}\installer-progress.bmp"; Flags: dontcopy
+Source: "{#IncludeDir}\installer-finished.bmp"; Flags: dontcopy
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "\config\*,\plugins\*,\skins\*,\cache\*,\logs\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -75,13 +81,25 @@ Name: "{autodesktop}\揽映 Picer"; Filename: "{app}\Picer.exe"; Tasks: desktopi
 #include IncludeDir + "\registry.iss"
 
 [Run]
-Filename: "ms-settings:defaultapps?registeredAppUser=Picer"; Description: "打开 Windows 默认应用设置，选择揽映"; Tasks: defaultviewer; Flags: shellexec postinstall skipifsilent nowait
+Filename: "ms-settings:defaultapps?registeredAppUser=Picer"; Description: "打开 Windows 默认应用设置，选择揽映"; Tasks: defaultviewer; Check: AllowDefaultSettings; Flags: shellexec postinstall skipifsilent nowait
 Filename: "{app}\Picer.exe"; Description: "启动揽映"; Flags: postinstall skipifsilent nowait
 
 [Code]
 const
   RegistryPrefix = '{#RegistryPrefix}';
   FormatList = '{#FormatList}';
+
+#include IncludeDir + "\InstallerUI.iss"
+
+function AllowDefaultSettings: Boolean;
+begin
+  { The isolated compiler/test installer must never open real OS settings. }
+#ifdef TestBuild
+  Result := False;
+#else
+  Result := True;
+#endif
+end;
 
 procedure SHChangeNotify(EventID: Integer; Flags: Cardinal; Item1, Item2: Integer);
   external 'SHChangeNotify@shell32.dll stdcall';
@@ -154,23 +172,40 @@ begin
 end;
 
 procedure InitializeWizard;
-var Notice: TNewStaticText;
 begin
-  WizardForm.TasksList.Height := WizardForm.TasksList.Height - ScaleY(48);
-  Notice := TNewStaticText.Create(WizardForm);
-  Notice.Parent := WizardForm.SelectTasksPage;
-  Notice.Left := WizardForm.TasksList.Left;
-  Notice.Top := WizardForm.TasksList.Top + WizardForm.TasksList.Height + ScaleY(8);
-  Notice.Width := WizardForm.TasksList.Width;
-  Notice.Height := ScaleY(40);
-  Notice.AutoSize := False;
-  Notice.WordWrap := True;
-  Notice.Caption := '选择默认浏览器后，安装完成时会打开 Windows 默认应用设置，由您确认关联。Windows 11 的右键入口可能位于“显示更多选项”。';
+  InitializeInstallerSkin;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+  InstallerPageChanged(CurPageID);
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+  Result := InstallerNext(CurPageID);
+end;
+
+procedure CurInstallProgressChanged(CurProgress, MaxProgress: Integer);
+begin
+  InstallerProgress(CurProgress, MaxProgress);
+end;
+
+procedure DeinitializeSetup;
+begin
+  DeinitializeInstallerSkin;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then begin
+    if SkinActive then begin
+      SkinDrawProgress(100);
+      SkinStatus.Caption := '正在完成配置…';
+      SkinStageTwo.Caption := '✓   安装文件';
+      SkinStageThree.Caption := '◌   完成配置';
+      SkinStageThree.Font.Color := SkinWhite;
+    end;
     if not WizardIsTaskSelected('contextmenu') then CleanupContext;
     if not WizardIsTaskSelected('defaultviewer') then CleanupViewer;
     SHChangeNotify($08000000, 0, 0, 0);

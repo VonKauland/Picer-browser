@@ -163,6 +163,27 @@ def decode_stream_image(source, edge):
     return read_image(source, edge=edge), detected or "IMG"
 
 
+def decoration_allowed(source, label):
+    """Preserve formats used by Windows for indirect DefaultIcon resources.
+
+    IStream often has no source path or usage context, even for ordinary photos.
+    A PNG photo and a PNG application icon therefore cannot be distinguished
+    reliably. Keep PNG/icon formats unmodified, while photo/RAW formats retain
+    the corner design. Preview decoding and file associations stay unchanged.
+    """
+    if label.lower().lstrip(".") in {"png", "ico", "cur", "icns", "svg", "svgz"}:
+        return False
+    try:
+        with source.open("rb") as handle:
+            signature = handle.read(8)
+    except OSError:
+        return False
+    # A named stream can have an extension that differs from its actual bytes.
+    return not signature.startswith(
+        (b"\x89PNG\r\n\x1a\n", b"\x00\x00\x01\x00", b"\x00\x00\x02\x00", b"icns")
+    )
+
+
 def main(argv=None):
     # Called before importing app/window; never load plugins or touch application data.
     parser = argparse.ArgumentParser()
@@ -187,7 +208,11 @@ def main(argv=None):
         return 2
     try:
         image, suffix = decode_stream_image(source, args.edge)
-        result = render_thumbnail(image, suffix, args.edge)
+        result = (
+            render_thumbnail(image, suffix, args.edge)
+            if decoration_allowed(source, suffix)
+            else image
+        )
         write_bitmap(result, directory / "thumbnail.bmp")
         return 0
     except Exception:

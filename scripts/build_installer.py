@@ -11,6 +11,7 @@ from pathlib import Path
 
 from picer.formats import valid_formats
 from picer.shell_thumbnail import PROVIDER_CLSID, THUMBNAIL_IID
+from scripts.installer_artwork import prepare_installer_artwork
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_PREFIX = "Software\\PicerInstallerTests\\"
@@ -97,6 +98,10 @@ def build(application, output, *, test_root=""):
         raise OSError("Build and verify the portable application first")
     include = ROOT / "build" / ("installer-test" if test_root else "installer")
     include.mkdir(parents=True, exist_ok=True)
+    prepare_installer_artwork(ROOT / "src/picer/assets/icons/picer.png", include)
+    (include / "InstallerUI.iss").write_text(
+        (ROOT / "installer/InstallerUI.iss").read_text(encoding="utf-8"), encoding="utf-8-sig"
+    )
     (include / "registry.iss").write_text(
         registry_lines(metadata["readable_formats"], test_root), encoding="utf-8-sig"
     )
@@ -132,10 +137,11 @@ def build(application, output, *, test_root=""):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--compiler-preflight", action="store_true")
+    parser.add_argument("--ui-preflight", action="store_true")
     parser.add_argument("--application", type=Path, default=ROOT / "dist" / "Picer")
     parser.add_argument("--output", type=Path, default=ROOT / "release-assets")
     args = parser.parse_args()
-    if args.compiler_preflight:
+    if args.compiler_preflight or args.ui_preflight:
         from picer import __version__
         from picer.imaging import supported_suffixes
         from scripts.prepare_assets import prepare_icons
@@ -150,8 +156,29 @@ def main():
         prepare_icons(
             ROOT / "src" / "picer" / "assets" / "icons" / "picer.png", fixture / "assets" / "icons"
         )
-        build(fixture, ROOT / "build" / "installer-preflight", test_root=TEST_PREFIX + "0" * 32)
-        print("Installer compiler preflight passed (test payload; never installed or published)")
+        if args.ui_preflight:
+            from uuid import uuid4
+
+            from picer.windows_integration import WindowsIntegration
+            from scripts.verify_installer import InstallerWorkspace
+            from scripts.verify_installer_ui import verify_ui
+
+            # Enough copy work to observe real progress; no executable code in the fixture.
+            (fixture / "copy-fixture.bin").write_bytes(bytes(64 * 1024 * 1024))
+            prefix = TEST_PREFIX + uuid4().hex
+            setup = build(fixture, ROOT / "build/installer-preflight", test_root=prefix)
+            service = WindowsIntegration(setup, root=prefix)
+            try:
+                with InstallerWorkspace(prefix="picer-ui-preflight-") as temporary:
+                    verify_ui(setup, Path(temporary), service, application=fixture)
+            finally:
+                service.delete("")
+            print("Installer UI preflight passed (isolated fixture; not published)")
+        else:
+            build(fixture, ROOT / "build" / "installer-preflight", test_root=TEST_PREFIX + "0" * 32)
+            print(
+                "Installer compiler preflight passed (test payload; never installed or published)"
+            )
         return
     print(build(args.application, args.output))
 
