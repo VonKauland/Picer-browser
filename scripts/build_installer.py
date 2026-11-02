@@ -157,10 +157,10 @@ def main():
             ROOT / "src" / "picer" / "assets" / "icons" / "picer.png", fixture / "assets" / "icons"
         )
         if args.ui_preflight:
-            from tempfile import TemporaryDirectory
             from uuid import uuid4
 
             from picer.windows_integration import WindowsIntegration
+            from scripts.verify_installer import InstallerWorkspace
             from scripts.verify_installer_ui import verify_ui
 
             # Enough copy work to observe real progress; no executable code in the fixture.
@@ -169,7 +169,7 @@ def main():
             setup = build(fixture, ROOT / "build/installer-preflight", test_root=prefix)
             service = WindowsIntegration(setup, root=prefix)
             try:
-                with TemporaryDirectory(prefix="picer-ui-preflight-") as temporary:
+                with InstallerWorkspace(prefix="picer-ui-preflight-") as temporary:
                     verify_ui(setup, Path(temporary), service, application=fixture)
             finally:
                 service.delete("")
