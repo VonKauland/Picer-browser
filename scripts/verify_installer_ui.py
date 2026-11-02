@@ -60,7 +60,14 @@ def verify_ui(setup, root, service):
         return found
 
     def find(parent, text):
-        return next((h for h in windows(parent) if caption(h) == text), None)
+        return next(
+            (
+                h
+                for h in windows(parent)
+                if (caption(h) == text or caption(h).replace("&", "") == text)
+            ),
+            None,
+        )
 
     def wait_for(predicate, description, seconds=120):
         deadline = time.monotonic() + seconds
@@ -141,7 +148,7 @@ def verify_ui(setup, root, service):
         time.sleep(0.3)
         for text in ("创建桌面快捷方式", "加入 Windows 右键菜单", "设为默认图片浏览器"):
             control = find(hwnd, text)
-            if user.SendMessageW(control, 0xF0, 0, 0) != 0:
+            if not control or user.SendMessageW(control, 0xF0, 0, 0) != 0:
                 raise RuntimeError(f"Fresh optional task must be unchecked: {text}")
         launch = find(hwnd, "安装完成后启动揽映")
         if user.SendMessageW(launch, 0xF0, 0, 0) != 1:
@@ -199,6 +206,11 @@ def verify_ui(setup, root, service):
         )
     except BaseException:
         if hwnd:
+            print(
+                "Installer visible controls:",
+                [(caption(h, class_name=True), caption(h), rect(h)) for h in windows(hwnd)],
+                flush=True,
+            )
             (output / "controls.json").write_text(
                 json.dumps(
                     [(caption(h, class_name=True), caption(h), rect(h)) for h in windows(hwnd)],

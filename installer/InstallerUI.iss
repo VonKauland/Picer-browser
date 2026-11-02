@@ -62,6 +62,7 @@ begin
   Result := TNewStaticText.Create(WizardForm);
   Result.Parent := Parent;
   Result.AutoSize := False;
+  Result.ShowAccelChar := False;
   Result.SetBounds(ScaleX(X), ScaleY(Y), ScaleX(W), ScaleY(H));
   Result.Caption := Caption;
   Result.Font.Assign(WizardForm.Font);
@@ -91,6 +92,7 @@ begin
     C.Font.Color := Ink;
     if SkinKinds[Index] = 2 then begin
       Caption := TNewCheckBox(SkinControls[Index]).Caption;
+      StringChangeEx(Caption, '&', '', True);
       Checked := SendMessage(SkinHandles[Index], $00F0, 0, 0) = 1;
       BoxSize := ScaleX(19); Y := (H - BoxSize) div 2; X := ScaleX(2);
       C.Pen.Style := psSolid;
@@ -109,6 +111,7 @@ begin
       C.TextOut(ScaleX(30), (H - C.TextHeight(Caption)) div 2, Caption);
     end else begin
       Caption := TNewButton(SkinControls[Index]).Caption;
+      StringChangeEx(Caption, '&', '', True);
       Fill := $3B3838; Edge := $48484C;
       if Hover then Fill := $484448;
       if SkinKinds[Index] = 1 then begin
@@ -324,6 +327,7 @@ begin
   SkinTimer(WizardForm.Handle, 73, 80, 0);
   LabelControl := SkinLabel(WizardForm, '揽映 Picer 安装程序', 66, 18, 400, 28, 12, SkinWhite, SkinBackgroundColor);
   Hotspot := TLabel.Create(WizardForm); Hotspot.Parent := WizardForm;
+  Hotspot.AutoSize := False;
   Hotspot.SetBounds(ScaleX(19), ScaleY(9), ScaleX(40), ScaleY(40));
   Hotspot.Transparent := True; Hotspot.Caption := ''; Hotspot.Cursor := crHandPoint;
   Hotspot.Hint := '关于安装程序'; Hotspot.ShowHint := True; Hotspot.OnClick := @SkinAbout;
