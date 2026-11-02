@@ -11,6 +11,7 @@ from pathlib import Path
 
 from picer.formats import valid_formats
 from picer.shell_thumbnail import PROVIDER_CLSID, THUMBNAIL_IID
+from scripts.installer_artwork import prepare_installer_artwork
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_PREFIX = "Software\\PicerInstallerTests\\"
@@ -97,6 +98,10 @@ def build(application, output, *, test_root=""):
         raise OSError("Build and verify the portable application first")
     include = ROOT / "build" / ("installer-test" if test_root else "installer")
     include.mkdir(parents=True, exist_ok=True)
+    prepare_installer_artwork(ROOT / "src/picer/assets/icons/picer.png", include)
+    (include / "InstallerUI.iss").write_text(
+        (ROOT / "installer/InstallerUI.iss").read_text(encoding="utf-8"), encoding="utf-8-sig"
+    )
     (include / "registry.iss").write_text(
         registry_lines(metadata["readable_formats"], test_root), encoding="utf-8-sig"
     )

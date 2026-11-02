@@ -50,6 +50,8 @@ SCOPES = {
     "scripts/prepare_assets.py": {"test_paths_and_distribution", "test_window"},
     "scripts/build_installer.py": {"test_installer", "test_shell_thumbnail"},
     "scripts/verify_installer.py": {"test_installer"},
+    "scripts/installer_artwork.py": {"test_installer"},
+    "scripts/verify_installer_ui.py": {"test_installer"},
     "scripts/release_assets.py": {"test_installer"},
     "scripts/build_thumbnail_provider.py": {"test_shell_thumbnail", "test_installer"},
     "scripts/verify_thumbnail_provider.py": {"test_shell_thumbnail"},
@@ -95,6 +97,8 @@ PORTABLE_INPUTS = {
 INSTALLER_INPUTS = {
     "scripts/build_installer.py",
     "scripts/verify_installer.py",
+    "scripts/installer_artwork.py",
+    "scripts/verify_installer_ui.py",
     "scripts/release_assets.py",
     "src/picer/windows_integration.py",
 }

@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -140,3 +142,31 @@ def test_installer_workspace_retries_only_transient_windows_sharing_errors(monke
         with pytest.raises(PermissionError, match="non-sharing"):
             workspace.cleanup()
     workspace.cleanup()
+
+
+def test_artwork_is_valid_rgb_and_preserves_transparent_brand(tmp_path):
+    from PIL import Image
+
+    from scripts.installer_artwork import prepare_installer_artwork
+
+    icon = Path(__file__).parents[1] / "src/picer/assets/icons/picer.png"
+    outputs = prepare_installer_artwork(icon, tmp_path)
+    assert len(outputs) == 3
+    for path in outputs:
+        with Image.open(path) as image:
+            assert image.format == "BMP" and image.mode == "RGB"
+            assert image.size == (2000, 1280)
+            assert image.getpixel((600, 300)) == (35, 35, 35)
+            # Alpha-composited icon is present, with no white/black opaque backing.
+            assert image.getpixel((137, 385)) == (35, 35, 35)
+            assert image.crop((136, 384, 416, 664)).getbbox()
+    first = [path.read_bytes() for path in outputs]
+    assert [path.read_bytes() for path in prepare_installer_artwork(icon, tmp_path)] == first
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Inno Setup compiler requires Windows")
+def test_real_installer_script_compiles_before_packaging():
+    # Compile-only fixture: no installation or system registration is performed.
+    subprocess.run(
+        [sys.executable, "-m", "scripts.build_installer", "--compiler-preflight"], check=True
+    )
