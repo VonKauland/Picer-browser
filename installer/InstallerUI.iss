@@ -1,5 +1,5 @@
-; Inno's real controls keep keyboard/accessibility and installation behavior.
-; Subclass only painting; Windows still owns focus, checks and button input.
+// Inno's real controls keep keyboard/accessibility and installation behavior.
+// Subclass only painting; Windows still owns focus, checks and button input.
 const
   SkinBackgroundColor = $232323;
   SkinCardColor = $2E2E2E;

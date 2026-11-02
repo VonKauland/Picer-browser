@@ -188,6 +188,7 @@ jobs:
           path: |
             build/validation-plan.json
             test-results.xml
+            build/installer-ui/
             build/distribution-size.json
           if-no-files-found: ignore
 
