@@ -1,19 +1,24 @@
 """Drive the real, non-silent installer against the isolated test registry."""
 
+import base64
 import ctypes as C
+import hashlib
 import json
+import os
 import subprocess
 import time
 from ctypes import wintypes as W
+from io import BytesIO
 
 
-def verify_ui(setup, root, service, *, application=None):
+def verify_ui(setup, root, service):
     """Native input, edited path, progress and finish; never touch live associations."""
-    from PIL import Image
+    from PIL import Image, ImageGrab
 
     from scripts.verify_installer import ROOT, uninstall, verify_payload
 
-    user, gdi = C.WinDLL("user32", use_last_error=True), C.WinDLL("gdi32", use_last_error=True)
+    user = C.WinDLL("user32", use_last_error=True)
+    dwm = C.WinDLL("dwmapi", use_last_error=True)
     callback_type = C.WINFUNCTYPE(W.BOOL, W.HWND, W.LPARAM)
     user.EnumWindows.argtypes = [callback_type, W.LPARAM]
     user.EnumChildWindows.argtypes = [W.HWND, callback_type, W.LPARAM]
@@ -24,19 +29,34 @@ def verify_ui(setup, root, service, *, application=None):
     user.GetWindowTextW.argtypes = [W.HWND, W.LPWSTR, C.c_int]
     user.GetClassNameW.argtypes = [W.HWND, W.LPWSTR, C.c_int]
     user.GetWindowRect.argtypes = [W.HWND, C.POINTER(W.RECT)]
-    user.GetDC.argtypes = [W.HWND]
-    user.GetDC.restype = W.HDC
-    user.ReleaseDC.argtypes = [W.HWND, W.HDC]
-    user.PrintWindow.argtypes = [W.HWND, W.HDC, W.UINT]
-    gdi.CreateCompatibleDC.argtypes = [W.HDC]
-    gdi.CreateCompatibleDC.restype = W.HDC
-    gdi.CreateCompatibleBitmap.argtypes = [W.HDC, C.c_int, C.c_int]
-    gdi.CreateCompatibleBitmap.restype = W.HBITMAP
-    gdi.SelectObject.argtypes = [W.HDC, W.HGDIOBJ]
-    gdi.SelectObject.restype = W.HGDIOBJ
-    gdi.DeleteObject.argtypes = [W.HGDIOBJ]
-    gdi.DeleteDC.argtypes = [W.HDC]
-    gdi.GetDIBits.argtypes = [W.HDC, W.HBITMAP, W.UINT, W.UINT, C.c_void_p, C.c_void_p, W.UINT]
+    user.SetCursorPos.argtypes = [C.c_int, C.c_int]
+    user.mouse_event.argtypes = [W.DWORD, W.DWORD, W.DWORD, W.DWORD, C.c_size_t]
+    user.SetForegroundWindow.argtypes = [W.HWND]
+    user.SetWindowPos.argtypes = [W.HWND, W.HWND, C.c_int, C.c_int, C.c_int, C.c_int, W.UINT]
+    user.RedrawWindow.argtypes = [W.HWND, C.c_void_p, W.HRGN, W.UINT]
+    user.CreateWindowExW.argtypes = [
+        W.DWORD,
+        W.LPCWSTR,
+        W.LPCWSTR,
+        W.DWORD,
+        C.c_int,
+        C.c_int,
+        C.c_int,
+        C.c_int,
+        W.HWND,
+        W.HMENU,
+        W.HINSTANCE,
+        C.c_void_p,
+    ]
+    user.CreateWindowExW.restype = W.HWND
+    user.DestroyWindow.argtypes = [W.HWND]
+    user.UpdateWindow.argtypes = [W.HWND]
+    user.SetThreadDpiAwarenessContext.argtypes = [W.HANDLE]
+    user.SetThreadDpiAwarenessContext.restype = W.HANDLE
+    user.GetDpiForWindow.argtypes = [W.HWND]
+    user.GetDpiForWindow.restype = W.UINT
+    dwm.DwmGetWindowAttribute.argtypes = [W.HWND, W.DWORD, C.c_void_p, W.DWORD]
+    previous_dpi = user.SetThreadDpiAwarenessContext(W.HANDLE(-4))
 
     def caption(hwnd, *, class_name=False):
         text = C.create_unicode_buffer(2048)
@@ -81,8 +101,13 @@ def verify_ui(setup, root, service, *, application=None):
     def click(hwnd):
         if not hwnd:
             raise RuntimeError("Installer UI control is missing")
-        # Post avoids blocking the automation while Inno copies files or shows a modal.
-        user.PostMessageW(hwnd, 0xF5, 0, 0)
+        left, top, right, bottom = rect(hwnd)
+        x = left + 12 if caption(hwnd, class_name=True) == "TNewCheckBox" else (left + right) // 2
+        user.SetCursorPos(x, (top + bottom) // 2)
+        # Real mouse input exercises hover, focus, pressed and native check behavior.
+        user.mouse_event(2, 0, 0, 0, 0)
+        time.sleep(0.02)
+        user.mouse_event(4, 0, 0, 0, 0)
 
     def rect(hwnd):
         value = W.RECT()
@@ -93,41 +118,104 @@ def verify_ui(setup, root, service, *, application=None):
     output = ROOT / "build/installer-ui"
     output.mkdir(parents=True, exist_ok=True)
 
-    def snapshot(hwnd, name):
-        left, top, right, bottom = rect(hwnd)
-        width, height = right - left, bottom - top
-        dc = user.GetDC(hwnd)
-        memory = gdi.CreateCompatibleDC(dc)
-        bitmap = gdi.CreateCompatibleBitmap(dc, width, height)
-        previous = gdi.SelectObject(memory, bitmap)
-        try:
-            if not user.PrintWindow(hwnd, memory, 0):
-                raise RuntimeError("Cannot capture the real installer window")
-            gdi.SelectObject(memory, previous)
-            # BITMAPINFOHEADER, uncompressed top-down 32-bit BGRA.
-            import struct
+    captures = {}
+    backdrop = None
 
-            header = C.create_string_buffer(
-                struct.pack(
-                    "<IiiHHIIiiII", 40, width, -height, 1, 32, 0, width * height * 4, 0, 0, 0, 0
-                )
+    def export_capture(name, image):
+        if os.environ.get("PICER_INSTALLER_CAPTURE_LOG") != "1":
+            return
+        data = BytesIO()
+        image.save(data, format="PNG")
+        encoded = base64.b64encode(data.getvalue()).decode()
+        print(f"INSTALLER_CAPTURE_BEGIN:{name}:{hashlib.sha256(data.getvalue()).hexdigest()}")
+        for offset in range(0, len(encoded), 4096):
+            print(
+                f"INSTALLER_CAPTURE_CHUNK:{name}:{offset // 4096}:{encoded[offset : offset + 4096]}"
             )
-            pixels = C.create_string_buffer(width * height * 4)
-            if gdi.GetDIBits(memory, bitmap, 0, height, pixels, header, 0) != height:
-                raise RuntimeError("Cannot read installer screenshot")
-            image = Image.frombytes("RGB", (width, height), pixels.raw, "raw", "BGRX")
-            image.save(output / f"{name}.png")
-            if name == "setup":
-                colors = image.getcolors(width * height)
-                if not colors or not any(
-                    count > 10000 and color == (35, 35, 35) for count, color in colors
-                ):
-                    raise RuntimeError("Installer charcoal surface was not rendered")
-        finally:
-            gdi.SelectObject(memory, previous)
-            gdi.DeleteObject(bitmap)
-            gdi.DeleteDC(memory)
-            user.ReleaseDC(hwnd, dc)
+        print(f"INSTALLER_CAPTURE_END:{name}", flush=True)
+
+    def snapshot(hwnd, name):
+        nonlocal backdrop
+        left, top, right, bottom = rect(hwnd)
+        # A real neutral desktop window makes translucent DWM corner coverage visible.
+        # It never paints over the installer or alters the captured application pixels.
+        if not backdrop:
+            backdrop = user.CreateWindowExW(
+                0x08000080,
+                "STATIC",
+                "Picer screenshot backdrop",
+                0x90000004,
+                left - 8,
+                top - 8,
+                right - left + 16,
+                bottom - top + 16,
+                None,
+                None,
+                None,
+                None,
+            )
+            if not backdrop:
+                raise C.WinError(C.get_last_error())
+        user.SetWindowPos(
+            backdrop, W.HWND(-1), left - 8, top - 8, right - left + 16, bottom - top + 16, 0x50
+        )
+        user.UpdateWindow(backdrop)
+        user.SetWindowPos(hwnd, W.HWND(-1), 0, 0, 0, 0, 0x43)
+        user.SetForegroundWindow(hwnd)
+        user.RedrawWindow(hwnd, None, None, 0x585)
+        dwm.DwmFlush()
+        time.sleep(0.08)
+        left, top, right, bottom = rect(hwnd)
+        box = (left - 8, top - 8, right + 8, bottom + 8)
+        image = ImageGrab.grab(bbox=box, include_layered_windows=True).convert("RGB")
+        image.save(output / f"{name}.png")
+        export_capture(name, image)
+
+        def white(pixel):
+            return min(pixel) > 185 and max(pixel) - min(pixel) < 35
+
+        inspected = []
+        for child in windows(hwnd):
+            kind = caption(child, class_name=True)
+            if kind not in {"TNewButton", "TNewCheckBox"}:
+                continue
+            x1, y1, x2, y2 = rect(child)
+            x1 -= box[0]
+            x2 -= box[0]
+            y1 -= box[1]
+            y2 -= box[1]
+            pixels = [image.getpixel((x, y)) for x in range(x1, x2) for y in (y1, y2 - 1)]
+            pixels += [image.getpixel((x, y)) for y in range(y1, y2) for x in (x1, x2 - 1)]
+            if any(white(pixel) for pixel in pixels):
+                raise RuntimeError(f"Native white frame leaked around {caption(child)!r}")
+            inspected.append(caption(child))
+        if name == "installing":
+            # Contract: the progress track must never reveal its bitmap's white edges.
+            scale = (right - left) / 1000
+            x, y = round(358 * scale) + 8, round(264 * scale) + 8
+            width, height = round(584 * scale), round(16 * scale)
+            perimeter = [
+                image.getpixel((px, py)) for px in range(x, x + width) for py in (y, y + height - 1)
+            ]
+            perimeter += [
+                image.getpixel((px, py)) for py in range(y, y + height) for px in (x, x + width - 1)
+            ]
+            if any(white(pixel) for pixel in perimeter):
+                raise RuntimeError("Progress bitmap exposes a white edge")
+        corner = C.c_int()
+        native_rounding = dwm.DwmGetWindowAttribute(hwnd, 33, C.byref(corner), 4) == 0
+        if native_rounding:
+            if corner.value != 2 or max(image.getpixel((8, 8))) >= 25:
+                raise RuntimeError("DWM is not composing a rounded outer corner")
+            colors = set(image.crop((8, 8, 20, 20)).getdata())
+            if len(colors) < 6:
+                raise RuntimeError("Window corner lacks antialiased coverage")
+        captures[name] = {
+            "capture": "Windows desktop / ImageGrab",
+            "dpi": user.GetDpiForWindow(hwnd),
+            "native_rounded_frame": native_rounding,
+            "white_frame_checks": inspected,
+        }
 
     target = root / "界面安装 自定义目录"
     process = subprocess.Popen(
@@ -144,7 +232,7 @@ def verify_ui(setup, root, service, *, application=None):
     try:
         hwnd = wait_for(lambda: find(None, "揽映 Picer 安装程序"), "main window")
         wait_for(lambda: find(hwnd, "安装") and find(hwnd, "创建桌面快捷方式"), "setup controls")
-        snapshot(hwnd, "setup")
+        snapshot(hwnd, "setup-initial")
         print(
             "Installer initial controls:",
             json.dumps([(caption(h, class_name=True), caption(h), h) for h in windows(hwnd)]),
@@ -174,8 +262,16 @@ def verify_ui(setup, root, service, *, application=None):
             if x1 < left or y1 < top or x2 > right or y2 > bottom:
                 raise RuntimeError(f"Installer control outside window: {caption(child)}")
         snapshot(hwnd, "setup")
+        browse = find(hwnd, "浏览")
+        bx1, by1, bx2, by2 = rect(browse)
+        user.SetCursorPos((bx1 + bx2) // 2, (by1 + by2) // 2)
+        time.sleep(0.18)
+        snapshot(hwnd, "setup-hover")
         click(find(hwnd, "安装"))
-        wait_for(lambda: find(hwnd, "正在安装揽映"), "actual installation started")
+        wait_for(
+            lambda: find(hwnd, "正在安装揽映") and find(hwnd, "安装进度"),
+            "actual installation started",
+        )
         snapshot(hwnd, "installing")
         wait_for(
             lambda: find(hwnd, "安装完成") and find(hwnd, str(target)) and find(hwnd, "完成"),
@@ -198,7 +294,7 @@ def verify_ui(setup, root, service, *, application=None):
             encoding="utf-8-sig", errors="replace"
         ):
             raise RuntimeError("Installer renderer reported a callback failure")
-        verify_payload(application or ROOT / "dist/Picer", target)
+        verify_payload(ROOT / "dist/Picer", target)
         uninstall(target, root / "ui-uninstall.log")
         (output / "result.json").write_text(
             json.dumps(
@@ -207,6 +303,7 @@ def verify_ui(setup, root, service, *, application=None):
                     "states": ["setup", "installing", "finished"],
                     "edited_path": True,
                     "checkboxes": True,
+                    "screenshots": captures,
                 }
             ),
             encoding="utf-8",
@@ -226,9 +323,6 @@ def verify_ui(setup, root, service, *, application=None):
         )
         preview = output / "setup.png"
         if preview.exists():
-            import base64
-            from io import BytesIO
-
             encoded = BytesIO()
             Image.open(preview).resize((800, 512)).save(encoded, format="JPEG", quality=65)
             print(
@@ -261,6 +355,10 @@ def verify_ui(setup, root, service, *, application=None):
             )
         raise
     finally:
+        if backdrop:
+            user.DestroyWindow(backdrop)
+        if previous_dpi:
+            user.SetThreadDpiAwarenessContext(previous_dpi)
         if process.poll() is None:
             subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
             process.wait(timeout=15)
