@@ -264,6 +264,8 @@ def verify_ui(setup, root, service):
             ]
             if any(white(pixel) for pixel in perimeter):
                 raise RuntimeError("Progress bitmap exposes a white edge")
+        rendering = C.c_int()
+        dwm.DwmGetWindowAttribute(hwnd, 1, C.byref(rendering), 4)
         corner = C.c_int()
         corner_supported = dwm.DwmGetWindowAttribute(hwnd, 33, C.byref(corner), 4) == 0
         native_rounding = corner_supported and max(image.getpixel((8, 8))) < 25
@@ -281,6 +283,7 @@ def verify_ui(setup, root, service):
             "dpi": user.GetDpiForWindow(hwnd),
             "native_rounded_frame": native_rounding,
             "windows_server": server,
+            "dwm_nonclient_rendering": bool(rendering.value),
             "window_bounds": rect(hwnd),
             "visible_bounds": visible_rect(hwnd),
             "white_frame_checks": inspected,

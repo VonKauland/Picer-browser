@@ -215,6 +215,7 @@ begin
     end;
     Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
     if (Msg = $0005) and (SkinLastState >= 0) then SkinPaintBackground;
+    if (Msg = $0018) and (WParam <> 0) and SkinNativeFrameReady then SkinApplyDwmFrame(Wnd);
   except
     Log('Installer UI callback failed, message ' + IntToStr(Msg) + ': ' + GetExceptionMessage);
     if (Data > 0) and ((Msg = $000F) or (Msg = $0317) or (Msg = $0318)) then Result := 0

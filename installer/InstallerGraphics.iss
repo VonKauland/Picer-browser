@@ -155,16 +155,26 @@ begin
   try SkinCheckGraphics(SkinGdiLine(Graphics, Pen, X1, Y1, X2, Y2), 'line'); finally SkinGdiDeletePen(Pen); end;
 end;
 
-procedure SkinConfigureFrame(Wnd: HWND);
-var Value: Integer; Margins: TSkinMargins;
+procedure SkinApplyDwmFrame(Wnd: HWND);
+var Value: Integer;
 begin
-  SkinNativeFrameReady := True;
-  { Keep the DWM frame/shadow while WM_NCCALCSIZE gives us the entire client area. }
-  SkinSetWindowLong(Wnd, -16, SkinGetWindowLong(Wnd, -16) or $00C40000);
+  { Borderless VCL forms can disable non-client DWM rendering. Re-enable it
+    explicitly, including after the form's first Show updates its glass policy. }
+  Value := 2; { DWMNCRP_ENABLED }
+  SkinDwmAttribute(Wnd, 2, Value, 4);
   Value := 2; { DWMWCP_ROUND; Windows 10 keeps its native square corners. }
   SkinDwmAttribute(Wnd, 33, Value, 4);
   Value := $326A61; { Dim accent frame, COLORREF }
   SkinDwmAttribute(Wnd, 34, Value, 4);
+end;
+
+procedure SkinConfigureFrame(Wnd: HWND);
+var Margins: TSkinMargins;
+begin
+  SkinNativeFrameReady := True;
+  { Keep the DWM frame/shadow while WM_NCCALCSIZE gives us the entire client area. }
+  SkinSetWindowLong(Wnd, -16, SkinGetWindowLong(Wnd, -16) or $00C40000);
+  SkinApplyDwmFrame(Wnd);
   Margins.Left := 1; Margins.Right := 1; Margins.Top := 1; Margins.Bottom := 1;
   SkinDwmExtend(Wnd, Margins);
   SkinSetWindowPos(Wnd, 0, 0, 0, 0, 0, $0037);
