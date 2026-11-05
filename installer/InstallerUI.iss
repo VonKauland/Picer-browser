@@ -45,6 +45,7 @@ var
   SkinControls: array of TWinControl;
   SkinHandles: array of HWND;
   SkinKinds, SkinColors: array of Integer;
+  SkinPressed: array of Boolean;
   SkinHover: Integer;
   SkinCanvas: TBitmapImage;
   SkinProgress: TBitmapImage;
@@ -88,11 +89,16 @@ begin
     Focused := SkinControls[Index].Focused;
     Ink := SkinWhite;
     if not Enabled then Ink := $777777;
+    { Read native state before a drawing context exists. Sending BM_GETSTATE
+      during GDI+ drawing can re-enter the script callback and lose the context. }
+    if SkinKinds[Index] = 2 then begin
+      Caption := TNewCheckBox(SkinControls[Index]).Caption;
+      Checked := TNewCheckBox(SkinControls[Index]).Checked;
+    end else Caption := TNewButton(SkinControls[Index]).Caption;
+    Pressed := SkinPressed[Index];
     Graphics := SkinGraphics(C.Handle);
     try
       if SkinKinds[Index] = 2 then begin
-        Caption := TNewCheckBox(SkinControls[Index]).Caption;
-        Checked := TNewCheckBox(SkinControls[Index]).Checked;
         BoxSize := ScaleX(19); Y := (H - BoxSize) div 2; X := ScaleX(2);
         Fill := SkinColors[Index]; Edge := $666666;
         if Checked then begin Fill := SkinAccent; Edge := SkinAccent; end;
@@ -103,8 +109,6 @@ begin
           SkinLine(Graphics, SkinBackgroundColor, ScaleX(2), X + ScaleX(8), Y + ScaleY(13), X + ScaleX(15), Y + ScaleY(5));
         end;
       end else begin
-        Caption := TNewButton(SkinControls[Index]).Caption;
-        Pressed := (SendMessage(SkinHandles[Index], $00F2, 0, 0) and 4) <> 0;
         Fill := $3B3838; Edge := $48484C;
         if Hover then Fill := $484448;
         if SkinKinds[Index] = 1 then begin
@@ -173,6 +177,7 @@ begin
         Result := 0; Exit;
       end;
       if (Msg = $0014) or (Msg = $0085) then begin Result := 1; Exit; end;
+      if Msg = $00F3 then SkinPressed[Data - 1] := WParam <> 0;
       Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
       if (Msg = $00F1) or (Msg = $00F3) or (Msg = $00F4) or
          (Msg = $0007) or (Msg = $0008) or (Msg = $000A) then begin
@@ -182,6 +187,9 @@ begin
       Exit;
     end;
     if (Msg = $0083) and SkinNativeFrameReady then begin Result := 0; Exit; end;
+    if (Msg = $0112) and (((WParam and $FFF0) = $F000) or ((WParam and $FFF0) = $F030)) then begin
+      Result := 0; Exit; { Fixed installer size, even though DWM needs a thick-frame style. }
+    end;
     if Msg = SkinValidateMessage then begin
       WizardForm.BackButton.OnClick(WizardForm.BackButton); Result := 0; Exit;
     end;
@@ -220,6 +228,7 @@ begin
   I := GetArrayLength(SkinHandles);
   SetArrayLength(SkinHandles, I + 1); SetArrayLength(SkinControls, I + 1);
   SetArrayLength(SkinKinds, I + 1); SetArrayLength(SkinColors, I + 1);
+  SetArrayLength(SkinPressed, I + 1);
   SkinHandles[I] := Control.Handle; SkinControls[I] := Control;
   SkinKinds[I] := Kind; SkinColors[I] := Back;
   SkinWindowTheme(Control.Handle, '', '');

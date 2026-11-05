@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 from ctypes import wintypes as W
 from io import BytesIO
@@ -118,6 +119,48 @@ def verify_ui(setup, root, service):
     output = ROOT / "build/installer-ui"
     output.mkdir(parents=True, exist_ok=True)
 
+    def visible_rect(hwnd):
+        frame = W.RECT()
+        if dwm.DwmGetWindowAttribute(hwnd, 9, C.byref(frame), C.sizeof(frame)) == 0:
+            return frame.left, frame.top, frame.right, frame.bottom
+        return rect(hwnd)
+
+    window_proc = C.WINFUNCTYPE(W.LPARAM, W.HWND, W.UINT, W.WPARAM, W.LPARAM)
+
+    class WindowClass(C.Structure):
+        _fields_ = [
+            ("style", W.UINT),
+            ("proc", window_proc),
+            ("class_extra", C.c_int),
+            ("window_extra", C.c_int),
+            ("instance", W.HINSTANCE),
+            ("icon", W.HICON),
+            ("cursor", W.HANDLE),
+            ("brush", W.HBRUSH),
+            ("menu", W.LPCWSTR),
+            ("name", W.LPCWSTR),
+        ]
+
+    user.DefWindowProcW.argtypes = [W.HWND, W.UINT, W.WPARAM, W.LPARAM]
+    user.DefWindowProcW.restype = W.LPARAM
+    user.RegisterClassW.argtypes = [C.POINTER(WindowClass)]
+    user.UnregisterClassW.argtypes = [W.LPCWSTR, W.HINSTANCE]
+    user.ClientToScreen.argtypes = [W.HWND, C.POINTER(W.POINT)]
+    user.GetClientRect.argtypes = [W.HWND, C.POINTER(W.RECT)]
+    gdi = C.WinDLL("gdi32")
+    gdi.CreateSolidBrush.argtypes = [W.DWORD]
+    gdi.CreateSolidBrush.restype = W.HBRUSH
+    gdi.DeleteObject.argtypes = [W.HGDIOBJ]
+    kernel = C.WinDLL("kernel32")
+    kernel.GetModuleHandleW.argtypes = [W.LPCWSTR]
+    kernel.GetModuleHandleW.restype = W.HMODULE
+    backdrop_class = WindowClass()
+    backdrop_class.instance = kernel.GetModuleHandleW(None)
+    backdrop_class.name = "PicerInstallerCapture" + str(os.getpid())
+    backdrop_class.proc = C.cast(user.DefWindowProcW, window_proc)
+    backdrop_class.brush = gdi.CreateSolidBrush(0x101010)
+    if not user.RegisterClassW(C.byref(backdrop_class)):
+        raise C.WinError(C.get_last_error())
     captures = {}
     backdrop = None
 
@@ -136,22 +179,22 @@ def verify_ui(setup, root, service):
 
     def snapshot(hwnd, name):
         nonlocal backdrop
-        left, top, right, bottom = rect(hwnd)
+        left, top, right, bottom = visible_rect(hwnd)
         # A real neutral desktop window makes translucent DWM corner coverage visible.
         # It never paints over the installer or alters the captured application pixels.
         if not backdrop:
             backdrop = user.CreateWindowExW(
                 0x08000080,
-                "STATIC",
+                backdrop_class.name,
                 "Picer screenshot backdrop",
-                0x90000004,
+                0x90000000,
                 left - 8,
                 top - 8,
                 right - left + 16,
                 bottom - top + 16,
                 None,
                 None,
-                None,
+                backdrop_class.instance,
                 None,
             )
             if not backdrop:
@@ -165,7 +208,7 @@ def verify_ui(setup, root, service):
         user.RedrawWindow(hwnd, None, None, 0x585)
         dwm.DwmFlush()
         time.sleep(0.08)
-        left, top, right, bottom = rect(hwnd)
+        left, top, right, bottom = visible_rect(hwnd)
         box = (left - 8, top - 8, right + 8, bottom + 8)
         image = ImageGrab.grab(bbox=box, include_layered_windows=True).convert("RGB")
         image.save(output / f"{name}.png")
@@ -188,11 +231,30 @@ def verify_ui(setup, root, service):
             pixels += [image.getpixel((x, y)) for y in range(y1, y2) for x in (x1, x2 - 1)]
             if any(white(pixel) for pixel in pixels):
                 raise RuntimeError(f"Native white frame leaked around {caption(child)!r}")
-            inspected.append(caption(child))
+            label = caption(child)
+            probe = image.getpixel(((x1 + x2) // 2, y1 + 6))
+            if label in {"安装", "完成"} and not (
+                probe[0] > 170 and probe[1] > 190 and probe[2] < 170
+            ):
+                raise RuntimeError("Primary action lost its accent background")
+            if label in {"浏览", "取消", "取消安装", "打开安装目录"} and not (
+                50 <= min(probe) <= max(probe) < 130
+            ):
+                raise RuntimeError(f"Button background was not rendered: {label!r}")
+            if label == "关闭":
+                inner = image.crop((x1 + 6, y1 + 6, x2 - 6, y2 - 6))
+                if sum(white(pixel) for pixel in inner.getdata()) < 3:
+                    raise RuntimeError("Close button lost its vector icon")
+            inspected.append(label)
         if name == "installing":
             # Contract: the progress track must never reveal its bitmap's white edges.
-            scale = (right - left) / 1000
-            x, y = round(358 * scale) + 8, round(264 * scale) + 8
+            client = W.RECT()
+            origin = W.POINT(0, 0)
+            user.GetClientRect(hwnd, C.byref(client))
+            user.ClientToScreen(hwnd, C.byref(origin))
+            scale = client.right / 1000
+            x = origin.x - box[0] + round(358 * scale)
+            y = origin.y - box[1] + round(264 * scale)
             width, height = round(584 * scale), round(16 * scale)
             perimeter = [
                 image.getpixel((px, py)) for px in range(x, x + width) for py in (y, y + height - 1)
@@ -203,17 +265,24 @@ def verify_ui(setup, root, service):
             if any(white(pixel) for pixel in perimeter):
                 raise RuntimeError("Progress bitmap exposes a white edge")
         corner = C.c_int()
-        native_rounding = dwm.DwmGetWindowAttribute(hwnd, 33, C.byref(corner), 4) == 0
+        corner_supported = dwm.DwmGetWindowAttribute(hwnd, 33, C.byref(corner), 4) == 0
+        native_rounding = corner_supported and max(image.getpixel((8, 8))) < 25
+        server = sys.getwindowsversion().product_type != 1
+        if corner_supported and corner.value != 2:
+            raise RuntimeError("Native rounded-frame preference was lost")
         if native_rounding:
-            if corner.value != 2 or max(image.getpixel((8, 8))) >= 25:
-                raise RuntimeError("DWM is not composing a rounded outer corner")
             colors = set(image.crop((8, 8, 20, 20)).getdata())
             if len(colors) < 6:
                 raise RuntimeError("Window corner lacks antialiased coverage")
+        elif corner_supported and not server:
+            raise RuntimeError("DWM is not composing a rounded outer corner")
         captures[name] = {
             "capture": "Windows desktop / ImageGrab",
             "dpi": user.GetDpiForWindow(hwnd),
             "native_rounded_frame": native_rounding,
+            "windows_server": server,
+            "window_bounds": rect(hwnd),
+            "visible_bounds": visible_rect(hwnd),
             "white_frame_checks": inspected,
         }
 
@@ -357,6 +426,7 @@ def verify_ui(setup, root, service):
     finally:
         if backdrop:
             user.DestroyWindow(backdrop)
+        user.UnregisterClassW(backdrop_class.name, backdrop_class.instance)
         if previous_dpi:
             user.SetThreadDpiAwarenessContext(previous_dpi)
         if process.poll() is None:

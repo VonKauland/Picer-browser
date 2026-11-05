@@ -87,6 +87,11 @@ var
   SkinNativeFrameReady: Boolean;
   SkinBackgroundImages: array[0..2] of LongWord;
 
+procedure SkinCheckGraphics(Status: Integer; Operation: String);
+begin
+  if Status <> 0 then RaiseException('Installer graphics ' + Operation + ' failed: ' + IntToStr(Status));
+end;
+
 function SkinArgb(Color: Integer): LongWord;
 begin
   Result := $FF000000 or ((Color and $FF) shl 16) or (Color and $FF00) or ((Color shr 16) and $FF);
@@ -125,18 +130,18 @@ begin
   D := Radius * 2;
   if D > W then D := W;
   if D > H then D := H;
-  SkinGdiPath(0, Path);
+  SkinCheckGraphics(SkinGdiPath(0, Path), 'path');
   try
-    SkinGdiArc(Path, X, Y, D, D, 180, 90);
-    SkinGdiArc(Path, X + W - D, Y, D, D, 270, 90);
-    SkinGdiArc(Path, X + W - D, Y + H - D, D, D, 0, 90);
-    SkinGdiArc(Path, X, Y + H - D, D, D, 90, 90);
-    SkinGdiClosePath(Path);
-    SkinGdiBrush(SkinArgb(Fill), Brush);
-    try SkinGdiFillPath(Graphics, Brush, Path); finally SkinGdiDeleteBrush(Brush); end;
+    SkinCheckGraphics(SkinGdiArc(Path, X, Y, D, D, 180, 90), 'rounded geometry');
+    SkinCheckGraphics(SkinGdiArc(Path, X + W - D, Y, D, D, 270, 90), 'rounded geometry');
+    SkinCheckGraphics(SkinGdiArc(Path, X + W - D, Y + H - D, D, D, 0, 90), 'rounded geometry');
+    SkinCheckGraphics(SkinGdiArc(Path, X, Y + H - D, D, D, 90, 90), 'rounded geometry');
+    SkinCheckGraphics(SkinGdiClosePath(Path), 'rounded geometry');
+    SkinCheckGraphics(SkinGdiBrush(SkinArgb(Fill), Brush), 'rounded geometry');
+    try SkinCheckGraphics(SkinGdiFillPath(Graphics, Brush, Path), 'fill'); finally SkinGdiDeleteBrush(Brush); end;
     if Stroke > 0 then begin
       Pen := SkinPen(Edge, Stroke);
-      try SkinGdiDrawPath(Graphics, Pen, Path); finally SkinGdiDeletePen(Pen); end;
+      try SkinCheckGraphics(SkinGdiDrawPath(Graphics, Pen, Path), 'stroke'); finally SkinGdiDeletePen(Pen); end;
     end;
   finally
     SkinGdiDeletePath(Path);
@@ -147,7 +152,7 @@ procedure SkinLine(Graphics: LongWord; Color: Integer; Width, X1, Y1, X2, Y2: Si
 var Pen: LongWord;
 begin
   Pen := SkinPen(Color, Width);
-  try SkinGdiLine(Graphics, Pen, X1, Y1, X2, Y2); finally SkinGdiDeletePen(Pen); end;
+  try SkinCheckGraphics(SkinGdiLine(Graphics, Pen, X1, Y1, X2, Y2), 'line'); finally SkinGdiDeletePen(Pen); end;
 end;
 
 procedure SkinConfigureFrame(Wnd: HWND);
