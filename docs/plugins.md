@@ -271,7 +271,9 @@ self.thumbnail_request.cancel()
 
 ## 面板接入宿主可绑定操作（0.17）
 
-`ui.panels` 权限的面板可调用 `context.bind_panel_operation(name, callback)` 接入已定义的宿主操作，不额外注册功能按钮：`browser.parent`、`browser.selected`、`browser.favorite`、`slideshow.play`、`slideshow.stop`。回调均无参数。每个操作只能有一个提供者，停用 / 出错 / 卸载自动撤销；启用失败同样清理，键盘绑定仍保留。`context.handle_browser_key(event)` 让面板视图在 ShortcutOverride / KeyPress 阶段使用用户设置的父级 / 选中目录按键；文本编辑器应保留原生输入行为。回调只在 GUI 线程运行，通过宿主异常隔离调用。
+`ui.panels` 权限的面板可调用 `context.bind_panel_operation(name, callback)` 接入已定义的宿主操作，不额外注册功能按钮：`browser.parent`、`browser.selected`、`browser.favorite`、`browser.reveal_image`、`slideshow.play`、`slideshow.stop`。回调均无参数。每个操作只能有一个提供者，停用 / 出错 / 卸载自动撤销；启用失败同样清理，键盘绑定仍保留。`context.handle_browser_key(event)` 让面板视图在 ShortcutOverride / KeyPress 阶段使用用户设置的父级 / 选中目录按键；文本编辑器应保留原生输入行为。回调只在 GUI 线程运行，通过宿主异常隔离调用。
+
+`browser.reveal_image` 用于主画面右键菜单：显式跳转到 `context.current_path()` 所在文件夹并选中该图片；宿主在调用后显示提供该操作的面板，保留固定 / 自动隐藏设置。后台 `image.opened` 事件仍只在相同文件夹同步选中，不主动切换目录。
 
 面板内部的 Qt 滚动区域由系统统一控制是否显示滚动条，不影响滚动能力；不覆盖原本禁止的横向滚动策略。自绘缩略条保持原有无滚动条设计。
 

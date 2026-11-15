@@ -228,6 +228,7 @@
   "图片读取失败": "Failed to read image",
   "图片路径无效": "Invalid image path",
   "在 Windows 资源管理器中显示": "Show in Windows Explorer",
+  "在文件浏览面板中打开所在文件夹": "Open containing folder in File Browser panel",
   "在图片中显示记录的对焦点": "Show recorded focus points on the image",
   "垂直镜像": "Flip vertically",
   "基础信息": "Basic information",

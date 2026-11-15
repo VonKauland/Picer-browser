@@ -10,6 +10,55 @@ from picer.settings import ApplicationSettings
 from picer.window import MainWindow
 
 
+@pytest.mark.parametrize("deferred", [False, True])
+def test_startup_restores_plugins_silently(qtbot, tmp_path, monkeypatch, deferred):
+    messages = []
+    monkeypatch.setattr(MainWindow, "notify", lambda self, message: messages.append(message))
+    for _ in range(2):
+        window = MainWindow(plugin_root=tmp_path / "state", defer_plugins=deferred)
+        qtbot.addWidget(window)
+        if deferred:
+            window.plugins.load_startup_plugins()
+        assert window.plugins.records["picer.mirror"].state == "enabled"
+        assert window.plugins.records["example.touch"].state == "enabled"
+        assert not messages and not window._pending_plugin_notifications
+        window.close()
+
+
+def test_manual_plugin_feedback_waits_for_main_window_once(host, qtbot, monkeypatch):
+    messages = []
+    monkeypatch.setattr(host, "notify", messages.append)
+    dialog = QDialog(host)
+    qtbot.addWidget(dialog)
+    dialog.setModal(True)
+    dialog.show()
+    qtbot.waitUntil(lambda: dialog.isActiveWindow())
+    host.plugins.disable("example.touch")
+    host.plugins.enable("example.touch")
+    assert not messages
+    assert list(host._pending_plugin_notifications.values()) == ["触控支持已启用"]
+    dialog.close()
+    host.activateWindow()
+    qtbot.waitUntil(lambda: messages == ["触控支持已启用"])
+    assert not host._pending_plugin_notifications
+    dialog.show()
+    qtbot.waitUntil(lambda: dialog.isActiveWindow())
+    dialog.close()
+    host.activateWindow()
+    qtbot.waitUntil(host.isActiveWindow)
+    host.flush_plugin_notifications()
+    assert messages == ["触控支持已启用"]
+    messages.clear()
+    settings = host.show_settings()
+    qtbot.waitUntil(settings.isActiveWindow)
+    host.plugins.disable("example.touch")
+    assert not messages
+    host.activateWindow()  # Returning to the canvas need not close nonmodal settings.
+    qtbot.waitUntil(lambda: messages == ["触控支持已停用"])
+    assert settings.isVisible() and not host._pending_plugin_notifications
+    settings.close()
+
+
 @pytest.fixture
 def host(qtbot, tmp_path):
     host = MainWindow(plugin_root=tmp_path / "state")

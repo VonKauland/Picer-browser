@@ -197,6 +197,7 @@ class Plugin:
             ("browser.parent", self.go_up),
             ("browser.selected", self.open_selected),
             ("browser.favorite", self.add_favorite),
+            ("browser.reveal_image", self.reveal_current_image),
         ):
             context.bind_panel_operation(operation, callback)
         self.return_path = None
@@ -522,6 +523,12 @@ class Plugin:
         self.open_folder(
             self.location.text(), remember=False, on_open=lambda: self.search.setText(query)
         )
+
+    def reveal_current_image(self):
+        path = self.context.current_path()
+        if path is not None:
+            # Explicit navigation uses the same cancellable local/network pipeline.
+            self.open_folder(path.parent)
 
     def open_folder(self, directory, *, remember=True, on_open=None, _network_ready=False):
         if is_network_path(str(directory)) and not _network_ready:

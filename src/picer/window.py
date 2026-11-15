@@ -3,7 +3,7 @@
 from collections import deque
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QEvent, Qt, QUrl
+from PySide6.QtCore import QByteArray, QEvent, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -160,6 +160,7 @@ class MainWindow(QMainWindow):
         self.skin_colors = dict(COLORS)
         self.app_preferences = dict(DEFAULTS)
         self.settings_dialog = None
+        self._pending_plugin_notifications = {}
         self._skin_style = STYLE
         self.shortcut_actions, self.default_shortcuts = {}, {}
         self.chrome_style = "standard"
@@ -445,6 +446,8 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            QTimer.singleShot(0, self.flush_plugin_notifications)
         if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "plugins"):
             self.title_bar.sync_window_state()
             self.fullscreen_chrome.sync()
@@ -463,10 +466,24 @@ class MainWindow(QMainWindow):
         reveal = menu.addAction(tr("在 Windows 资源管理器中显示"))
         reveal.setEnabled(self.current_path is not None)
         reveal.triggered.connect(self.reveal_current_image)
+        provider = self.plugins.panel_operations.get("browser.reveal_image")
+        if provider and self.plugins.records[provider[0]].state == "enabled":
+            browse = menu.addAction(tr("在文件浏览面板中打开所在文件夹"))
+            browse.setEnabled(self.current_path is not None)
+            browse.triggered.connect(self.reveal_in_file_browser)
         menu.addSeparator()
         menu.addAction(self.fullscreen_action)
         mark_host(menu)
         return menu
+
+    def reveal_in_file_browser(self):
+        if self.current_path is None:
+            return
+        provider = self.plugins.panel_operations.get("browser.reveal_image")
+        if provider and self.plugins.call_panel_operation("browser.reveal_image"):
+            controller = self.panel_hovers.controllers.get(provider[0])
+            if controller is not None:
+                self.panel_hovers.activate_tab(controller)
 
     def reveal_current_image(self):
         if self.current_path:
@@ -588,6 +605,30 @@ class MainWindow(QMainWindow):
     def plugin_notification(self, message: str) -> None:
         self.notify(message)
 
+    def plugin_state_notification(self, plugin_id: str, message: str) -> None:
+        if QApplication.activeModalWidget() or (QApplication.activeWindow() not in (None, self)):
+            # Keep only the latest manual state per plugin until returning to the canvas.
+            self._pending_plugin_notifications.pop(plugin_id, None)
+            self._pending_plugin_notifications[plugin_id] = message
+            while len(self._pending_plugin_notifications) > 5:
+                self._pending_plugin_notifications.pop(
+                    next(iter(self._pending_plugin_notifications))
+                )
+        else:
+            self.notify(message)
+
+    def flush_plugin_notifications(self):
+        if (
+            not self.isActiveWindow()
+            or QApplication.activeModalWidget()
+            or QApplication.activeWindow() is not self
+        ):
+            return
+        pending = list(self._pending_plugin_notifications.values())
+        self._pending_plugin_notifications.clear()
+        for message in pending:
+            self.notify(message)
+
     def notify(self, message: str) -> None:
         if hasattr(self, "notifications"):
             self.notifications.notify(message)
@@ -596,6 +637,7 @@ class MainWindow(QMainWindow):
         dialog = PluginDialog(self.plugins, self.settings_dialog or self)
         dialog.exec()
         dialog.deleteLater()
+        QTimer.singleShot(0, self.flush_plugin_notifications)
 
     def show_settings(self):
         from picer.settings import ApplicationSettings
@@ -654,6 +696,7 @@ class MainWindow(QMainWindow):
             self.notify(tr("设置已导入，请点击应用或保存更改"))
 
     def closeEvent(self, event) -> None:
+        self._pending_plugin_notifications.clear()
         if self.settings_dialog is not None:
             self.settings_dialog.close()
         ui = self.plugins.preferences["ui"]

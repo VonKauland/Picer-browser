@@ -41,6 +41,36 @@ def wait_entries(qtbot, plugin, folder, count):
     qtbot.waitUntil(lambda: plugin.model.rowCount(plugin.tree.rootIndex()) == count)
 
 
+def test_canvas_reveal_in_browser_navigates_selects_and_preserves_auto_hide(host, qtbot, tmp_path):
+    label = "在文件浏览面板中打开所在文件夹"
+    action = next(a for a in host.image_context_menu().actions() if a.text() == label)
+    assert not action.isEnabled()
+    current = photo(tmp_path / "photos" / "selected.png")
+    other = photo(tmp_path / "other" / "other.png")
+    host.open_image(current)
+    qtbot.waitUntil(lambda: host.current_path == current)
+    plugin = browser(host)
+    wait_entries(qtbot, plugin, other.parent, 1)
+    plugin.search.setText("no matches")
+    controller = host.panel_hovers.controllers["example.files"]
+    controller.dock.close()
+    assert controller.dock.isHidden()
+    action = next(a for a in host.image_context_menu().actions() if a.text() == label)
+    assert action.isEnabled()
+    action.trigger()
+    qtbot.waitUntil(lambda: plugin.model.filePath(plugin.tiles.currentIndex()) == str(current))
+    assert plugin.location.text() == str(current.parent)
+    assert not plugin.search.text()
+    assert controller.popup is not None and controller.dock.isHidden()
+    assert host.plugins.preferences["ui"]["panels"]["example.files"] is False
+    assert host.current_path == current
+    host.plugins.disable("example.files")
+    assert "browser.reveal_image" not in host.plugins.panel_operations
+    assert label not in [a.text() for a in host.image_context_menu().actions()]
+    action.trigger()  # An already-open menu cannot call a revoked provider.
+    assert host.current_path == current
+
+
 def test_defaults_actions_and_saved_multi_input_bindings(host, qtbot):
     defaults = default_bindings(host)
     for key, value in (
