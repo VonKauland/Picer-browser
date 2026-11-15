@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QDir, QSize, QStandardPaths, Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QHBoxLayout,
     QLabel,
@@ -161,6 +162,7 @@ class Plugin:
         self.tiles = QListView()
         self.tiles.setModel(self.model)
         configure_view(self.tiles)
+        self.tiles.setSelectionModel(self.tree.selectionModel())
         self.tiles.setViewMode(QListView.ViewMode.IconMode)
         self.tiles.setResizeMode(QListView.ResizeMode.Adjust)
         self.tiles.setMovement(QListView.Movement.Static)
@@ -218,6 +220,8 @@ class Plugin:
     def on_image(self, event):
         path = self.context.current_path()
         if path is None or str(path.parent) != self.location.text():
+            return
+        if len(self.tree.selectionModel().selectedRows()) > 1:
             return
         self.image_selection_path = str(path)
         self.image_selection_attempts = 0
@@ -568,6 +572,7 @@ class Plugin:
         self.tabs.setCurrentIndex(0)
         self.search.clear()
         self.location.setText(target)
+        self.tree.clearSelection()
         root = self.model.setRootPath(target)
         self.tree.setRootIndex(root)
         self.tiles.setRootIndex(root)
@@ -663,7 +668,9 @@ class Plugin:
         self.return_path = None
         self.return_timer.stop()
         self.parent_entry.setChecked(False)
-        if not self.model.isDir(index):
+        if not self.model.isDir(index) and not QApplication.keyboardModifiers() & (
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+        ):
             self.open_entry(index)
 
     def select_parent(self):

@@ -39,11 +39,14 @@ class ImageFileDrag(QObject):
         return None
 
     def mime_data(self, path):
-        path = self.eligible(path)
-        if path is None:
+        candidates = [path] if isinstance(path, (str, Path)) or path is None else path
+        paths = list(
+            dict.fromkeys(value for entry in candidates if (value := self.eligible(entry)))
+        )
+        if not paths:
             return None
         mime = QMimeData()
-        mime.setUrls([QUrl.fromLocalFile(str(path))])
+        mime.setUrls([QUrl.fromLocalFile(str(path)) for path in paths])
         # Qt's Windows backend exports local URLs as CF_HDROP, like Explorer.
         mime.setData(
             'application/x-qt-windows-mime;value="Preferred DropEffect"', struct.pack("<I", 1)
@@ -51,7 +54,13 @@ class ImageFileDrag(QObject):
         return mime
 
     def start(self, path, index):
-        mime = self.mime_data(path)
+        selection = self.view.selectionModel()
+        paths = (
+            [self.path_at(item) for item in selection.selectedRows()]
+            if selection is not None and selection.isSelected(index)
+            else [path]
+        )
+        mime = self.mime_data(paths)
         if mime is None:
             return
         drag = QDrag(self.view)

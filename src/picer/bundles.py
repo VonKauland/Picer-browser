@@ -15,6 +15,7 @@ EXAMPLES = (
     ("file_browser", "file-browser.zip", "example.files", True),
     ("image_editor", "image-editor.zip", "example.editor", False),
     ("image_manager", "image-manager.zip", "example.images", False),
+    ("tag_panel", "tag-panel.zip", "example.tags", False),
     ("info_panel", "info-panel.zip", "example.info", True),
     ("progress_panel", "progress-panel.zip", "example.progress", True),
     ("macos_skin", "macos-skin.zip", "example.macos", False),

@@ -34,6 +34,8 @@ class PhotoGrid(QListView):
     def __init__(self, owner):
         super().__init__()
         self.owner = owner
+        self.setSelectionMode(self.SelectionMode.ExtendedSelection)
+        self.setSelectionBehavior(self.SelectionBehavior.SelectRows)
         self.setViewMode(QListView.ViewMode.IconMode)
         self.setResizeMode(QListView.ResizeMode.Adjust)
         self.setMovement(QListView.Movement.Static)
@@ -96,7 +98,7 @@ class PhotoDelegate(QStyledItemDelegate):
         photo = rect.adjusted(2, 2, -2, -21)
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        selected = path == owner.current
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
         painter.setPen(QPen(QColor(colors["accent"]), 1) if selected else Qt.PenStyle.NoPen)
         painter.setBrush(QColor(colors["hover"]) if selected else Qt.BrushStyle.NoBrush)
         painter.drawRoundedRect(rect, 6, 6)

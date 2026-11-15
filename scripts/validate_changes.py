@@ -17,6 +17,7 @@ UI_TESTS = {
     "test_color_picker",
     "test_messages",
     "test_notifications",
+    "test_tags",
     "test_popup_rendering",
     "test_settings_ui",
     "test_example_panels",
@@ -31,6 +32,7 @@ UI_TESTS = {
 # Composition roots import almost everything. For UI-only/shared integration paths,
 # use explicit feature coverage instead of treating every import as a runtime call.
 SCOPES = {
+    "src/picer/file_drag.py": {"test_psd_and_export", "test_panel_multiselection"},
     "src/picer/app.py": {"test_app", "test_startup"},
     "src/picer/theme.py": UI_TESTS,
     "src/picer/host_style.py": UI_TESTS,
@@ -63,6 +65,7 @@ EXAMPLES = {
         "test_example_panels",
         "test_browser_thumbnail_cache",
         "test_browser_commands",
+        "test_panel_multiselection",
         "test_image_drops",
         "test_psd_and_export",
     },
@@ -74,7 +77,13 @@ EXAMPLES = {
         "test_ai_video",
     },
     "progress_panel": {"test_example_panels", "test_progress_layout", "test_appearance_and_ring"},
-    "image_manager": {"test_image_manager", "test_info_annotations", "test_psd_and_export"},
+    "image_manager": {
+        "test_image_manager",
+        "test_info_annotations",
+        "test_psd_and_export",
+        "test_panel_multiselection",
+    },
+    "tag_panel": {"test_tags", "test_i18n_updates", "test_paths_and_distribution"},
     "image_editor": {"test_editing"},
     "double_page": {"test_inputs_spread", "test_browser_commands"},
     "touch_support": {"test_inputs_spread"},

@@ -4,7 +4,7 @@ import os
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, QPoint, QTimer
+from PySide6.QtCore import QFileSystemWatcher, QPoint, Qt, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -141,6 +141,9 @@ class Plugin:
     def on_image(self, event):
         previous = self.current
         self.current = self.context.current_path()
+        if not previous or not self.current or previous.parent != self.current.parent:
+            self.grid.clearSelection()
+            self.grid.selectionModel().clearCurrentIndex()
         if (
             not previous
             or not self.current
@@ -237,14 +240,31 @@ class Plugin:
                 return
             self.source_key, self.source_paths = source_key, result[0]
             self.count_paths[local] = result[0]
-            self.model.replace(result[1])
+            selected = {
+                self.model.paths[index.row()] for index in self.grid.selectionModel().selectedRows()
+            }
+            current_index = self.grid.currentIndex()
+            focused = self.model.paths[current_index.row()] if current_index.isValid() else None
+            if self.model.paths != result[1]:
+                self.model.replace(result[1])
+                selection = self.grid.selectionModel()
+                for path in selected:
+                    position = self.model.positions.get(str(path))
+                    if position is not None:
+                        selection.select(self.model.index(position), selection.SelectionFlag.Select)
+                position = self.model.positions.get(str(focused))
+                if position is not None:
+                    selection.setCurrentIndex(
+                        self.model.index(position), selection.SelectionFlag.NoUpdate
+                    )
             self.count.setText(
                 (tr("当前文件夹") if local else tr("本设备已标记"))
                 + tr(" · {0} 张").format(len(result[1]))
             )
             self.grid.arrange()
+            self.grid.viewport().update()
             row = self.model.positions.get(str(self.current))
-            if row is not None:
+            if row is not None and len(selected) <= 1:
                 index = self.model.index(row)
                 self.grid.setCurrentIndex(index)
                 self.grid.scrollTo(index)
@@ -300,6 +320,12 @@ class Plugin:
         self.queue_load()
 
     def open_index(self, index):
+        from PySide6.QtWidgets import QApplication
+
+        if QApplication.keyboardModifiers() & (
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier
+        ):
+            return
         if index.isValid() and self.model.paths[index.row()] != self.current:
             if not self.context.open_image(self.model.paths[index.row()]):
                 self.context.notify(tr("无法打开这张图片"))
