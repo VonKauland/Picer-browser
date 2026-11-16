@@ -12,34 +12,44 @@ ACCENT = "#e2ff45"
 def prepare_installer_artwork(icon: Path, destination: Path):
     destination.mkdir(parents=True, exist_ok=True)
     brand = Image.open(icon).convert("RGBA")
+    drawing_scale = SCALE * 2
     outputs = []
     for state in ("setup", "progress", "finished"):
-        image = Image.new("RGB", (WIDTH * SCALE, HEIGHT * SCALE), BACKGROUND)
+        image = Image.new("RGB", (WIDTH * drawing_scale, HEIGHT * drawing_scale), BACKGROUND)
         draw = ImageDraw.Draw(image)
 
         def box(rect, radius, fill, outline=None, draw=draw):
             draw.rounded_rectangle(
-                tuple(v * SCALE for v in rect),
-                radius=radius * SCALE,
+                tuple(v * drawing_scale for v in rect),
+                radius=radius * drawing_scale,
                 fill=fill,
                 outline=outline,
-                width=SCALE,
+                width=drawing_scale,
             )
 
-        box((0, 0, WIDTH - 1, HEIGHT - 1), 20, BACKGROUND, "#616a32")
-        draw.line((0, 58 * SCALE, WIDTH * SCALE, 58 * SCALE), fill="#343436", width=SCALE)
-        draw.line((292 * SCALE, 88 * SCALE, 292 * SCALE, 614 * SCALE), fill="#343436")
+        # DWM owns the outer frame and corner coverage; never bake a hard window mask.
+        draw.line(
+            (0, 58 * drawing_scale, WIDTH * drawing_scale, 58 * drawing_scale),
+            fill="#343436",
+            width=drawing_scale,
+        )
+        draw.line(
+            (292 * drawing_scale, 88 * drawing_scale, 292 * drawing_scale, 614 * drawing_scale),
+            fill="#343436",
+        )
         box((25, 587, 136, 616), 14, "#2c2c2f", "#3a3a3e")
         for x, y, size in ((63, 215, 11), (244, 165, 14), (227, 195, 9), (238, 300, 7)):
             draw.regular_polygon(
-                (x * SCALE, y * SCALE, size * SCALE / 2),
+                (x * drawing_scale, y * drawing_scale, size * drawing_scale / 2),
                 n_sides=4,
                 rotation=0,
                 fill="#485020",
             )
         for x, y, size in ((23, 13, 32), (68, 192, 140)):
-            mark = brand.resize((size * SCALE, size * SCALE), Image.Resampling.LANCZOS)
-            image.paste(mark, (x * SCALE, y * SCALE), mark)
+            mark = brand.resize(
+                (size * drawing_scale, size * drawing_scale), Image.Resampling.LANCZOS
+            )
+            image.paste(mark, (x * drawing_scale, y * drawing_scale), mark)
         if state == "setup":
             box((330, 174, 970, 304), 16, CARD)
             box((350, 222, 834, 264), 12, INPUT, "#48484c")
@@ -48,17 +58,20 @@ def prepare_installer_artwork(icon: Path, destination: Path):
             box((330, 174, 970, 520), 16, CARD)
         else:
             box((330, 222, 970, 470), 16, CARD)
-            draw.ellipse((332 * SCALE, 95 * SCALE, 374 * SCALE, 137 * SCALE), fill=ACCENT)
+            draw.ellipse(
+                (332 * drawing_scale, 95 * drawing_scale, 374 * drawing_scale, 137 * drawing_scale),
+                fill=ACCENT,
+            )
             draw.line(
                 [
-                    (344 * SCALE, 116 * SCALE),
-                    (351 * SCALE, 123 * SCALE),
-                    (363 * SCALE, 109 * SCALE),
+                    (344 * drawing_scale, 116 * drawing_scale),
+                    (351 * drawing_scale, 123 * drawing_scale),
+                    (363 * drawing_scale, 109 * drawing_scale),
                 ],
                 fill=BACKGROUND,
-                width=3 * SCALE,
+                width=3 * drawing_scale,
             )
         target = destination / f"installer-{state}.bmp"
-        image.save(target)
+        image.resize((WIDTH * SCALE, HEIGHT * SCALE), Image.Resampling.LANCZOS).save(target)
         outputs.append(target)
     return outputs

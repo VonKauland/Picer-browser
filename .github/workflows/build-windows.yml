@@ -131,7 +131,10 @@ jobs:
         run: python -m scripts.build_installer
       - name: Verify install, upgrade, optional integration and uninstall
         if: steps.plan.outputs.installer == 'true'
-        run: python -m scripts.verify_installer
+        run: |
+          $message = git show -s --format=%B $env:PICER_HEAD
+          if ($message -match '\[installer-screenshots\]') { $env:PICER_INSTALLER_CAPTURE_LOG = '1' }
+          python -m scripts.verify_installer
       - name: Prepare portable ZIP and release checksums
         if: steps.plan.outputs.installer == 'true'
         run: python -m scripts.release_assets

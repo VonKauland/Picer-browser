@@ -58,7 +58,7 @@ def test_canvas_reveal_in_browser_navigates_selects_and_preserves_auto_hide(host
     action = next(a for a in host.image_context_menu().actions() if a.text() == label)
     assert action.isEnabled()
     action.trigger()
-    qtbot.waitUntil(lambda: plugin.model.filePath(plugin.tiles.currentIndex()) == str(current))
+    qtbot.waitUntil(lambda: Path(plugin.model.filePath(plugin.tiles.currentIndex())) == current)
     assert plugin.location.text() == str(current.parent)
     assert not plugin.search.text()
     assert controller.popup is not None and controller.dock.isHidden()
