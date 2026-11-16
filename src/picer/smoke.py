@@ -1497,11 +1497,23 @@ def verify_new_panels(window):
     original = path.read_bytes()
     assert window.open_image(path)
     wait_for(lambda: window.current_path == path)
-    for key in ("example.images", "example.editor"):
+    for key in ("example.images", "example.editor", "example.tags"):
         assert window.plugins.records[key].state == "disabled"
         window.plugins.enable(key)
     panel = window.plugins.records["example.editor"].instance.panel
     manager = window.plugins.records["example.images"].instance
+    tags = window.plugins.records["example.tags"].instance
+    tag = tags.store.save("Packaged tag", "#488FFF", False)
+    tags.store.assign(path, "image", tag, True)
+    tags.store.assign(path.parent, "folder", tag, True)
+    tags.show_hidden.setChecked(True)
+    tags.library_button.setChecked(True)
+    tags.render()
+    assert tags.chips.count() == 1 and not tags.drawer.isHidden()
+    assert tags.drawer.geometry().bottom() < tags.footer.y()
+    assert tags.store.assigned(path.parent, "folder") == {tag}
+    assert tags.context.data_directory().is_relative_to(window.paths_layout.config)
+    tags.store.delete(tag)
     wait_for(lambda: panel.session.source is not None, timeout=5000)
     wait_for(lambda: path in manager.model.paths)
     state = panel.session.state.copy()
@@ -1542,7 +1554,7 @@ def verify_new_panels(window):
     with Image.open(window.current_path) as saved:
         assert saved.size == (400, 240)
         assert saved.getpixel((10, 10))[0] == saved.getpixel((10, 10))[1]
-    for key in ("example.editor", "example.images"):
+    for key in ("example.editor", "example.images", "example.tags"):
         window.plugins.disable(key)
     assert not panel.session.active
     assert not panel.navigator.timer.isActive() and not manager.requests

@@ -23,6 +23,10 @@ from picer.theme import COLORS
 
 ACCENT = "#E8FF59"
 ICON_PATHS = {
+    "tag": '<path d="M3 3h8l10 10-8 8L3 11z"/><circle cx="7" cy="7" r="1"/>',
+    "eye": '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>'
+    '<circle cx="12" cy="12" r="3"/>',
+    "eye-off": '<path d="m3 3 18 18M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>',
     "plug": '<path d="M8 3v5m8-5v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>',
     "filter": '<path d="M3 4h18l-7 8v7l-4 2v-9z"/>',
     "sort": '<path d="M6 3v18m-3-3 3 3 3-3M13 5h8M13 10h6M13 15h4"/>',

@@ -165,6 +165,23 @@ def test_artwork_is_valid_rgb_and_preserves_transparent_brand(tmp_path):
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Inno Setup compiler requires Windows")
-def test_real_installer_compiles_and_interacts_before_packaging():
-    # Non-executable fixture installed only into a temporary folder and isolated HKCU.
-    subprocess.run([sys.executable, "-m", "scripts.build_installer", "--ui-preflight"], check=True)
+def test_real_installer_compiles_before_packaging():
+    # Compiler-only fixture; real UI verification uses the complete packaged application.
+    subprocess.run(
+        [sys.executable, "-m", "scripts.build_installer", "--compiler-preflight"], check=True
+    )
+
+
+def test_installer_cards_have_antialiased_edges_and_no_baked_window_mask(tmp_path):
+    from PIL import Image
+
+    from scripts.installer_artwork import prepare_installer_artwork
+
+    icon = Path(__file__).parents[1] / "src/picer/assets/icons/picer.png"
+    setup = prepare_installer_artwork(icon, tmp_path)[0]
+    with Image.open(setup) as image:
+        # The compositor owns the outer shape; the entire client surface is opaque.
+        assert image.getpixel((0, 0)) == (35, 35, 35)
+        # Rounded card coverage contains blended pixels, not a binary staircase.
+        corner = image.crop((660, 348, 700, 388))
+        assert any(35 < r < 46 and r == g == b for r, g, b in corner.getdata())

@@ -202,8 +202,9 @@ begin
     if SkinActive then begin
       SkinDrawProgress(100);
       SkinStatus.Caption := '正在完成配置…';
-      SkinStageTwo.Caption := '✓   安装文件';
-      SkinStageThree.Caption := '◌   完成配置';
+      SkinStageTwo.Caption := '安装文件';
+      SkinStageThree.Caption := '完成配置';
+      SkinDrawStages(2);
       SkinStageThree.Font.Color := SkinWhite;
     end;
     if not WizardIsTaskSelected('contextmenu') then CleanupContext;

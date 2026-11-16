@@ -14,6 +14,8 @@ type
   TSkinPoint = record X, Y: Integer; end;
   TSkinRect = record Left, Top, Right, Bottom: Integer; end;
 
+#include IncludeDir + "\InstallerGraphics.iss"
+
 function SkinSubclass(Wnd: HWND; Callback: LongInt; Id, Data: LongWord): Boolean;
   external 'SetWindowSubclass@comctl32.dll stdcall';
 function SkinUnsubclass(Wnd: HWND; Callback: LongInt; Id: LongWord): Boolean;
@@ -26,16 +28,10 @@ function SkinClientRect(Wnd: HWND; var R: TSkinRect): Boolean; external 'GetClie
 function SkinWindowRect(Wnd: HWND; var R: TSkinRect): Boolean; external 'GetWindowRect@user32.dll stdcall';
 function SkinCursor(var P: TSkinPoint): Boolean; external 'GetCursorPos@user32.dll stdcall';
 function SkinToClient(Wnd: HWND; var P: TSkinPoint): Boolean; external 'ScreenToClient@user32.dll stdcall';
-function SkinValidate(Wnd: HWND; R: LongWord): Boolean; external 'ValidateRect@user32.dll stdcall';
 function SkinInvalidate(Wnd: HWND; R: LongWord; Erase: Boolean): Boolean;
   external 'InvalidateRect@user32.dll stdcall';
 function SkinIsWindow(Wnd: HWND): Boolean; external 'IsWindow@user32.dll stdcall';
 function SkinIsEnabled(Wnd: HWND): Boolean; external 'IsWindowEnabled@user32.dll stdcall';
-function SkinRoundRegion(L, T, R, B, X, Y: Integer): LongWord;
-  external 'CreateRoundRectRgn@gdi32.dll stdcall';
-function SkinWindowRegion(Wnd: HWND; Region: LongWord; Redraw: Boolean): Integer;
-  external 'SetWindowRgn@user32.dll stdcall';
-function SkinDeleteObject(Obj: LongWord): Boolean; external 'DeleteObject@gdi32.dll stdcall';
 function SkinBlit(Dest: LongWord; X, Y, W, H: Integer; Source: LongWord;
   SX, SY: Integer; Operation: LongWord): Boolean;
   external 'BitBlt@gdi32.dll stdcall';
@@ -45,11 +41,11 @@ function SkinKillTimer(Wnd: HWND; Id: LongWord): Boolean; external 'KillTimer@us
 
 var
   SkinActive, SkinChoicesReady, SkinInstallPending, SkinPathValidated: Boolean;
-  SkinInCallback: Boolean;
   SkinCallback: LongInt;
   SkinControls: array of TWinControl;
   SkinHandles: array of HWND;
   SkinKinds, SkinColors: array of Integer;
+  SkinPressed: array of Boolean;
   SkinHover: Integer;
   SkinCanvas: TBitmapImage;
   SkinProgress: TBitmapImage;
@@ -58,7 +54,8 @@ var
   SkinStageOne, SkinStageTwo, SkinStageThree, SkinCompleteTitle, SkinCompletePath: TNewStaticText;
   SkinDesktop, SkinContext, SkinDefault, SkinLaunch: TNewCheckBox;
   SkinClose, SkinFolder: TNewButton;
-  SkinLastState, SkinRegionWidth, SkinRegionHeight: Integer;
+  SkinLastState: Integer;
+  SkinStageMarks: array of TBitmapImage;
   SkinCompletePathTitle: TNewStaticText;
 
 function SkinLabel(Parent: TWinControl; Caption: String; X, Y, W, H, Size, Color, Back: Integer): TNewStaticText;
@@ -76,147 +73,153 @@ begin
 end;
 
 procedure SkinPaint(Index: Integer; DC: LongWord);
-var C: TCanvas; Surface: TBitmap; R: TSkinRect; Caption: String;
-    W, H, BoxSize, Y, X, Ink, Fill, Edge: Integer; Hover, Checked: Boolean;
+var C: TCanvas; Surface: TBitmap; R: TSkinRect; Caption: String; Graphics: LongWord;
+    W, H, BoxSize, Y, X, Ink, Fill, Edge: Integer; Hover, Checked, Enabled, Focused, Pressed: Boolean;
 begin
   if (Index < 0) or (Index >= GetArrayLength(SkinHandles)) then Exit;
   SkinClientRect(SkinHandles[Index], R);
   W := R.Right; H := R.Bottom;
+  if (W <= 0) or (H <= 0) or (DC = 0) then Exit;
   Surface := TBitmap.Create;
   try
-    Surface.Width := W; Surface.Height := H;
-    C := Surface.Canvas;
-    C.Brush.Color := SkinColors[Index];
-    C.Pen.Style := psClear;
-    C.Rectangle(0, 0, W, H);
-    C.Font.Assign(WizardForm.Font);
-    C.Font.Size := 10;
+    Surface.Width := W; Surface.Height := H; C := Surface.Canvas;
+    SkinClear(C.Handle, W, H, SkinColors[Index]);
     Hover := SkinHover = Index;
+    Enabled := SkinIsEnabled(SkinHandles[Index]);
+    Focused := SkinControls[Index].Focused;
     Ink := SkinWhite;
-    if not SkinIsEnabled(SkinHandles[Index]) then Ink := $777777;
-    C.Font.Color := Ink;
+    if not Enabled then Ink := $777777;
+    { Read native state before a drawing context exists. Sending BM_GETSTATE
+      during GDI+ drawing can re-enter the script callback and lose the context. }
     if SkinKinds[Index] = 2 then begin
       Caption := TNewCheckBox(SkinControls[Index]).Caption;
-      StringChangeEx(Caption, '&', '', True);
-      Checked := SendMessage(SkinHandles[Index], $00F0, 0, 0) = 1;
-      BoxSize := ScaleX(19); Y := (H - BoxSize) div 2; X := ScaleX(2);
-      C.Pen.Style := psSolid;
-      C.Pen.Color := $666666;
-      C.Brush.Color := SkinColors[Index];
-      if Checked then begin C.Brush.Color := SkinAccent; C.Pen.Color := SkinAccent; end;
-      if SkinControls[Index].Focused then C.Pen.Color := SkinAccent;
-      C.RoundRect(X, Y, X + BoxSize, Y + BoxSize, ScaleX(6), ScaleY(6));
-      if Checked then begin
-        C.Pen.Color := SkinBackgroundColor; C.Pen.Width := ScaleX(2);
-        C.MoveTo(X + ScaleX(4), Y + ScaleY(9));
-        C.LineTo(X + ScaleX(8), Y + ScaleY(13));
-        C.LineTo(X + ScaleX(15), Y + ScaleY(5));
+      Checked := TNewCheckBox(SkinControls[Index]).Checked;
+    end else Caption := TNewButton(SkinControls[Index]).Caption;
+    Pressed := SkinPressed[Index];
+    Graphics := SkinGraphics(C.Handle);
+    try
+      if SkinKinds[Index] = 2 then begin
+        BoxSize := ScaleX(19); Y := (H - BoxSize) div 2; X := ScaleX(2);
+        Fill := SkinColors[Index]; Edge := $666666;
+        if Checked then begin Fill := SkinAccent; Edge := SkinAccent; end;
+        if Focused or Hover then Edge := SkinAccent;
+        SkinRounded(Graphics, X + 0.5, Y + 0.5, BoxSize - 1, BoxSize - 1, ScaleX(4), Fill, Edge, ScaleX(1));
+        if Checked then begin
+          SkinLine(Graphics, SkinBackgroundColor, ScaleX(2), X + ScaleX(4), Y + ScaleY(9), X + ScaleX(8), Y + ScaleY(13));
+          SkinLine(Graphics, SkinBackgroundColor, ScaleX(2), X + ScaleX(8), Y + ScaleY(13), X + ScaleX(15), Y + ScaleY(5));
+        end;
+      end else begin
+        Fill := $3B3838; Edge := $48484C;
+        if Hover then Fill := $484448;
+        if SkinKinds[Index] = 1 then begin
+          Fill := SkinAccent; Edge := SkinAccent; Ink := SkinBackgroundColor;
+          if Hover then Fill := $77FFEA;
+          if Pressed then Fill := $34DAC5;
+        end else if Pressed then Fill := $302E30;
+        if not Enabled then begin Fill := $343434; Ink := $777777; end;
+        if Focused then Edge := SkinAccent;
+        SkinRounded(Graphics, 1, 1, W - 2, H - 2, (H - 2) / 2, Fill, Edge, ScaleX(1));
+        if SkinKinds[Index] = 3 then begin
+          X := W div 2; Y := H div 2;
+          SkinLine(Graphics, Ink, ScaleX(1), X - ScaleX(5), Y - ScaleY(5), X + ScaleX(5), Y + ScaleY(5));
+          SkinLine(Graphics, Ink, ScaleX(1), X + ScaleX(5), Y - ScaleY(5), X - ScaleX(5), Y + ScaleY(5));
+        end;
       end;
-      C.Brush.Style := bsClear;
-      C.TextOut(ScaleX(30), (H - C.TextHeight(Caption)) div 2, Caption);
-    end else begin
-      Caption := TNewButton(SkinControls[Index]).Caption;
-      StringChangeEx(Caption, '&', '', True);
-      Fill := $3B3838; Edge := $48484C;
-      if Hover then Fill := $484448;
-      if SkinKinds[Index] = 1 then begin
-        Fill := SkinAccent; Edge := SkinAccent; C.Font.Color := SkinBackgroundColor;
-        C.Font.Style := [fsBold];
-        if Hover then Fill := $77FFEA;
-      end;
-      if not SkinIsEnabled(SkinHandles[Index]) then begin Fill := $343434; C.Font.Color := $777777; end;
-      if SkinControls[Index].Focused then Edge := SkinAccent;
-      C.Brush.Color := Fill; C.Pen.Style := psSolid; C.Pen.Color := Edge; C.Pen.Width := ScaleX(1);
-      C.RoundRect(1, 1, W - 1, H - 1, H - 2, H - 2);
-      C.Brush.Style := bsClear;
-      if SkinKinds[Index] = 3 then begin
-        C.Pen.Color := SkinWhite; C.Pen.Width := ScaleX(1);
-        X := W div 2; Y := H div 2;
-        C.MoveTo(X - ScaleX(5), Y - ScaleY(5)); C.LineTo(X + ScaleX(5), Y + ScaleY(5));
-        C.MoveTo(X + ScaleX(5), Y - ScaleY(5)); C.LineTo(X - ScaleX(5), Y + ScaleY(5));
-      end else
-        C.TextOut((W - C.TextWidth(Caption)) div 2, (H - C.TextHeight(Caption)) div 2, Caption);
+    finally
+      SkinGdiDeleteGraphics(Graphics);
     end;
+    StringChangeEx(Caption, '&', '', True);
+    C.Font.Assign(WizardForm.Font); C.Font.Size := 10; C.Font.Color := Ink;
+    if SkinKinds[Index] = 1 then C.Font.Style := [fsBold];
+    C.Brush.Style := bsClear;
+    if SkinKinds[Index] = 2 then
+      C.TextOut(ScaleX(30), (H - C.TextHeight(Caption)) div 2, Caption)
+    else if SkinKinds[Index] <> 3 then
+      C.TextOut((W - C.TextWidth(Caption)) div 2, (H - C.TextHeight(Caption)) div 2, Caption);
     SkinBlit(DC, 0, 0, W, H, C.Handle, 0, 0, $00CC0020);
   finally
     Surface.Free;
   end;
 end;
 
-procedure SkinRoundWindow;
-var Region: LongWord;
+procedure SkinPaintBackground;
+var Graphics: LongWord;
 begin
-  if (SkinRegionWidth = WizardForm.Width) and (SkinRegionHeight = WizardForm.Height) then Exit;
-  SkinRegionWidth := WizardForm.Width; SkinRegionHeight := WizardForm.Height;
-  Region := SkinRoundRegion(0, 0, WizardForm.Width, WizardForm.Height, ScaleX(40), ScaleY(40));
-  if SkinWindowRegion(WizardForm.Handle, Region, True) = 0 then SkinDeleteObject(Region);
+  if (SkinLastState < 0) or (SkinGraphicsToken = 0) then Exit;
+  SkinCanvas.Bitmap.Width := WizardForm.ClientWidth;
+  SkinCanvas.Bitmap.Height := WizardForm.ClientHeight;
+  Graphics := SkinGraphics(SkinCanvas.Bitmap.Canvas.Handle);
+  try
+    SkinGdiDrawImage(Graphics, SkinBackgroundImages[SkinLastState], 0, 0,
+      SkinCanvas.Bitmap.Width, SkinCanvas.Bitmap.Height);
+  finally
+    SkinGdiDeleteGraphics(Graphics);
+  end;
+  SkinCanvas.Invalidate;
 end;
 
 function SkinWindowProc(Wnd: HWND; Msg: Cardinal; WParam: LongWord;
   LParam: LongInt; Id, Data: LongWord): LongInt;
-var DC: LongWord; P: TSkinPoint; R: TSkinRect; I, Hover: Integer;
+var DC: LongWord; Info: TSkinPaintInfo; P: TSkinPoint; R: TSkinRect; I, Hover: Integer;
 begin
-  { Let a printed parent dispatch to each independently painted native child. }
-  if (Data = 0) and ((Msg = $0317) or (Msg = $0318)) then begin
-    Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam); Exit;
-  end;
-  { Native button input can synchronously send more window messages. Avoid
-    re-entering the script painter while VCL is already dispatching input. }
-  if SkinInCallback then begin
-    Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam); Exit;
-  end;
-  SkinInCallback := True;
   try
-    try
-  if Msg = $0082 then begin
-    SkinUnsubclass(Wnd, SkinCallback, 1);
-    Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
-    Exit;
-  end;
-  if Data > 0 then begin
-    if (Msg = $000F) or (Msg = $0317) or (Msg = $0318) then begin
-      if Msg = $000F then DC := SkinGetDC(Wnd) else DC := WParam;
-      SkinPaint(Data - 1, DC);
-      if Msg = $000F then begin SkinReleaseDC(Wnd, DC); SkinValidate(Wnd, 0); end;
+    if Msg = $0082 then begin
+      SkinUnsubclass(Wnd, SkinCallback, 1);
+      Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam); Exit;
+    end;
+    if Data > 0 then begin
+      { Always handle child paint, even inside native input/parent painting.
+        Falling back here exposes the white themed button/checkbox frame. }
+      if (Msg = $000F) or (Msg = $0317) or (Msg = $0318) then begin
+        if Msg = $000F then DC := SkinBeginPaint(Wnd, Info) else DC := WParam;
+        try SkinPaint(Data - 1, DC);
+        finally if Msg = $000F then SkinEndPaint(Wnd, Info); end;
+        Result := 0; Exit;
+      end;
+      if (Msg = $0014) or (Msg = $0085) then begin Result := 1; Exit; end;
+      if Msg = $00F3 then SkinPressed[Data - 1] := WParam <> 0;
+      Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
+      if (Msg = $00F1) or (Msg = $00F3) or (Msg = $00F4) or
+         (Msg = $0007) or (Msg = $0008) or (Msg = $000A) then begin
+        DC := SkinGetDC(Wnd);
+        try SkinPaint(Data - 1, DC); finally SkinReleaseDC(Wnd, DC); end;
+      end;
+      Exit;
+    end;
+    if (Msg = $0083) and SkinNativeFrameReady then begin Result := 0; Exit; end;
+    if (Msg = $0112) and (((WParam and $FFF0) = $F000) or ((WParam and $FFF0) = $F030)) then begin
+      Result := 0; Exit; { Fixed installer size, even though DWM needs a thick-frame style. }
+    end;
+    if Msg = SkinValidateMessage then begin
+      WizardForm.BackButton.OnClick(WizardForm.BackButton); Result := 0; Exit;
+    end;
+    if (Msg = $0084) and SkinNativeFrameReady then begin
+      SkinCursor(P); SkinToClient(Wnd, P);
+      if (P.Y >= 0) and (P.Y < ScaleY(58)) and (P.X > ScaleX(60)) and
+         (P.X < WizardForm.ClientWidth - ScaleX(65)) then Result := 2 else Result := 1;
+      Exit;
+    end;
+    if (Msg = $0113) and (WParam = 73) then begin
+      Hover := -1; SkinCursor(P);
+      for I := 0 to GetArrayLength(SkinHandles) - 1 do
+        if SkinIsWindow(SkinHandles[I]) and SkinControls[I].Showing then begin
+          SkinWindowRect(SkinHandles[I], R);
+          if (P.X >= R.Left) and (P.X < R.Right) and (P.Y >= R.Top) and (P.Y < R.Bottom) then Hover := I;
+        end;
+      if Hover <> SkinHover then begin
+        I := SkinHover; SkinHover := Hover;
+        if I >= 0 then SkinInvalidate(SkinHandles[I], 0, False);
+        if Hover >= 0 then SkinInvalidate(SkinHandles[Hover], 0, False);
+      end;
       Result := 0; Exit;
     end;
-    if Msg = $0014 then begin Result := 1; Exit; end;
     Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
-    if (Msg = $00F1) or (Msg = $0007) or (Msg = $0008) or (Msg = $000A) then
-      SkinInvalidate(Wnd, 0, False);
-    Exit;
-  end;
-  if Msg = SkinValidateMessage then begin
-    WizardForm.BackButton.OnClick(WizardForm.BackButton);
-    Result := 0; Exit;
-  end;
-  if Msg = $0084 then begin
-    SkinCursor(P); SkinToClient(Wnd, P);
-    if (P.Y < ScaleY(58)) and (P.X > ScaleX(60)) and
-       (P.X < WizardForm.ClientWidth - ScaleX(65)) then begin Result := 2; Exit; end;
-  end;
-  if (Msg = $0113) and (WParam = 73) then begin
-    Hover := -1; SkinCursor(P);
-    for I := 0 to GetArrayLength(SkinHandles) - 1 do
-      if SkinIsWindow(SkinHandles[I]) and SkinControls[I].Showing then begin
-        SkinWindowRect(SkinHandles[I], R);
-        if (P.X >= R.Left) and (P.X < R.Right) and (P.Y >= R.Top) and (P.Y < R.Bottom) then Hover := I;
-      end;
-    if Hover <> SkinHover then begin
-      if SkinHover >= 0 then SkinInvalidate(SkinHandles[SkinHover], 0, False);
-      SkinHover := Hover;
-      if SkinHover >= 0 then SkinInvalidate(SkinHandles[SkinHover], 0, False);
-    end;
-    Result := 0; Exit;
-  end;
-  Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
-  if Msg = $0005 then SkinRoundWindow;
-    except
-      Log('Installer UI callback failed, message ' + IntToStr(Msg) + ': ' + GetExceptionMessage);
-      Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
-    end;
-  finally
-    SkinInCallback := False;
+    if (Msg = $0005) and (SkinLastState >= 0) then SkinPaintBackground;
+    if (Msg = $0018) and (WParam <> 0) and SkinNativeFrameReady then SkinApplyDwmFrame(Wnd);
+  except
+    Log('Installer UI callback failed, message ' + IntToStr(Msg) + ': ' + GetExceptionMessage);
+    if (Data > 0) and ((Msg = $000F) or (Msg = $0317) or (Msg = $0318)) then Result := 0
+    else Result := SkinDefSubclassProc(Wnd, Msg, WParam, LParam);
   end;
 end;
 
@@ -226,8 +229,12 @@ begin
   I := GetArrayLength(SkinHandles);
   SetArrayLength(SkinHandles, I + 1); SetArrayLength(SkinControls, I + 1);
   SetArrayLength(SkinKinds, I + 1); SetArrayLength(SkinColors, I + 1);
+  SetArrayLength(SkinPressed, I + 1);
   SkinHandles[I] := Control.Handle; SkinControls[I] := Control;
   SkinKinds[I] := Kind; SkinColors[I] := Back;
+  SkinWindowTheme(Control.Handle, '', '');
+  SkinSetWindowLong(Control.Handle, -16, SkinGetWindowLong(Control.Handle, -16) and not $00C00000);
+  SkinSetWindowLong(Control.Handle, -20, SkinGetWindowLong(Control.Handle, -20) and not $00020200);
   if not SkinSubclass(Control.Handle, SkinCallback, 1, I + 1) then
     RaiseException('Unable to initialize installer controls');
 end;
@@ -261,39 +268,60 @@ begin
 end;
 
 procedure SkinDrawProgress(Value: Integer);
-var W, H, Fill: Integer;
+var W, H, Fill: Integer; Graphics: LongWord;
 begin
   if not SkinActive then Exit;
   W := SkinProgress.Width; H := SkinProgress.Height;
   SkinProgress.Bitmap.Width := W; SkinProgress.Bitmap.Height := H;
-  SkinProgress.Bitmap.Canvas.Brush.Color := SkinCardColor;
-  SkinProgress.Bitmap.Canvas.Pen.Style := psClear;
-  SkinProgress.Bitmap.Canvas.Rectangle(0, 0, W, H);
-  SkinProgress.Bitmap.Canvas.Brush.Color := $454549;
-  SkinProgress.Bitmap.Canvas.RoundRect(0, 0, W, H, H, H);
-  Fill := (W * Value) div 100;
-  if Fill > 0 then begin
-    SkinProgress.Bitmap.Canvas.Brush.Color := SkinAccent;
-    SkinProgress.Bitmap.Canvas.RoundRect(0, 0, Fill, H, H, H);
+  SkinClear(SkinProgress.Bitmap.Canvas.Handle, W, H, SkinCardColor);
+  Graphics := SkinGraphics(SkinProgress.Bitmap.Canvas.Handle);
+  try
+    SkinRounded(Graphics, 1, 1, W - 2, H - 2, H / 2, $454549, $454549, 0);
+    Fill := ((W - 2) * Value) div 100;
+    if Fill > 0 then SkinRounded(Graphics, 1, 1, Fill, H - 2, H / 2, SkinAccent, SkinAccent, 0);
+  finally
+    SkinGdiDeleteGraphics(Graphics);
   end;
-  SkinPercent.Caption := IntToStr(Value) + '%';
-  SkinProgress.Invalidate;
+  SkinPercent.Caption := IntToStr(Value) + '%'; SkinProgress.Invalidate;
+end;
+
+procedure SkinDrawStages(Active: Integer);
+var I, W, H, Color: Integer; Graphics, Pen: LongWord;
+begin
+  for I := 0 to GetArrayLength(SkinStageMarks) - 1 do begin
+    W := SkinStageMarks[I].Width; H := SkinStageMarks[I].Height;
+    SkinStageMarks[I].Bitmap.Width := W; SkinStageMarks[I].Bitmap.Height := H;
+    SkinClear(SkinStageMarks[I].Bitmap.Canvas.Handle, W, H, SkinCardColor);
+    Graphics := SkinGraphics(SkinStageMarks[I].Bitmap.Canvas.Handle);
+    try
+      if I <= Active then Color := SkinAccent else Color := $606060;
+      Pen := SkinPen(Color, ScaleX(1) * 1.5);
+      try
+        if I = Active then SkinGdiDrawArc(Graphics, Pen, 1.5, 1.5, W - 3, H - 3, -90, 270)
+        else SkinGdiEllipse(Graphics, Pen, 1.5, 1.5, W - 3, H - 3);
+      finally
+        SkinGdiDeletePen(Pen);
+      end;
+      if I < Active then begin
+        SkinLine(Graphics, SkinAccent, ScaleX(1) * 1.5, W * 0.26, H * 0.50, W * 0.43, H * 0.68);
+        SkinLine(Graphics, SkinAccent, ScaleX(1) * 1.5, W * 0.43, H * 0.68, W * 0.75, H * 0.33);
+      end;
+    finally
+      SkinGdiDeleteGraphics(Graphics);
+    end;
+    SkinStageMarks[I].Invalidate;
+  end;
 end;
 
 procedure SkinState(State: Integer);
-var Setup, Progress, Finished: Boolean;
+var Setup, Progress, Finished: Boolean; I: Integer;
 begin
   if not SkinActive then Exit;
   Setup := State = 0; Progress := State = 1; Finished := State = 2;
   WizardForm.OuterNotebook.Visible := False;
   WizardForm.InnerNotebook.Visible := False;
   WizardForm.BackButton.Visible := False;
-  if State <> SkinLastState then begin
-    if Setup then SkinCanvas.Bitmap.LoadFromFile(ExpandConstant('{tmp}\installer-setup.bmp'))
-    else if Progress then SkinCanvas.Bitmap.LoadFromFile(ExpandConstant('{tmp}\installer-progress.bmp'))
-    else SkinCanvas.Bitmap.LoadFromFile(ExpandConstant('{tmp}\installer-finished.bmp'));
-    SkinLastState := State;
-  end;
+  if State <> SkinLastState then begin SkinLastState := State; SkinPaintBackground; end;
   SkinHead.Left := ScaleX(330); SkinSubtitle.Left := ScaleX(330);
   SkinHead.Width := ScaleX(610); SkinSubtitle.Width := ScaleX(610);
   if Setup then begin
@@ -327,7 +355,8 @@ begin
   WizardForm.CancelButton.Visible := not Finished;
   if Progress then WizardForm.CancelButton.Left := ScaleX(840)
   else WizardForm.CancelButton.Left := ScaleX(734);
-  SkinRoundWindow;
+  for I := 0 to GetArrayLength(SkinStageMarks) - 1 do SkinStageMarks[I].Visible := Progress;
+  if Progress then SkinDrawStages(1);
 end;
 
 procedure InitializeInstallerSkin;
@@ -346,8 +375,9 @@ begin
   ExtractTemporaryFile('installer-setup.bmp');
   ExtractTemporaryFile('installer-progress.bmp');
   ExtractTemporaryFile('installer-finished.bmp');
+  SkinInitializeGraphics;
   SkinCanvas := TBitmapImage.Create(WizardForm); SkinCanvas.Parent := WizardForm;
-  SkinCanvas.Align := alClient; SkinCanvas.Stretch := True; SkinCanvas.SendToBack;
+  SkinCanvas.Align := alClient; SkinCanvas.Stretch := False; SkinCanvas.SendToBack;
   SkinCallback := CreateCallback(@SkinWindowProc);
   SkinSubclass(WizardForm.Handle, SkinCallback, 1, 0);
   SkinTimer(WizardForm.Handle, 73, 80, 0);
@@ -398,9 +428,14 @@ begin
   SkinProgress := TBitmapImage.Create(WizardForm); SkinProgress.Parent := WizardForm;
   SkinProgress.SetBounds(ScaleX(358), ScaleY(264), ScaleX(584), ScaleY(16));
   SkinStatus := SkinLabel(WizardForm, '正在安装文件…', 358, 297, 580, 28, 12, SkinMuted, SkinCardColor);
-  SkinStageOne := SkinLabel(WizardForm, '✓   准备安装', 358, 356, 540, 30, 13, SkinAccent, SkinCardColor);
-  SkinStageTwo := SkinLabel(WizardForm, '◌   安装文件', 358, 399, 540, 30, 13, SkinWhite, SkinCardColor);
-  SkinStageThree := SkinLabel(WizardForm, '○   完成配置', 358, 442, 540, 30, 13, SkinMuted, SkinCardColor);
+  SkinStageOne := SkinLabel(WizardForm, '准备安装', 390, 356, 540, 30, 13, SkinAccent, SkinCardColor);
+  SkinStageTwo := SkinLabel(WizardForm, '安装文件', 390, 399, 540, 30, 13, SkinWhite, SkinCardColor);
+  SkinStageThree := SkinLabel(WizardForm, '完成配置', 390, 442, 540, 30, 13, SkinMuted, SkinCardColor);
+  SetArrayLength(SkinStageMarks, 3);
+  for I := 0 to 2 do begin
+    SkinStageMarks[I] := TBitmapImage.Create(WizardForm); SkinStageMarks[I].Parent := WizardForm;
+    SkinStageMarks[I].SetBounds(ScaleX(358), ScaleY(362 + 43 * I), ScaleX(18), ScaleY(18));
+  end;
   SkinCompleteTitle := SkinLabel(WizardForm, '可以开始浏览图片了', 358, 250, 580, 36, 16, SkinWhite, SkinCardColor);
   SkinCompleteTitle.Font.Style := [fsBold];
   SkinCompletePathTitle := SkinLabel(WizardForm, '安装位置', 358, 310, 580, 25, 11, SkinMuted, SkinCardColor);
@@ -413,6 +448,7 @@ begin
   WizardForm.InnerNotebook.Parent := WizardForm;
   WizardForm.InnerNotebook.SetBounds(ScaleX(350), ScaleY(190), ScaleX(596), ScaleY(320));
   SkinState(0); SkinDrawProgress(0);
+  SkinConfigureFrame(WizardForm.Handle);
 end;
 
 procedure InstallerPageChanged(Page: Integer);
@@ -441,6 +477,7 @@ begin
       SkinProgress.Visible := False; SkinPercent.Visible := False; SkinStatus.Visible := False;
       SkinProgressTitle.Visible := False;
       SkinStageOne.Visible := False; SkinStageTwo.Visible := False; SkinStageThree.Visible := False;
+      SkinStageMarks[0].Visible := False; SkinStageMarks[1].Visible := False; SkinStageMarks[2].Visible := False;
       WizardForm.InnerNotebook.Visible := True;
       WizardForm.NextButton.Visible := WizardForm.NextButton.Enabled;
     end;
@@ -495,5 +532,6 @@ begin
   for I := 0 to GetArrayLength(SkinHandles) - 1 do
     if SkinIsWindow(SkinHandles[I]) then SkinUnsubclass(SkinHandles[I], SkinCallback, 1);
   if SkinIsWindow(WizardForm.Handle) then SkinUnsubclass(WizardForm.Handle, SkinCallback, 1);
+  SkinShutdownGraphics;
   SkinActive := False;
 end;

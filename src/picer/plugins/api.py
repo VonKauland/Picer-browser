@@ -348,6 +348,13 @@ class PluginContext:
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
+    def data_directory(self) -> Path:
+        """Private durable data namespace; never stored in or trimmed with cache."""
+        self._check("settings")
+        directory = self._manager.paths.config / "plugins" / self.plugin_id
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
     def run_task(self, work: Callable, on_result: Callable, *, image_bound: bool = True):
         """Return a cancellation token; stale image results are discarded by default."""
         self._check("tasks")

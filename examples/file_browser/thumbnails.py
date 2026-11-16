@@ -213,6 +213,8 @@ class PhotoTree(QTreeView):
 
 
 def configure_view(view):
+    view.setSelectionMode(view.SelectionMode.ExtendedSelection)
+    view.setSelectionBehavior(view.SelectionBehavior.SelectRows)
     view.setItemDelegate(PhotoDelegate(view))
     view.setFrameShape(view.Shape.NoFrame)
     view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)

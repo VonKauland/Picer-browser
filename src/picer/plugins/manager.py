@@ -80,6 +80,7 @@ class PluginManager(QObject):
         self._dispatching = False
         self._closed = False
         self._startup_loaded = False
+        self._restoring_startup = False
         self._startup_options = (load_external, load_examples)
         self.jobs: dict[int, Worker] = {}
         self._next_job = 0
@@ -146,6 +147,13 @@ class PluginManager(QObject):
         if self._startup_loaded or self._closed:
             return
         self._startup_loaded = True
+        self._restoring_startup = True
+        try:
+            self._restore_startup_plugins()
+        finally:
+            self._restoring_startup = False
+
+    def _restore_startup_plugins(self):
         load_external, load_examples = self._startup_options
         if load_external:
             self.discover()
@@ -248,11 +256,16 @@ class PluginManager(QObject):
         self._save()
         self.changed.emit()
 
-        if plugin_id in activated and self.records[plugin_id].manifest.type == "function":
-            self.host.notify(
+        if (
+            not self._restoring_startup
+            and plugin_id in activated
+            and self.records[plugin_id].manifest.type == "function"
+        ):
+            self.host.plugin_state_notification(
+                plugin_id,
                 tr("{0}已启用").format(
                     plugin_text(self, plugin_id, self.records[plugin_id].manifest.name)
-                )
+                ),
             )
 
     def _enable(self, plugin_id: str, visiting: set[str], activated: list[str]) -> None:
@@ -344,8 +357,9 @@ class PluginManager(QObject):
         self._save()
         self.changed.emit()
         if was_enabled and record.manifest.type == "function":
-            self.host.notify(
-                tr("{0}已停用").format(plugin_text(self, plugin_id, record.manifest.name))
+            self.host.plugin_state_notification(
+                plugin_id,
+                tr("{0}已停用").format(plugin_text(self, plugin_id, record.manifest.name)),
             )
 
     def reload(self, plugin_id: str) -> None:
@@ -538,6 +552,7 @@ class PluginManager(QObject):
             "browser.parent",
             "browser.selected",
             "browser.favorite",
+            "browser.reveal_image",
             "slideshow.play",
             "slideshow.stop",
         } or not callable(callback):
@@ -942,7 +957,10 @@ class PluginManager(QObject):
             self.preferences["enabled"][manifest.id] = False
             self._save()
             self.changed.emit()
-            self.host.notify(tr("{0}已安装").format(plugin_text(self, manifest.id, manifest.name)))
+            if not self._restoring_startup:
+                self.host.notify(
+                    tr("{0}已安装").format(plugin_text(self, manifest.id, manifest.name))
+                )
             return manifest.id
         except (OSError, zipfile.BadZipFile, RuntimeError) as error:
             raise PluginError(tr("安装失败：{0}").format(error)) from error
