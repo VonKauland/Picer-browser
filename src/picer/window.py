@@ -161,6 +161,7 @@ class MainWindow(QMainWindow):
         self.app_preferences = dict(DEFAULTS)
         self.settings_dialog = None
         self._pending_plugin_notifications = {}
+        self._plugin_notice_generation = 0
         self._skin_style = STYLE
         self.shortcut_actions, self.default_shortcuts = {}, {}
         self.chrome_style = "standard"
@@ -316,6 +317,8 @@ class MainWindow(QMainWindow):
         self.apply_preferences()
         self.navigation_keys = NavigationKeys(self)
         self.notifications = NotificationBubble(self)
+        QApplication.instance().focusChanged.connect(self.plugin_feedback_focus_changed)
+        self._plugin_focus_connected = True
         self.update_actions()
         self.title_bar.arrange()
         self.window_frame = WindowFrame(self)
@@ -446,8 +449,13 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event) -> None:
         super().changeEvent(event)
-        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
-            QTimer.singleShot(0, self.flush_plugin_notifications)
+        settings = getattr(self, "settings_dialog", None)
+        if (
+            event.type() == QEvent.Type.ActivationChange
+            and self.isActiveWindow()
+            and not (settings is not None and settings.isVisible())
+        ):
+            self.schedule_plugin_feedback()
         if event.type() == QEvent.Type.WindowStateChange and hasattr(self, "plugins"):
             self.title_bar.sync_window_state()
             self.fullscreen_chrome.sync()
@@ -606,10 +614,15 @@ class MainWindow(QMainWindow):
         self.notify(message)
 
     def plugin_state_notification(self, plugin_id: str, message: str) -> None:
-        if QApplication.activeModalWidget() or (QApplication.activeWindow() not in (None, self)):
+        if (
+            QApplication.activeModalWidget()
+            or QApplication.activeWindow() not in (None, self)
+            or (self.settings_dialog is not None and self.settings_dialog.isVisible())
+        ):
             # Keep only the latest manual state per plugin until returning to the canvas.
             self._pending_plugin_notifications.pop(plugin_id, None)
             self._pending_plugin_notifications[plugin_id] = message
+            self._plugin_notice_generation += 1
             while len(self._pending_plugin_notifications) > 5:
                 self._pending_plugin_notifications.pop(
                     next(iter(self._pending_plugin_notifications))
@@ -618,16 +631,33 @@ class MainWindow(QMainWindow):
             self.notify(message)
 
     def flush_plugin_notifications(self):
+        focus = QApplication.focusWidget()
         if (
             not self.isActiveWindow()
             or QApplication.activeModalWidget()
-            or QApplication.activeWindow() is not self
+            or (focus is not None and QWidget.window(focus) is not self)
+            or (focus is None and QApplication.activeWindow() is not self)
         ):
             return
         pending = list(self._pending_plugin_notifications.values())
         self._pending_plugin_notifications.clear()
         for message in pending:
             self.notify(message)
+
+    def plugin_feedback_focus_changed(self, previous, current):
+        # Windows tool windows can share their owner's activation state. Follow
+        # actual keyboard focus when the user returns from nonmodal settings.
+        if current is not None and QWidget.window(current) is self:
+            self.schedule_plugin_feedback()
+
+    def schedule_plugin_feedback(self):
+        generation = self._plugin_notice_generation
+
+        def deliver():
+            if generation == self._plugin_notice_generation:
+                self.flush_plugin_notifications()
+
+        QTimer.singleShot(0, deliver)
 
     def notify(self, message: str) -> None:
         if hasattr(self, "notifications"):
@@ -637,7 +667,8 @@ class MainWindow(QMainWindow):
         dialog = PluginDialog(self.plugins, self.settings_dialog or self)
         dialog.exec()
         dialog.deleteLater()
-        QTimer.singleShot(0, self.flush_plugin_notifications)
+        if self.settings_dialog is None or not self.settings_dialog.isVisible():
+            self.schedule_plugin_feedback()
 
     def show_settings(self):
         from picer.settings import ApplicationSettings
@@ -697,6 +728,9 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._pending_plugin_notifications.clear()
+        if self._plugin_focus_connected:
+            QApplication.instance().focusChanged.disconnect(self.plugin_feedback_focus_changed)
+            self._plugin_focus_connected = False
         if self.settings_dialog is not None:
             self.settings_dialog.close()
         ui = self.plugins.preferences["ui"]

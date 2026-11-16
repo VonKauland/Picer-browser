@@ -3,7 +3,7 @@
 import pytest
 from PIL import Image
 from PySide6.QtCore import QAbstractAnimation, QPoint, Qt
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QApplication, QDialog, QWidget
 
 from picer.preferences import read_preferences
 from picer.settings import ApplicationSettings
@@ -51,9 +51,16 @@ def test_manual_plugin_feedback_waits_for_main_window_once(host, qtbot, monkeypa
     messages.clear()
     settings = host.show_settings()
     qtbot.waitUntil(settings.isActiveWindow)
+    settings.navigation.setFocus()
+    qtbot.waitUntil(
+        lambda: QApplication.focusWidget() is not None
+        and QWidget.window(QApplication.focusWidget()) is settings
+    )
     host.plugins.disable("example.touch")
     assert not messages
     host.activateWindow()  # Returning to the canvas need not close nonmodal settings.
+    qtbot.mouseClick(host.view.viewport(), Qt.MouseButton.LeftButton)
+    host.view.setFocus()
     qtbot.waitUntil(lambda: messages == ["触控支持已停用"])
     assert settings.isVisible() and not host._pending_plugin_notifications
     settings.close()
